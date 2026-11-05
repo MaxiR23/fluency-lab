@@ -26,9 +26,10 @@ jest.mock("expo-splash-screen", () => ({
   preventAutoHideAsync: jest.fn(),
   hide: jest.fn(),
 }));
-jest.mock("@/auth", () => ({
-  auth: jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth").fakeAuth,
-}));
+jest.mock("@/auth", () => {
+  const fake = jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth");
+  return { auth: fake.fakeAuth, apple: fake.fakeApple };
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

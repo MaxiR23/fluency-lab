@@ -3,7 +3,10 @@
 // Tests for the Login screen.
 //
 // Tested:
-// - The approved Login texts, placeholders and the place kept for providers
+// - The approved Login texts and placeholders
+// - The Apple button, its divider, and when both are hidden
+// - Apple sign in: success, cancel, each failure, and the name that failed to save
+// - Both sign in paths disable each other while one runs
 // - Validation, the request, its busy state and each failure message
 // - The guard: signed in users skip Login
 // - The links to Create account and to the password reset
@@ -15,12 +18,13 @@
 //
 // SEE: apps/mobile/src/app/sign-in.tsx
 
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 import { router } from "expo-router";
+import { Platform } from "react-native";
 
-import { authFailureMessage } from "@/utils/auth-message";
-import { emitSession, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
+import { appleNameFailureMessage, authFailureMessage } from "@/utils/auth-message";
+import { emitSession, fakeApple, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { generatedSecret } from "../helpers/generated-secret";
 import { renderApp } from "../helpers/render-app";
 
@@ -29,9 +33,16 @@ jest.mock("expo-splash-screen", () => ({
   preventAutoHideAsync: jest.fn(),
   hide: jest.fn(),
 }));
-jest.mock("@/auth", () => ({
-  auth: jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth").fakeAuth,
+jest.mock("expo-apple-authentication", () => ({
+  AppleAuthenticationButton:
+    jest.requireActual<typeof import("react-native")>("react-native").Pressable,
+  AppleAuthenticationButtonType: { CONTINUE: 1 },
+  AppleAuthenticationButtonStyle: { WHITE: 0 },
 }));
+jest.mock("@/auth", () => {
+  const fake = jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth");
+  return { auth: fake.fakeAuth, apple: fake.fakeApple };
+});
 
 const email = "name@email.com";
 const password = generatedSecret("password");
@@ -44,6 +55,33 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+const appleCredential = {
+  ok: true,
+  value: {
+    idToken: generatedSecret("id-token"),
+    rawNonce: generatedSecret("nonce"),
+    fullName: { givenName: "Ada", familyName: "Lovelace" },
+  },
+} as const;
+
+function appleAvailable() {
+  fakeApple.isAvailable.mockResolvedValue({ ok: true, value: true });
+}
+
+async function pressApple() {
+  await fireEvent.press(await screen.findByTestId("apple-button"));
+}
+
+async function startNameFailure() {
+  appleAvailable();
+  fakeApple.requestCredential.mockResolvedValue(appleCredential);
+  fakeAuth.signInWithApple.mockResolvedValue({ ok: true, value: fakeSession() });
+  fakeAuth.saveName.mockResolvedValue({ ok: false, failure: "network" });
+  await renderApp("/sign-in", null);
+  await pressApple();
+  await act(async () => emitSession(fakeSession()));
+}
+
 async function fill(values: { email: string; password: string }) {
   await fireEvent.changeText(screen.getByLabelText("Email"), values.email);
   await fireEvent.changeText(screen.getByLabelText("Password"), values.password);
@@ -54,7 +92,12 @@ describe("Login screen", () => {
     resetFakeAuth();
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it("draws every text of the approved Login", async () => {
+    appleAvailable();
     await renderApp("/", null);
     expect(screen).toHavePathname("/sign-in");
     expect(screen.getByText("Fluency Lab")).toBeTruthy();
@@ -64,7 +107,7 @@ describe("Login screen", () => {
     expect(screen.getByText("Password")).toBeTruthy();
     expect(screen.getByText("Forgot password?")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
-    expect(screen.getByText("or")).toBeTruthy();
+    expect(await screen.findByText("or")).toBeTruthy();
     expect(screen.getByText(/New here\?/)).toBeTruthy();
     expect(screen.getByText("Create an account")).toBeTruthy();
   });
@@ -76,11 +119,170 @@ describe("Login screen", () => {
     expect(screen.getByLabelText("Password").props.secureTextEntry).toBe(true);
   });
 
-  it("shows no Google or Apple button and keeps the place for the providers", async () => {
+  it("shows the Apple button under the divider when Apple is available", async () => {
+    appleAvailable();
     await renderApp("/sign-in", null);
-    expect(screen.queryByText(/google/i)).toBeNull();
-    expect(screen.queryByText(/apple/i)).toBeNull();
+    expect(await screen.findByTestId("apple-button")).toBeTruthy();
+    expect(screen.getByText("or")).toBeTruthy();
     expect(screen.getByTestId("sign-in-providers")).toBeTruthy();
+    expect(screen.queryByText(/google/i)).toBeNull();
+  });
+
+  it("hides the divider and the providers when Apple is not available", async () => {
+    await renderApp("/sign-in", null);
+    expect(screen.queryByText("or")).toBeNull();
+    expect(screen.queryByTestId("apple-button")).toBeNull();
+    expect(screen.queryByTestId("sign-in-providers")).toBeNull();
+    expect(screen.queryByText(/google/i)).toBeNull();
+  });
+
+  it("hides the divider and the providers when the availability check fails", async () => {
+    fakeApple.isAvailable.mockResolvedValue({ ok: false, failure: "apple_request_failed" });
+    await renderApp("/sign-in", null);
+    expect(screen.queryByText("or")).toBeNull();
+    expect(screen.queryByTestId("apple-button")).toBeNull();
+    expect(screen.getByText("Welcome back")).toBeTruthy();
+  });
+
+  it("does not show the Apple button on Android even when the check says available", async () => {
+    jest.replaceProperty(Platform, "OS", "android");
+    appleAvailable();
+    await renderApp("/sign-in", null);
+    expect(screen.queryByTestId("apple-button")).toBeNull();
+    expect(screen.queryByText("or")).toBeNull();
+  });
+
+  it("moves to Home after an Apple sign-in, once the session arrives", async () => {
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue(appleCredential);
+    fakeAuth.signInWithApple.mockResolvedValue({ ok: true, value: fakeSession() });
+    fakeAuth.saveName.mockResolvedValue({ ok: true, value: null });
+    await renderApp("/sign-in", null);
+    await pressApple();
+    await act(async () => emitSession(fakeSession()));
+    expect(screen).toHavePathname("/");
+    expect(screen.queryByText("Welcome back")).toBeNull();
+  });
+
+  it("stays on Login with no message when the user cancels", async () => {
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue({ ok: false, failure: "canceled" });
+    await renderApp("/sign-in", null);
+    await pressApple();
+    expect(screen).toHavePathname("/sign-in");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(fakeAuth.signInWithApple).not.toHaveBeenCalled();
+  });
+
+  it("shows the Apple failure message and stays on Login", async () => {
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue({ ok: false, failure: "apple_request_failed" });
+    await renderApp("/sign-in", null);
+    await pressApple();
+    expect(screen.getByText(authFailureMessage("apple_request_failed"))).toBeTruthy();
+    expect(screen).toHavePathname("/sign-in");
+  });
+
+  it("shows the network message when the Apple sign-in cannot reach the server", async () => {
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue(appleCredential);
+    fakeAuth.signInWithApple.mockResolvedValue({ ok: false, failure: "network" });
+    await renderApp("/sign-in", null);
+    await pressApple();
+    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
+    expect(screen).toHavePathname("/sign-in");
+  });
+
+  it("shows the generic message when the Apple sign-in fails for an unknown reason", async () => {
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue(appleCredential);
+    fakeAuth.signInWithApple.mockResolvedValue({ ok: false, failure: "unknown" });
+    await renderApp("/sign-in", null);
+    await pressApple();
+    expect(screen.getByText(authFailureMessage("unknown"))).toBeTruthy();
+  });
+
+  it("stays on Login until the name is saved, then moves to Home", async () => {
+    const saving = deferred<{ ok: true; value: null }>();
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue(appleCredential);
+    fakeAuth.signInWithApple.mockResolvedValue({ ok: true, value: fakeSession() });
+    fakeAuth.saveName.mockReturnValue(saving.promise);
+    await renderApp("/sign-in", null);
+    await pressApple();
+    await act(async () => emitSession(fakeSession()));
+    expect(screen).toHavePathname("/sign-in");
+    await act(async () => saving.resolve({ ok: true, value: null }));
+    expect(screen).toHavePathname("/");
+  });
+
+  it("saves no name when Apple sends none", async () => {
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue({
+      ok: true,
+      value: { ...appleCredential.value, fullName: null },
+    });
+    fakeAuth.signInWithApple.mockResolvedValue({ ok: true, value: fakeSession() });
+    await renderApp("/sign-in", null);
+    await pressApple();
+    expect(fakeAuth.signInWithApple).toHaveBeenCalledTimes(1);
+    expect(fakeAuth.saveName).not.toHaveBeenCalled();
+  });
+
+  it("shows the name message, Try again and Continue when the name cannot be saved", async () => {
+    await startNameFailure();
+    expect(screen).toHavePathname("/sign-in");
+    expect(screen.getByText(appleNameFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+    expect(screen.queryByLabelText("Email")).toBeNull();
+  });
+
+  it("saves the name and moves to Home when Try again succeeds", async () => {
+    await startNameFailure();
+    fakeAuth.saveName.mockResolvedValue({ ok: true, value: null });
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(fakeAuth.saveName).toHaveBeenLastCalledWith({
+      fullName: "Ada Lovelace",
+      givenName: "Ada",
+      familyName: "Lovelace",
+    });
+    expect(screen).toHavePathname("/");
+  });
+
+  it("keeps the message when Try again fails", async () => {
+    await startNameFailure();
+    fakeAuth.saveName.mockResolvedValue({ ok: false, failure: "unknown" });
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByText(appleNameFailureMessage("unknown"))).toBeTruthy();
+    expect(screen).toHavePathname("/sign-in");
+  });
+
+  it("moves to Home without the name on Continue", async () => {
+    await startNameFailure();
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    expect(screen).toHavePathname("/");
+  });
+
+  it("disables the email button and the links while the Apple sign-in runs", async () => {
+    appleAvailable();
+    fakeApple.requestCredential.mockReturnValue(new Promise(() => undefined));
+    await renderApp("/sign-in", null);
+    await pressApple();
+    expect(screen.getByRole("button", { name: "Sign in", disabled: true })).toBeTruthy();
+    expect(screen.getByText("Forgot password?").props.onPress).toBeUndefined();
+    expect(screen.getByText("Create an account").props.onPress).toBeUndefined();
+  });
+
+  it("ignores the Apple button while the email sign-in runs", async () => {
+    appleAvailable();
+    fakeAuth.signInWithEmail.mockReturnValue(new Promise(() => undefined));
+    await renderApp("/sign-in", null);
+    await screen.findByTestId("apple-button");
+    await fill({ email, password });
+    await fireEvent.press(screen.getByRole("button", { name: "Sign in" }));
+    await pressApple();
+    expect(fakeApple.requestCredential).not.toHaveBeenCalled();
   });
 
   it("shows the field errors and does not call the port when the form is empty", async () => {

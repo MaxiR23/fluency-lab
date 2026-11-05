@@ -34,9 +34,10 @@ jest.mock("expo-splash-screen", () => ({
   preventAutoHideAsync: jest.fn(),
   hide: jest.fn(),
 }));
-jest.mock("@/auth", () => ({
-  auth: jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth").fakeAuth,
-}));
+jest.mock("@/auth", () => {
+  const fake = jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth");
+  return { auth: fake.fakeAuth, apple: fake.fakeApple };
+});
 
 const email = "name@email.com";
 const url = "/reset-password?email=name%40email.com";
