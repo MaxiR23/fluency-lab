@@ -4,35 +4,40 @@ Conventions for tests in this repo.
 
 ## Commands
 
-    pnpm test                    run all tests
-    pnpm test -- <pattern>       only the files that match
-    pnpm exec jest <path>        one file
+    pnpm test                    run all tests (every workspace, then scripts/test)
+    pnpm exec jest <path>        one apps/mobile file, path from the repo root
+    pnpm exec vitest run <path>  one packages/shared file, path from the repo root
 
 ## Runner
 
-One runner: **jest-expo**, the Expo preset for Jest. It runs everything:
-pure functions, hooks and components.
+One runner per place: **jest-expo**, the Expo preset for Jest, for
+`apps/mobile` (pure functions, hooks and components); **vitest** for
+`packages/shared`, which has no Expo or React Native; and `node --test`
+for `scripts/test`.
 
 - Pure functions (recommendations, spend limit, session analysis, text
   helpers) get plain unit tests: input in, output out, no render, no
   mocks of React Native.
 - Rendering is tested only where a component has its own logic.
-- `describe` / `it` / `expect` come from explicit `@jest/globals`
-  imports in each test file, not from ambient types.
+- `describe` / `it` / `expect` come from explicit imports in each test
+  file, not from ambient types: `@jest/globals` in `apps/mobile`,
+  `vitest` in `packages/shared`.
 - `render`, `fireEvent` and `act` from Testing Library are async and
   are awaited.
 
 ## File location
 
-Tests live in a `test/` directory at the repo root, mirroring `src/`.
-Expo Router routes live in `src/app/`, so their tests go under
-`test/app/`.
+Each workspace has a `test/` directory at its root, mirroring its
+`src/`. Expo Router routes live in `apps/mobile/src/app/`, so their
+tests go under `apps/mobile/test/app/`.
 
-    src/<path>/<file>.ts     -> test/<path>/<file>.test.ts
-    src/app/index.tsx        -> test/app/index.test.tsx
+    apps/mobile/src/<path>/<file>.ts   -> apps/mobile/test/<path>/<file>.test.ts
+    apps/mobile/src/app/index.tsx      -> apps/mobile/test/app/index.test.tsx
+    packages/shared/src/<file>.ts      -> packages/shared/test/<file>.test.ts
 
-Cross-cutting tests that do not map to a single file live at the root
-of `test/`.
+Cross-cutting tests of a workspace that do not map to a single file
+live at the root of its `test/`. The repo scripts are tested with
+`node --test` in `scripts/test/`, not with jest or vitest.
 
 ## Naming
 
@@ -78,7 +83,7 @@ A fixture never contains a real API key, token or user id.
 
 Each test file MUST start with this header:
 
-    // test/<path>/<file>.test.ts
+    // apps/mobile/test/<path>/<file>.test.ts
     //
     // Tests for <what>.
     //
@@ -89,9 +94,9 @@ Each test file MUST start with this header:
     // What is covered:
     // - Normal case, empty case, edges
     //
-    // Run with: pnpm test -- <file>
+    // Run with: pnpm exec jest apps/mobile/test/<path>/<file>.test.ts
     //
-    // SEE: src/<path>/<file>.ts
+    // SEE: apps/mobile/src/<path>/<file>.ts
 
 ## TDD workflow
 
@@ -107,4 +112,5 @@ A function without tests is not done, and neither is its screen.
 ## SEE
 
 - jest-expo: https://docs.expo.dev/develop/unit-testing/
+- vitest: https://vitest.dev/
 - Testing Library for React Native: https://callstack.github.io/react-native-testing-library/

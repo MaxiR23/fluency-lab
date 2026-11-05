@@ -70,6 +70,12 @@ describe("gate-limit", () => {
       "pnpm -r run typecheck",
       "pnpm -r --if-present run test",
       "pnpm -w test",
+      "pnpm --filter @fluency-lab/mobile test",
+      "pnpm -F mobile run lint",
+      "pnpm -C apps/mobile test",
+      "pnpm --dir apps/mobile lint",
+      "pnpm --dir=apps/mobile typecheck",
+      "pnpm --workspace-concurrency=1 -r test",
     ])
       assert.equal(run(command).denied, true, command);
   });
@@ -77,6 +83,7 @@ describe("gate-limit", () => {
   it("suggests a file scoped command for a blocked lint or test", () => {
     assert.match(run("pnpm lint").reason, /pnpm exec eslint <path>/);
     assert.match(run("pnpm test").reason, /pnpm exec jest <path>/);
+    assert.match(run("pnpm test").reason, /pnpm exec vitest run <path>/);
     assert.doesNotMatch(run("pnpm test").reason, /--filter/);
   });
 
@@ -111,8 +118,9 @@ describe("gate-limit", () => {
 
   it("lets file scoped commands run", () => {
     for (const command of [
-      "pnpm exec jest test/app/index.test.tsx",
-      "pnpm exec eslint app/index.tsx",
+      "pnpm exec jest apps/mobile/test/app/index.test.tsx",
+      "pnpm exec vitest run packages/shared/test/probe.test.ts",
+      "pnpm exec eslint apps/mobile/src/app/index.tsx",
       "pnpm format",
       "pnpm exec commitlint --help",
       "git status",

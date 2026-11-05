@@ -55,7 +55,9 @@ Flow for every feature, fix or non-trivial change in this repo.
      `implement-issue` it blocks the fourth `pnpm gate` before it runs,
      and also the gate's parts (`pnpm typecheck`, `pnpm lint`,
      `pnpm test`, with or without `run`). Commands scoped to a file
-     (`pnpm exec jest <path>`) and `pnpm format` stay allowed. The count
+     (`pnpm exec jest <path>`, `pnpm exec vitest run <path>`) and `pnpm format` stay allowed. The parts
+     are blocked in their filtered forms too (`pnpm -r test`,
+     `pnpm --filter <name> lint`). The count
      is per `agent_id`, kept under `.claude/loop/`, so every pass is a
      new dispatch, never a continuation of an earlier one. Project hooks
      load from the `.claude/` of the directory where the session starts,

@@ -1,3 +1,7 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
 allowBuilds:
   # Pulled by jest-haste-map 30; it falls back to a crawler without the
   # native build, so no build script has to run.
