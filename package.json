@@ -11,12 +11,16 @@
     "jest": "30.5.2",
     "lefthook": "2.1.14",
     "prettier": "^3.9.10",
+    "supabase": "3.0.0",
     "vitest": "5.1.0"
   },
   "scripts": {
     "prepare": "lefthook install",
     "start": "pnpm --filter @fluency-lab/mobile start",
     "gate": "pnpm typecheck && pnpm lint && pnpm test",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint && eslint . --ignore-pattern \"apps/**\" --ignore-pattern \"packages/**\" && prettier --check .",
     "format": "prettier --write .",

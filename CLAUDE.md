@@ -24,8 +24,8 @@ palette and the Home design are decided (see README.md).
   on the `Hono` expression and `AppType` is exported for the typed
   client (RPC). The workspace package is named `api`, without the
   `@fluency-lab` scope, so `pnpm --filter api` works.
-- Inside `apps/mobile/src/`: `app/` (routes only), `components/` (shared
-  components), `constants/` (`theme.ts`, the only source of visual values),
+- Inside `apps/mobile/src/`: `app/` (routes only), `auth/` (the auth port
+  and its adapter), `components/` (shared components), `constants/` (`theme.ts`, the only source of visual values),
   `hooks/` (shared hooks) and `utils/` (pure functions not tied to one
   component).
 - pnpm is the only package manager. Add Expo packages with
@@ -56,7 +56,10 @@ No pending decisions are left.
     pnpm test                    each workspace's runner, then node --test over scripts/test
     pnpm exec jest <path>        one test file of apps/mobile, path from the repo root
     pnpm exec vitest run <path>  one test file of packages/shared or apps/api, path from the repo root
-    pnpm --filter api dev        the local API server (port 3000)
+    pnpm --filter api dev        the local API server (port 3000); stops at startup without apps/api/.env.local
+    pnpm supabase:start          start the local Supabase stack (needs Docker)
+    pnpm supabase:stop           stop the local Supabase stack
+    pnpm supabase:status         print the local stack's URLs and keys; they go in the .env.local files
     pnpm exec eslint <path>      one file, path from the repo root
     pnpm format                  to fix formatting
 

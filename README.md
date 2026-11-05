@@ -26,8 +26,9 @@ and the Home design are decided.
   reached only through a port
 - Test runners: jest-expo (app), vitest (`packages/shared`, `apps/api`),
   `node --test` (repo scripts)
-- App layout in `apps/mobile/src/`: `app/` (routes), `components/`,
-  `constants/` (theme tokens), `hooks/`, `utils/` (pure functions)
+- App layout in `apps/mobile/src/`: `app/` (routes), `auth/` (the auth
+  port and its adapter), `components/`, `constants/` (theme tokens),
+  `hooks/`, `utils/` (pure functions)
 - App identifier: `com.maxirebolo.fluencylab`
 
 ## Pending
@@ -43,14 +44,44 @@ Requires Node 24 and pnpm.
 
 Open it in Expo Go by scanning the printed QR code.
 
+## Local Supabase
+
+Needs Docker running.
+
+    pnpm supabase start        brings the local stack up
+    pnpm supabase:status       prints the local URLs and keys
+    pnpm supabase:stop         stops it
+
+Copy each `.env.example` to `.env.local` (never committed) and fill it from
+the status output. Filter it so that no other secret is printed:
+
+    pnpm supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)='
+
+    apps/mobile/.env.local
+      EXPO_PUBLIC_SUPABASE_URL              http://<LAN IP>:54321
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY  PUBLISHABLE_KEY
+    apps/api/.env.local
+      SUPABASE_URL                          http://127.0.0.1:54321
+
+The phone reaches the stack on the Mac's LAN IP (`ipconfig getifaddr en0`);
+update the mobile URL when the network changes. `SUPABASE_URL` in `apps/api`
+stays on `127.0.0.1` because the token's `iss` is always
+`http://127.0.0.1:54321/auth/v1`. No other key of the status output goes into
+a mobile env file or a doc. Read the emails the stack sends in Mailpit at
+`http://127.0.0.1:54324`.
+
 ## Layout
 
     apps/mobile        the Expo app; routes in src/app/
     apps/api           the Hono backend (Node); routes in src/app.ts
     packages/shared    types and pure logic shared by the app and the backend
+    supabase/          local Supabase config (config.toml)
     scripts/           repo scripts and their tests
 
-`apps/api` has only `GET /health`. Its routes are chained on one `Hono`
+`apps/api` has `GET /health` and `GET /me` (the user of a valid Supabase
+token; 401 when the token is missing or invalid, 500 when the signing keys
+cannot be loaded, so an outage never tells the client its token is bad).
+`pnpm --filter api dev` needs `apps/api/.env.local`. Its routes are chained on one `Hono`
 expression and the type of the app (`AppType`) is exported for the typed
 client (RPC). Run it with `pnpm --filter api dev`.
 

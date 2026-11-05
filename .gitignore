@@ -41,3 +41,7 @@ example
 # generated native folders
 /apps/mobile/ios
 /apps/mobile/android
+
+# supabase local state
+supabase/.temp/
+supabase/.branches/
