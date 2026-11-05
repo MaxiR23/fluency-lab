@@ -5,21 +5,28 @@
 // Tested:
 // - Signed out users cannot reach Home
 // - Sign out returns to Login, and its failures show their message
+// - The failure is drawn through FailureMessage, with its cause in development only
 //
 // What is covered:
-// - Normal case, edges
+// - Normal case, empty case, edges
 //
 // Run with: pnpm exec jest apps/mobile/test/app/index.test.tsx
 //
 // SEE: apps/mobile/src/app/index.tsx
 
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 import { router } from "expo-router";
+import { StyleSheet } from "react-native";
 
+import { textStyle } from "@/components/text-style";
 import { authFailureMessage } from "@/utils/auth-message";
 import { emitSession, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { renderApp } from "../helpers/render-app";
+import { setDev } from "../helpers/set-dev";
+
+const savedDev = __DEV__;
+const networkCause = { name: "AuthRetryableFetchError", detail: "offline" };
 
 jest.mock("expo-font", () => ({ useFonts: jest.fn(() => [true, null]) }));
 jest.mock("expo-splash-screen", () => ({
@@ -42,6 +49,10 @@ function deferred<T>() {
 describe("Home placeholder", () => {
   beforeEach(() => {
     resetFakeAuth();
+  });
+
+  afterEach(() => {
+    setDev(savedDev);
   });
 
   it("draws Home and the sign out button when signed in", async () => {
@@ -88,6 +99,32 @@ describe("Home placeholder", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
     expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
     expect(screen).toHavePathname("/");
+  });
+
+  it("draws the sign out failure as an alert in the error style", async () => {
+    fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "network" });
+    await renderApp("/", fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
+    const node = screen.getByRole("alert");
+    expect(screen.getByText(authFailureMessage("network"))).toBe(node);
+    expect(StyleSheet.flatten(node.props.style)).toEqual(textStyle("error"));
+  });
+
+  it("draws the cause line under the sign out failure in development", async () => {
+    fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "network", cause: networkCause });
+    await renderApp("/", fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
+    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText("AuthRetryableFetchError: offline")).toBeTruthy();
+  });
+
+  it("draws only the sign out message outside development", async () => {
+    setDev(false);
+    fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "network", cause: networkCause });
+    await renderApp("/", fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
+    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
+    expect(screen.queryByText(/AuthRetryableFetchError/)).toBeNull();
   });
 
   it("shows the button busy and disabled while the request runs", async () => {

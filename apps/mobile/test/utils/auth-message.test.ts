@@ -109,6 +109,30 @@ describe("appleSignInView", () => {
     });
   });
 
+  it("carries the cause of a failed Apple sign-in into the view", () => {
+    const cause = { name: "AuthRetryableFetchError", detail: "offline" };
+    expect(appleSignInView({ status: "failed", failure: "network", cause })).toEqual({
+      kind: "message",
+      message: authFailureMessage("network"),
+      cause,
+    });
+  });
+
+  it("keeps the cause when invalid_credentials reads as the Apple failure", () => {
+    const cause = { name: "AuthApiError", detail: null };
+    expect(appleSignInView({ status: "failed", failure: "invalid_credentials", cause })).toEqual({
+      kind: "message",
+      message: authFailureMessage("apple_request_failed"),
+      cause,
+    });
+  });
+
+  it("has no cause in the view when the failure has none", () => {
+    const view = appleSignInView({ status: "failed", failure: "network" });
+    expect(view.kind).toBe("message");
+    expect("cause" in view ? view.cause : undefined).toBeUndefined();
+  });
+
   it("keeps the name and says the user is signed in when the name was not saved", () => {
     const name = { fullName: "Ada Lovelace", givenName: "Ada", familyName: "Lovelace" };
     const outcome: AppleSignInOutcome = { status: "name_not_saved", failure: "unknown", name };

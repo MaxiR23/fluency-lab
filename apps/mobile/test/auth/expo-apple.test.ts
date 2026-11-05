@@ -6,6 +6,7 @@
 // - isAvailable: true, false, a rejection
 // - requestCredential: the hash goes to Apple, the raw nonce comes back
 // - A cancel, any other Apple error, no token, a failing digest or random source
+// - The cause of an Apple failure, sanitized, and none on a cancel or a missing token
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -18,6 +19,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 
 import { createExpoApple } from "@/auth/expo-apple";
 import type { AppleFullName } from "@/auth/auth-port";
+import { describeAuthCause } from "@/utils/auth-error";
 import { generatedSecret } from "../helpers/generated-secret";
 
 type Result = { identityToken: string | null; fullName: AppleFullName | null };
@@ -99,25 +101,49 @@ describe("requestCredential", () => {
       signInAsync: () =>
         Promise.reject(Object.assign(new Error("x"), { code: "ERR_REQUEST_CANCELED" })),
     });
-    expect(await port.requestCredential()).toEqual({ ok: false, failure: "canceled" });
+    expect(await port.requestCredential()).toStrictEqual({ ok: false, failure: "canceled" });
   });
 
-  it("returns apple_request_failed for any other Apple error code", async () => {
+  it("returns apple_request_failed with a sanitized cause for any other Apple error code", async () => {
+    const thrown = Object.assign(new Error("x"), { code: "ERR_REQUEST_FAILED" });
+    const { port } = setup({ signInAsync: () => Promise.reject(thrown) });
+    const outcome = await port.requestCredential();
+    expect(outcome).toEqual({
+      ok: false,
+      failure: "apple_request_failed",
+      cause: describeAuthCause(thrown),
+    });
+    expect(outcome).toEqual({
+      ok: false,
+      failure: "apple_request_failed",
+      cause: { name: "Error", detail: null },
+    });
+  });
+
+  it("keeps no message of the Apple error in the cause", async () => {
+    const secret = generatedSecret("nonce");
     const { port } = setup({
       signInAsync: () =>
-        Promise.reject(Object.assign(new Error("x"), { code: "ERR_REQUEST_FAILED" })),
+        Promise.reject(Object.assign(new Error(secret), { code: "ERR_REQUEST_FAILED" })),
     });
-    expect(await port.requestCredential()).toEqual({ ok: false, failure: "apple_request_failed" });
+    expect(JSON.stringify(await port.requestCredential())).not.toContain(secret);
   });
 
-  it("returns apple_request_failed when Apple returns no identity token", async () => {
+  it("returns apple_request_failed with no cause when Apple returns no identity token", async () => {
     const { port } = setup({ signInAsync: async () => ({ identityToken: null, fullName: null }) });
-    expect(await port.requestCredential()).toEqual({ ok: false, failure: "apple_request_failed" });
+    expect(await port.requestCredential()).toStrictEqual({
+      ok: false,
+      failure: "apple_request_failed",
+    });
   });
 
   it("returns apple_request_failed when the digest rejects", async () => {
     const { port, signInAsync } = setup({ sha256Hex: () => Promise.reject(new Error("boom")) });
-    expect(await port.requestCredential()).toEqual({ ok: false, failure: "apple_request_failed" });
+    expect(await port.requestCredential()).toEqual({
+      ok: false,
+      failure: "apple_request_failed",
+      cause: { name: "Error", detail: null },
+    });
     expect(signInAsync).not.toHaveBeenCalled();
   });
 
@@ -127,6 +153,10 @@ describe("requestCredential", () => {
         throw new Error("boom");
       },
     });
-    expect(await port.requestCredential()).toEqual({ ok: false, failure: "apple_request_failed" });
+    expect(await port.requestCredential()).toEqual({
+      ok: false,
+      failure: "apple_request_failed",
+      cause: { name: "Error", detail: null },
+    });
   });
 });

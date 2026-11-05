@@ -5,6 +5,7 @@
 // Tested:
 // - Credential, then sign in with the raw nonce, then the name
 // - A cancel, an Apple failure, a sign in failure and a name failure
+// - The cause of a failure is passed on from either port
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -71,7 +72,7 @@ describe("runAppleSignIn", () => {
   it("returns canceled and does not call the auth port", async () => {
     fakeApple.requestCredential.mockResolvedValue({ ok: false, failure: "canceled" });
 
-    expect(await runAppleSignIn({ apple: fakeApple, auth: fakeAuth })).toEqual({
+    expect(await runAppleSignIn({ apple: fakeApple, auth: fakeAuth })).toStrictEqual({
       status: "canceled",
     });
     expect(fakeAuth.signInWithApple).not.toHaveBeenCalled();
@@ -79,24 +80,42 @@ describe("runAppleSignIn", () => {
   });
 
   it("returns failed with the Apple failure and does not call the auth port", async () => {
-    fakeApple.requestCredential.mockResolvedValue({ ok: false, failure: "apple_request_failed" });
+    fakeApple.requestCredential.mockResolvedValue({
+      ok: false,
+      failure: "apple_request_failed",
+      cause: { name: "Error", detail: null },
+    });
 
     expect(await runAppleSignIn({ apple: fakeApple, auth: fakeAuth })).toEqual({
       status: "failed",
       failure: "apple_request_failed",
+      cause: { name: "Error", detail: null },
     });
     expect(fakeAuth.signInWithApple).not.toHaveBeenCalled();
+  });
+
+  it("returns failed with no cause when the port gave none", async () => {
+    fakeApple.requestCredential.mockResolvedValue({ ok: false, failure: "apple_request_failed" });
+
+    const outcome = await runAppleSignIn({ apple: fakeApple, auth: fakeAuth });
+    expect(outcome.status).toBe("failed");
+    expect("cause" in outcome ? outcome.cause : undefined).toBeUndefined();
   });
 
   it("returns failed with the sign-in failure and saves nothing", async () => {
     fakeApple.requestCredential.mockResolvedValue(
       credential({ givenName: "Ada", familyName: null }),
     );
-    fakeAuth.signInWithApple.mockResolvedValue({ ok: false, failure: "network" });
+    fakeAuth.signInWithApple.mockResolvedValue({
+      ok: false,
+      failure: "network",
+      cause: { name: "AuthRetryableFetchError", detail: "offline" },
+    });
 
     expect(await runAppleSignIn({ apple: fakeApple, auth: fakeAuth })).toEqual({
       status: "failed",
       failure: "network",
+      cause: { name: "AuthRetryableFetchError", detail: "offline" },
     });
     expect(fakeAuth.saveName).not.toHaveBeenCalled();
   });

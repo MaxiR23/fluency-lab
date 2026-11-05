@@ -19,14 +19,10 @@ import { StyleSheet } from "react-native";
 
 import { FailureMessage } from "@/components/failure-message";
 import { textStyle } from "@/components/text-style";
+import { setDev } from "../helpers/set-dev";
 
 const cause = { name: "AuthRetryableFetchError", detail: "offline" };
 const savedDev = __DEV__;
-
-// INFO: react-native declares __DEV__ as a constant, so the test redefines the global.
-function setDev(value: boolean) {
-  Object.defineProperty(globalThis, "__DEV__", { value, writable: true, configurable: true });
-}
 
 describe("FailureMessage", () => {
   afterEach(() => {
