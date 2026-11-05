@@ -7,7 +7,7 @@ plan is optional; free practice is the default.
 
 ## Status
 
-Fresh Expo project. No screen is built yet. The screen map and the
+Fresh Expo project in a pnpm monorepo. No screen is built yet. The screen map and the
 Home design are done; the rest of the design and the architecture come
 next, one step at a time.
 
@@ -15,6 +15,7 @@ next, one step at a time.
 
 - Expo SDK 58, Expo Router, TypeScript; runs in Expo Go
 - pnpm as the only package manager
+- Repository layout: a pnpm monorepo
 - Text only: no voice in the MVP
 - Sign in with Google, Apple and email
 - AI with the user's own key (Claude or OpenAI); the user sets a
@@ -25,7 +26,6 @@ next, one step at a time.
 ## Pending
 
 - Backend for accounts and progress (Supabase or another option)
-- Repository layout (single app or monorepo with shared packages)
 - Test runner and checks
 
 ## Running
@@ -33,9 +33,17 @@ next, one step at a time.
 Requires Node 24 and pnpm.
 
     pnpm install
-    pnpm start                 Expo dev server
+    pnpm start                 Expo dev server (apps/mobile)
 
 Open it in Expo Go by scanning the printed QR code.
+
+## Layout
+
+    apps/mobile        the Expo app; routes in src/app/
+    packages/shared    types and pure logic shared by the app and the backend
+    scripts/           repo scripts and their tests
+
+`apps/api`, the backend, is not created yet.
 
 ## Screens (MVP)
 

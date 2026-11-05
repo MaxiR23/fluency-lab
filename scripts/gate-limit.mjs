@@ -10,7 +10,8 @@
 // call is denied before it runs. It also denies the gate's parts
 // (`pnpm typecheck`, `pnpm lint`, `pnpm test`, with or without `run`), so
 // the limit cannot be dodged one part at a time. Commands scoped to a
-// file (`pnpm exec jest <path>`, `pnpm exec eslint <path>`) and
+// file (`pnpm exec jest <path>`, `pnpm exec vitest run <path>`,
+// `pnpm exec eslint <path>`) and
 // `pnpm format` stay allowed.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -23,9 +24,10 @@ export const LIMIT = 3;
 // INFO: `pnpm` only counts in command position (start of the command or right
 // after ; & | ( or a newline), so a grep pattern or an echo argument that
 // mentions it does not. Root-wide flags before the script name are skipped,
-// so `pnpm -w test` still counts as the gate's part.
+// so `pnpm -w test`, `pnpm --filter <name> test` and `pnpm -C <dir> test`
+// still count as the gate's part.
 const HEAD = String.raw`(?:^|[;&|(\n])\s*pnpm`;
-const ROOT_FLAGS = String.raw`(?:\s+(?:-r|-w|--recursive|--workspace-root|--if-present|--silent|-s))*`;
+const ROOT_FLAGS = String.raw`(?:\s+(?:-r|-w|--recursive|--workspace-root|--if-present|--silent|-s|--[\w-]+=\S+|(?:--filter|-F|-C|--dir)(?:\s+|=)\S+))*`;
 const GATE = new RegExp(String.raw`${HEAD}${ROOT_FLAGS}\s+(?:run\s+)?gate(?![\w:-])`);
 const PART = new RegExp(
   String.raw`${HEAD}${ROOT_FLAGS}\s+(?:run\s+)?(typecheck|lint|test)(?![\w:-])`,
@@ -50,7 +52,8 @@ function deny(reason) {
 
 function hint(part) {
   if (part === "lint") return "`pnpm exec eslint <path>`";
-  if (part === "test") return "`pnpm exec jest <path>`";
+  if (part === "test")
+    return "`pnpm exec jest <path>`, or `pnpm exec vitest run <path>` for packages/shared";
   return null;
 }
 
