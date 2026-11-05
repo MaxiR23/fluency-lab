@@ -41,8 +41,14 @@ const apiError = (code: string) => ({
   data: { session: null },
   error: { name: "AuthApiError", code },
 });
-const networkError = { name: "AuthRetryableFetchError" };
-const failed = (error: { name: string; code?: string }) => ({ data: { session: null }, error });
+const nativeMessage = "fetch failed: The Internet connection appears to be offline.";
+const networkError = { name: "AuthRetryableFetchError", message: nativeMessage };
+const networkCause = { name: "AuthRetryableFetchError", detail: nativeMessage };
+const apiCause = { name: "AuthApiError", detail: null };
+const failed = (error: { name: string; code?: string; message?: string }) => ({
+  data: { session: null },
+  error,
+});
 
 function fakeClient(overrides: Partial<Omit<SupabaseAuthClient, "onAuthStateChange">> = {}) {
   const unsubscribe = jest.fn();
@@ -83,7 +89,11 @@ describe("signInWithEmail", () => {
   it("returns unknown, not a success, when the response has no session", async () => {
     const { auth } = fakeClient({ signInWithPassword: async () => noSession });
 
-    expect(await auth.signInWithEmail(credentials)).toEqual({ ok: false, failure: "unknown" });
+    expect(await auth.signInWithEmail(credentials)).toEqual({
+      ok: false,
+      failure: "unknown",
+    });
+    expect(await auth.signInWithEmail(credentials)).not.toHaveProperty("cause");
   });
 
   it("returns invalid_credentials for a wrong password", async () => {
@@ -94,13 +104,18 @@ describe("signInWithEmail", () => {
     expect(await auth.signInWithEmail(credentials)).toEqual({
       ok: false,
       failure: "invalid_credentials",
+      cause: apiCause,
     });
   });
 
   it("returns network when the email sign-in cannot reach the server", async () => {
     const { auth } = fakeClient({ signInWithPassword: async () => failed(networkError) });
 
-    expect(await auth.signInWithEmail(credentials)).toEqual({ ok: false, failure: "network" });
+    expect(await auth.signInWithEmail(credentials)).toEqual({
+      ok: false,
+      failure: "network",
+      cause: networkCause,
+    });
   });
 });
 
@@ -121,7 +136,11 @@ describe("signUpWithEmail", () => {
   it("returns email_taken for a duplicate email", async () => {
     const { auth } = fakeClient({ signUp: async () => apiError("user_already_exists") });
 
-    expect(await auth.signUpWithEmail(credentials)).toEqual({ ok: false, failure: "email_taken" });
+    expect(await auth.signUpWithEmail(credentials)).toEqual({
+      ok: false,
+      failure: "email_taken",
+      cause: apiCause,
+    });
   });
 
   it("returns weak_password for a short password", async () => {
@@ -130,13 +149,18 @@ describe("signUpWithEmail", () => {
     expect(await auth.signUpWithEmail(credentials)).toEqual({
       ok: false,
       failure: "weak_password",
+      cause: apiCause,
     });
   });
 
   it("returns network when sign-up cannot reach the server", async () => {
     const { auth } = fakeClient({ signUp: async () => failed(networkError) });
 
-    expect(await auth.signUpWithEmail(credentials)).toEqual({ ok: false, failure: "network" });
+    expect(await auth.signUpWithEmail(credentials)).toEqual({
+      ok: false,
+      failure: "network",
+      cause: networkCause,
+    });
   });
 });
 
@@ -168,6 +192,7 @@ describe("requestPasswordReset", () => {
     expect(await auth.requestPasswordReset("a@example.com")).toEqual({
       ok: false,
       failure: "unknown",
+      cause: apiCause,
     });
   });
 
@@ -177,6 +202,7 @@ describe("requestPasswordReset", () => {
     expect(await auth.requestPasswordReset("a@example.com")).toEqual({
       ok: false,
       failure: "network",
+      cause: networkCause,
     });
   });
 });
@@ -203,6 +229,7 @@ describe("confirmPasswordReset", () => {
       step: "code",
       failure: "unknown",
     });
+    expect(await auth.confirmPasswordReset(reset)).not.toHaveProperty("cause");
     expect(client.updateUser).not.toHaveBeenCalled();
   });
 
@@ -213,6 +240,7 @@ describe("confirmPasswordReset", () => {
       ok: false,
       step: "code",
       failure: "invalid_or_expired_code",
+      cause: apiCause,
     });
     expect(client.updateUser).not.toHaveBeenCalled();
   });
@@ -226,6 +254,7 @@ describe("confirmPasswordReset", () => {
       ok: false,
       step: "password",
       failure: "weak_password",
+      cause: apiCause,
       stillSignedIn: false,
     });
     expect(client.signOut).toHaveBeenCalledWith({ scope: "local" });
@@ -238,6 +267,7 @@ describe("confirmPasswordReset", () => {
       ok: false,
       step: "code",
       failure: "network",
+      cause: networkCause,
     });
   });
 
@@ -252,6 +282,7 @@ describe("confirmPasswordReset", () => {
       ok: false,
       step: "password",
       failure: "network",
+      cause: networkCause,
       stillSignedIn: false,
     });
   });
@@ -267,6 +298,7 @@ describe("confirmPasswordReset", () => {
       ok: false,
       step: "password",
       failure: "weak_password",
+      cause: apiCause,
       stillSignedIn: false,
     });
   });
@@ -281,6 +313,7 @@ describe("confirmPasswordReset", () => {
       ok: false,
       step: "password",
       failure: "weak_password",
+      cause: apiCause,
       stillSignedIn: true,
     });
   });
@@ -295,6 +328,7 @@ describe("confirmPasswordReset", () => {
       ok: false,
       step: "password",
       failure: "weak_password",
+      cause: apiCause,
       stillSignedIn: true,
     });
   });
@@ -308,9 +342,49 @@ describe("confirmPasswordReset", () => {
       ok: false,
       step: "password",
       failure: "unknown",
+      cause: { name: "Error", detail: null },
       stillSignedIn: false,
     });
     expect(client.signOut).toHaveBeenCalledWith({ scope: "local" });
+  });
+});
+
+describe("the cause of a failure", () => {
+  it("carries the redacted transport message, without the email, on a network failure", async () => {
+    const { auth } = fakeClient({
+      resetPasswordForEmail: async () => ({
+        error: {
+          name: "AuthRetryableFetchError",
+          message: "fetch failed: cannot reach a@example.com",
+        },
+      }),
+    });
+
+    expect(await auth.requestPasswordReset("a@example.com")).toEqual({
+      ok: false,
+      failure: "network",
+      cause: { name: "AuthRetryableFetchError", detail: "fetch failed: cannot reach [email]" },
+    });
+  });
+
+  it("carries the cause of the failed step on a code failure", async () => {
+    const { auth } = fakeClient({ verifyOtp: async () => apiError("otp_expired") });
+
+    const outcome = await auth.confirmPasswordReset(reset);
+
+    expect(outcome).toMatchObject({ ok: false, step: "code", cause: apiCause });
+  });
+
+  it("carries the cause of the update on a password step failure", async () => {
+    const { auth } = fakeClient({
+      updateUser: async () => ({ error: { name: "AuthApiError", code: "weak_password" } }),
+      signOut: async () => ({ error: networkError }),
+      getSession: async () => noSession,
+    });
+
+    const outcome = await auth.confirmPasswordReset(reset);
+
+    expect(outcome).toMatchObject({ ok: false, step: "password", cause: apiCause });
   });
 });
 
@@ -331,19 +405,31 @@ describe("signInWithApple", () => {
   it("returns unknown, not a success, when the Apple response has no session", async () => {
     const { auth } = fakeClient({ signInWithIdToken: async () => noSession });
 
-    expect(await auth.signInWithApple(apple)).toEqual({ ok: false, failure: "unknown" });
+    expect(await auth.signInWithApple(apple)).toEqual({
+      ok: false,
+      failure: "unknown",
+    });
+    expect(await auth.signInWithApple(apple)).not.toHaveProperty("cause");
   });
 
   it("returns unknown for a token the server rejects as validation_failed", async () => {
     const { auth } = fakeClient({ signInWithIdToken: async () => apiError("validation_failed") });
 
-    expect(await auth.signInWithApple(apple)).toEqual({ ok: false, failure: "unknown" });
+    expect(await auth.signInWithApple(apple)).toEqual({
+      ok: false,
+      failure: "unknown",
+      cause: apiCause,
+    });
   });
 
   it("returns network when Apple sign-in cannot reach the server", async () => {
     const { auth } = fakeClient({ signInWithIdToken: async () => failed(networkError) });
 
-    expect(await auth.signInWithApple(apple)).toEqual({ ok: false, failure: "network" });
+    expect(await auth.signInWithApple(apple)).toEqual({
+      ok: false,
+      failure: "network",
+      cause: networkCause,
+    });
   });
 });
 
@@ -376,13 +462,21 @@ describe("saveName", () => {
       updateUser: async () => ({ error: { name: "AuthApiError", code: "validation_failed" } }),
     });
 
-    expect(await auth.saveName(profileName)).toEqual({ ok: false, failure: "unknown" });
+    expect(await auth.saveName(profileName)).toEqual({
+      ok: false,
+      failure: "unknown",
+      cause: apiCause,
+    });
   });
 
   it("returns network when the name cannot reach the server", async () => {
     const { auth } = fakeClient({ updateUser: async () => ({ error: networkError }) });
 
-    expect(await auth.saveName(profileName)).toEqual({ ok: false, failure: "network" });
+    expect(await auth.saveName(profileName)).toEqual({
+      ok: false,
+      failure: "network",
+      cause: networkCause,
+    });
   });
 });
 
@@ -406,7 +500,7 @@ describe("signOut", () => {
       signOut: async () => ({ error: { name: "AuthApiError", code: "over_request_rate_limit" } }),
     });
 
-    expect(await auth.signOut()).toEqual({ ok: false, failure: "unknown" });
+    expect(await auth.signOut()).toEqual({ ok: false, failure: "unknown", cause: apiCause });
   });
 
   it("returns ok when the sign-out errors but the second read finds no session", async () => {
@@ -423,7 +517,7 @@ describe("signOut", () => {
   it("returns network when the sign-out errors and the session is still there", async () => {
     const { auth } = fakeClient({ signOut: async () => ({ error: networkError }) });
 
-    expect(await auth.signOut()).toEqual({ ok: false, failure: "network" });
+    expect(await auth.signOut()).toEqual({ ok: false, failure: "network", cause: networkCause });
   });
 
   it("returns the sign-out failure when the second read also errors", async () => {
@@ -432,7 +526,7 @@ describe("signOut", () => {
       getSession: async () => failed(networkError),
     });
 
-    expect(await auth.signOut()).toEqual({ ok: false, failure: "network" });
+    expect(await auth.signOut()).toEqual({ ok: false, failure: "network", cause: networkCause });
   });
 
   it("returns the sign-out failure when the second read rejects", async () => {
@@ -441,7 +535,7 @@ describe("signOut", () => {
       getSession: jest.fn<SupabaseAuthClient["getSession"]>().mockRejectedValue(new Error("boom")),
     });
 
-    expect(await auth.signOut()).toEqual({ ok: false, failure: "network" });
+    expect(await auth.signOut()).toEqual({ ok: false, failure: "network", cause: networkCause });
   });
 });
 
@@ -461,13 +555,17 @@ describe("currentSession", () => {
   it("returns unknown when the stored session cannot be refreshed", async () => {
     const { auth } = fakeClient({ getSession: async () => apiError("refresh_token_not_found") });
 
-    expect(await auth.currentSession()).toEqual({ ok: false, failure: "unknown" });
+    expect(await auth.currentSession()).toEqual({ ok: false, failure: "unknown", cause: apiCause });
   });
 
   it("returns network when the refresh cannot reach the server", async () => {
     const { auth } = fakeClient({ getSession: async () => failed(networkError) });
 
-    expect(await auth.currentSession()).toEqual({ ok: false, failure: "network" });
+    expect(await auth.currentSession()).toEqual({
+      ok: false,
+      failure: "network",
+      cause: networkCause,
+    });
   });
 });
 
@@ -539,7 +637,11 @@ describe("a client that rejects", () => {
     async (_name, overrides, run) => {
       const { auth } = fakeClient(overrides);
 
-      expect(await run(auth)).toMatchObject({ ok: false, failure: "unknown" });
+      expect(await run(auth)).toMatchObject({
+        ok: false,
+        failure: "unknown",
+        cause: { name: "Error", detail: null },
+      });
     },
   );
 });

@@ -1,6 +1,7 @@
 import type {
   AppleSignInOutcome,
   AuthFailure,
+  FailureCause,
   PasswordResetOutcome,
   ProfileName,
 } from "@/auth/auth-port";
@@ -20,25 +21,43 @@ export function authFailureMessage(failure: AuthFailure): string {
   return failureMessages[failure];
 }
 
+export type FailureView = { message: string; cause?: FailureCause };
+
+export function authFailureView(outcome: {
+  failure: AuthFailure;
+  cause?: FailureCause;
+}): FailureView {
+  return { message: authFailureMessage(outcome.failure), cause: outcome.cause };
+}
+
+// INFO: dev is a parameter so the production branch is testable; the component passes __DEV__.
+export function failureCauseLine(cause: FailureCause | undefined, dev: boolean): string | null {
+  if (!dev || cause === undefined) return null;
+  return cause.detail === null ? cause.name : `${cause.name}: ${cause.detail}`;
+}
+
 export type ResetFailureAction = "retry" | "request_new_code" | "continue";
 
 export function resetFailureView(outcome: Extract<PasswordResetOutcome, { ok: false }>): {
   message: string;
   action: ResetFailureAction;
+  cause: FailureCause | undefined;
 } {
   const message = authFailureMessage(outcome.failure);
   if (outcome.step === "code") {
-    return { message, action: "retry" };
+    return { message, action: "retry", cause: outcome.cause };
   }
   if (outcome.stillSignedIn) {
     return {
       message: `${message} Your password did not change, and you are still signed in.`,
       action: "continue",
+      cause: outcome.cause,
     };
   }
   return {
     message: `${message} Your code was used, so request a new one.`,
     action: "request_new_code",
+    cause: outcome.cause,
   };
 }
 

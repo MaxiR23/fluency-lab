@@ -3,12 +3,13 @@ import type {
   AuthOutcome,
   AuthPort,
   AuthSession,
+  FailureCause,
   PasswordResetOutcome,
 } from "@/auth/auth-port";
-import { toAuthFailure } from "@/utils/auth-error";
+import { describeAuthCause, toAuthFailure } from "@/utils/auth-error";
 import { toAuthSession } from "@/utils/auth-session";
 
-type LibError = { name: string; code?: string } | null;
+type LibError = { name: string; code?: string; message?: string } | null;
 type LibSession = { access_token: string; user: { id: string; email?: string } };
 type SessionResult = { data: { session: LibSession | null }; error: LibError };
 
@@ -30,29 +31,33 @@ export type SupabaseAuthClient = {
   };
 };
 
+function failedWith(error: unknown): { ok: false; failure: AuthFailure; cause: FailureCause } {
+  return { ok: false, failure: toAuthFailure(error), cause: describeAuthCause(error) };
+}
+
 async function guarded<T>(run: () => Promise<AuthOutcome<T>>): Promise<AuthOutcome<T>> {
   try {
     return await run();
   } catch (thrown) {
     // INFO: auth-js rethrows what is not an AuthError; it reaches the screen typed.
-    return { ok: false, failure: toAuthFailure(thrown) };
+    return failedWith(thrown);
   }
 }
 
 function fromSessionResult(result: SessionResult): AuthOutcome<AuthSession> {
-  if (result.error !== null) return { ok: false, failure: toAuthFailure(result.error) };
+  if (result.error !== null) return failedWith(result.error);
   if (result.data.session === null) return { ok: false, failure: "unknown" };
   return { ok: true, value: toAuthSession(result.data.session) };
 }
 
 function fromOptionalSessionResult(result: SessionResult): AuthOutcome<AuthSession | null> {
-  if (result.error !== null) return { ok: false, failure: toAuthFailure(result.error) };
+  if (result.error !== null) return failedWith(result.error);
   const session = result.data.session;
   return { ok: true, value: session === null ? null : toAuthSession(session) };
 }
 
 function fromError(result: { error: LibError }): AuthOutcome<null> {
-  if (result.error !== null) return { ok: false, failure: toAuthFailure(result.error) };
+  if (result.error !== null) return failedWith(result.error);
   return { ok: true, value: null };
 }
 
@@ -92,26 +97,32 @@ export function createSupabaseAuth(client: SupabaseAuthClient): AuthPort {
         type: "recovery",
       });
       if (verified.error !== null) {
-        return { ok: false, step: "code", failure: toAuthFailure(verified.error) };
+        return { ...failedWith(verified.error), step: "code" };
       }
       if (verified.data.session === null) {
         return { ok: false, step: "code", failure: "unknown" };
       }
       session = verified.data.session;
     } catch (thrown) {
-      return { ok: false, step: "code", failure: toAuthFailure(thrown) };
+      return { ...failedWith(thrown), step: "code" };
     }
 
-    let failure: AuthFailure;
+    let failed: ReturnType<typeof failedWith>;
     try {
       const updated = await client.updateUser({ password: input.newPassword });
       if (updated.error === null) return { ok: true, value: toAuthSession(session) };
-      failure = toAuthFailure(updated.error);
+      failed = failedWith(updated.error);
     } catch (thrown) {
-      failure = toAuthFailure(thrown);
+      failed = failedWith(thrown);
     }
     const stillSignedIn = await localSignOutLeftSession(client);
-    return { ok: false, step: "password", failure, stillSignedIn };
+    return {
+      ok: false,
+      step: "password",
+      failure: failed.failure,
+      cause: failed.cause,
+      stillSignedIn,
+    };
   }
 
   return {
@@ -152,7 +163,7 @@ export function createSupabaseAuth(client: SupabaseAuthClient): AuthPort {
         // when it cannot refresh an expired one. The error alone does not say which, so the
         // port reports a sign-out only when a second read finds no session and no error.
         if (await deviceIsSignedOut(client)) return { ok: true, value: null };
-        return { ok: false, failure: toAuthFailure(result.error) };
+        return failedWith(result.error);
       }),
     currentSession: () => guarded(async () => fromOptionalSessionResult(await client.getSession())),
     onSessionChange(listener) {

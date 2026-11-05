@@ -7,6 +7,7 @@
 // - Validation, the request, its busy state and each failure message
 // - The expected empty outcome: no session yet, a confirmation message
 // - The way back to Login
+// - The development cause line under the failure
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -53,6 +54,13 @@ async function submit(values: { email: string; password: string }) {
   await fireEvent.changeText(screen.getByLabelText("Password"), values.password);
   await fireEvent.press(screen.getByRole("button", { name: "Create account" }));
 }
+
+const networkCause = {
+  name: "AuthRetryableFetchError",
+  detail: "fetch failed: The Internet connection appears to be offline.",
+};
+const causeLine =
+  "AuthRetryableFetchError: fetch failed: The Internet connection appears to be offline.";
 
 describe("Create account screen", () => {
   beforeEach(() => {
@@ -145,5 +153,17 @@ describe("Create account screen", () => {
     await openForm();
     await fireEvent.press(screen.getByText("Sign in"));
     expect(screen).toHavePathname("/sign-in");
+  });
+
+  it("draws the cause line under the failure in development", async () => {
+    fakeAuth.signUpWithEmail.mockResolvedValue({
+      ok: false,
+      failure: "network",
+      cause: networkCause,
+    });
+    await openForm();
+    await submit({ email, password });
+    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText(causeLine)).toBeTruthy();
   });
 });
