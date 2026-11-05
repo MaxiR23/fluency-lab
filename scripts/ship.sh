@@ -165,6 +165,11 @@ prepare() {
     [ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] ||
       die "main is not up to date with origin/main"
     branch="${TYPE}/${slug}"
+    local remote_heads
+    remote_heads=$(git ls-remote --heads origin "$branch") ||
+      die "could not read the branches on origin"
+    [ -z "$remote_heads" ] ||
+      die "branch $branch already exists on origin. If it is this issue's own branch, switch to it and run prepare there. Otherwise change the issue title, or delete the remote branch if it is stale"
     git switch -c "$branch"
   fi
   branch_is_valid "$branch" || die "not on main nor on a <type>/<description> branch: $branch"

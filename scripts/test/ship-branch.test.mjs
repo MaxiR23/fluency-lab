@@ -7,7 +7,9 @@
 // - branch_is_valid: the seven types, w_ branches, unknown prefix, empty description
 // - prepare: stops on an empty description before fetching or switching, creates
 //   <type>/<description> from main, stops on a w_ branch, an unknown prefix and
-//   an empty description
+//   an empty description, stops from main when the branch exists on origin
+//   (with or without an open PR) naming the branch it queried, stops from main
+//   when ls-remote fails, keeps working on the issue's own branch
 // - publish: stops on a w_ branch, an unknown prefix and an empty description,
 //   without pushing
 //
@@ -91,8 +93,19 @@ describe("branch_is_valid", () => {
 
 // Runs `ship.sh <args>` in a temporary directory with fake gh, git and pnpm.
 // gh answers the label and the title given; git logs every call and reports
-// the current branch given; pnpm always fails so no real gate ever runs.
-const runShip = ({ args, branch = "", title = "", label = "feat", files = {} }) => {
+// the current branch given; git ls-remote prints remoteHeads, or fails when
+// lsRemoteFails is set; gh answers the open PR count and number from openPr;
+// pnpm always fails so no real gate ever runs.
+const runShip = ({
+  args,
+  branch = "",
+  title = "",
+  label = "feat",
+  files = {},
+  remoteHeads = "",
+  openPr = "",
+  lsRemoteFails = false,
+}) => {
   const dir = mkdtempSync(path.join(tmpdir(), "ship-branch-"));
   try {
     const fake = (name, body) => {
@@ -104,8 +117,8 @@ const runShip = ({ args, branch = "", title = "", label = "feat", files = {} }) 
       "gh",
       `case "$*" in
   *labels*) echo "$GH_LABEL" ;;
-  *length*) echo 0 ;;
-  *number*) ;;
+  *length*) if [ -n "$GH_PR" ]; then echo 1; else echo 0; fi ;;
+  *number*) echo "$GH_PR" ;;
   *) echo "$GH_TITLE" ;;
 esac`,
     );
@@ -114,6 +127,7 @@ esac`,
       `echo "git $*" >> "$GIT_LOG"
 case "$1" in
   branch) echo "$GIT_BRANCH" ;;
+  ls-remote) [ -z "$GIT_LS_REMOTE_FAIL" ] || exit 1; echo "$GIT_REMOTE_HEADS" ;;
 esac`,
     );
     fake("pnpm", "exit 1");
@@ -132,6 +146,9 @@ esac`,
         GIT_BRANCH: branch,
         GH_TITLE: title,
         GH_LABEL: label,
+        GIT_REMOTE_HEADS: remoteHeads,
+        GH_PR: openPr,
+        GIT_LS_REMOTE_FAIL: lsRemoteFails ? "1" : "",
       },
     });
     return {
@@ -161,6 +178,52 @@ describe("prepare", () => {
       title: "feat(x): Add Login Screen",
     });
     assert.match(result.log, /^git switch -c feat\/add-login-screen$/m);
+  });
+
+  for (const [name, openPr] of [
+    ["without an open PR", ""],
+    ["with an open PR", "7"],
+  ]) {
+    it(`stops from main when the branch exists on origin ${name}`, () => {
+      const result = runShip({
+        args: "prepare 1",
+        branch: "main",
+        title: "feat(x): Add Login Screen",
+        remoteHeads: "abc123\trefs/heads/feat/add-login-screen",
+        openPr,
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /already exists on origin/);
+      assert.match(result.stderr, /if it is stale/);
+      assert.match(result.stderr, /switch to it and run prepare there/);
+      assert.match(result.log, /^git ls-remote --heads origin feat\/add-login-screen$/m);
+      assert.doesNotMatch(result.log, /switch/);
+    });
+  }
+
+  it("stops from main when git ls-remote fails, before creating any branch", () => {
+    const result = runShip({
+      args: "prepare 1",
+      branch: "main",
+      title: "feat(x): Add Login Screen",
+      lsRemoteFails: true,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /could not read the branches on origin/);
+    assert.doesNotMatch(result.stderr, /already exists on origin/);
+    assert.doesNotMatch(result.log, /switch/);
+  });
+
+  it("does not stop on the issue's own pushed branch", () => {
+    const result = runShip({
+      args: "prepare 1",
+      branch: "feat/add-login-screen",
+      title: "feat(x): Add Login Screen",
+      remoteHeads: "abc123\trefs/heads/feat/add-login-screen",
+      openPr: "7",
+    });
+    assert.doesNotMatch(result.stderr, /already exists on origin/);
+    assert.match(result.stderr, /does not pass commitlint/);
   });
 
   for (const branch of invalidBranches) {
