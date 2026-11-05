@@ -28,6 +28,7 @@
       "Bash(pnpm test)",
       "Bash(pnpm format)",
       "Bash(pnpm exec jest:*)",
+      "Bash(pnpm exec vitest:*)",
       "Bash(pnpm exec eslint:*)",
       "Bash(pnpm exec commitlint:*)",
       "Bash(scripts/ship.sh:*)",
