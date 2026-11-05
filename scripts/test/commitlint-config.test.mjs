@@ -1,6 +1,6 @@
 // scripts/test/commitlint-config.test.mjs
 //
-// Tests for the no-attribution rule of commitlint.config.js.
+// Tests for the no-attribution rule of commitlint.config.mjs.
 //
 // Tested:
 // - The file name CLAUDE.md is accepted
@@ -13,12 +13,12 @@
 //
 // Run with: node --test scripts/test/commitlint-config.test.mjs
 //
-// SEE: commitlint.config.js
+// SEE: commitlint.config.mjs
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import config from "../../commitlint.config.js";
+import config from "../../commitlint.config.mjs";
 
 const rule = config.plugins[0].rules["no-attribution"];
 const passes = (raw) => rule({ raw })[0];
