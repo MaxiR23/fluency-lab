@@ -5,7 +5,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 
-import { isFontLoadSettled } from "@/components/font-load";
+import { isFontLoadSettled } from "@/utils/font-load";
 import { fontFamily } from "@/constants/theme";
 
 SplashScreen.preventAutoHideAsync();

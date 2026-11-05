@@ -1,6 +1,6 @@
 import { StyleSheet, TextInput, View } from "react-native";
 
-import { hasText } from "@/components/has-text";
+import { hasText } from "@/utils/has-text";
 import { Text } from "@/components/text";
 import { textFieldStyle } from "@/components/text-field-style";
 import { spacing } from "@/constants/theme";
