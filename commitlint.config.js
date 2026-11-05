@@ -6,7 +6,7 @@
 
 const ATTRIBUTION = /claude|anthropic|co-authored-by|generated with|claude-session/i;
 // The file name CLAUDE.md is not attribution; it is removed before the check.
-const FILE_NAME = /(?<![\w-])CLAUDE\.md(?![\w-])/g;
+const FILE_NAME = /(?<![\w.-])CLAUDE\.md(?![\w-]|\.\w)/g;
 
 export default {
   extends: ["@commitlint/config-conventional"],
