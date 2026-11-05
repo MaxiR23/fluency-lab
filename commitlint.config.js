@@ -5,6 +5,8 @@
 // fits in 72 on main. No attribution to tools or AI anywhere.
 
 const ATTRIBUTION = /claude|anthropic|co-authored-by|generated with|claude-session/i;
+// The file name CLAUDE.md is not attribution; it is removed before the check.
+const FILE_NAME = /(?<![\w-])CLAUDE\.md(?![\w-])/g;
 
 export default {
   extends: ["@commitlint/config-conventional"],
@@ -12,7 +14,7 @@ export default {
     {
       rules: {
         "no-attribution": ({ raw }) => [
-          !ATTRIBUTION.test(raw ?? ""),
+          !ATTRIBUTION.test((raw ?? "").replace(FILE_NAME, "")),
           "the message must not mention Claude, Anthropic, Co-Authored-By or Generated with",
         ],
       },
