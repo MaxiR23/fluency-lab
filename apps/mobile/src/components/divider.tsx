@@ -1,6 +1,6 @@
 import { StyleSheet, View } from "react-native";
 
-import { hasText } from "@/components/has-text";
+import { hasText } from "@/utils/has-text";
 import { Text } from "@/components/text";
 import { borderWidth, colors, spacing } from "@/constants/theme";
 
