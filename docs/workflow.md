@@ -28,11 +28,20 @@ Flow for every feature, fix or non-trivial change in this repo.
    - Or skip this step and work on main without committing:
      `scripts/ship.sh prepare` creates the branch at step 6 with the
      same naming.
-   - If two issues generate the same branch name (same type and same
-     first five words of the description), `scripts/ship.sh prepare`
-     stops, because `git switch -c` cannot create a branch that already
-     exists. Resolve it by changing the issue title before running
-     `prepare`.
+   - If the generated name already exists, `scripts/ship.sh prepare`
+     stops:
+     - Local clash: another local branch has the name, and
+       `git switch -c` cannot create a branch that already exists.
+       Delete it if it is stale, or change the issue title before
+       running `prepare`.
+     - Remote clash: `git switch -c` would create the branch without
+       complaint, so from main `prepare` checks `origin` explicitly and
+       stops when the name exists there, with or without an open PR
+       (for example two issues with the same type and first five
+       description words). Change the
+       issue title, or delete the remote branch if it is stale, then run
+       `prepare` again. On the issue's own pushed branch, `prepare`
+       keeps working.
 
 3. **Implement**
    - Through the agent loop, driven by an orchestrator that dispatches
