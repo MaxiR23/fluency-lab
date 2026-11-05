@@ -9,9 +9,14 @@
 //   <type>/<description> from main, stops on a w_ branch, an unknown prefix and
 //   an empty description, stops from main when the branch exists on origin
 //   (with or without an open PR) naming the branch it queried, stops from main
-//   when ls-remote fails, keeps working on the issue's own branch
+//   when ls-remote fails, reading the branches once before creating it, keeps
+//   working on the issue's own branch, stops on a pushed branch without an open
+//   PR, lets an unpushed branch through
+// - is_pushed: returns 0 on origin, 1 not on origin, 2 when ls-remote fails
+// - prepare on its own branch: stops naming the failed read when ls-remote fails
 // - publish: stops on a w_ branch, an unknown prefix and an empty description,
-//   without pushing
+//   without pushing; stops without pushing when ls-remote fails, pushes when it
+//   does not
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -95,7 +100,7 @@ describe("branch_is_valid", () => {
 // gh answers the label and the title given; git logs every call and reports
 // the current branch given; git ls-remote prints remoteHeads, or fails when
 // lsRemoteFails is set; gh answers the open PR count and number from openPr;
-// pnpm always fails so no real gate ever runs.
+// pnpm fails, so no real gate runs, unless pnpmPasses is set.
 const runShip = ({
   args,
   branch = "",
@@ -105,6 +110,7 @@ const runShip = ({
   remoteHeads = "",
   openPr = "",
   lsRemoteFails = false,
+  pnpmPasses = false,
 }) => {
   const dir = mkdtempSync(path.join(tmpdir(), "ship-branch-"));
   try {
@@ -130,7 +136,7 @@ case "$1" in
   ls-remote) [ -z "$GIT_LS_REMOTE_FAIL" ] || exit 1; echo "$GIT_REMOTE_HEADS" ;;
 esac`,
     );
-    fake("pnpm", "exit 1");
+    fake("pnpm", pnpmPasses ? "exit 0" : "exit 1");
     for (const [name, content] of Object.entries(files)) {
       mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
       writeFileSync(path.join(dir, name), content);
@@ -153,6 +159,7 @@ esac`,
     });
     return {
       status: result.status,
+      stdout: result.stdout,
       stderr: result.stderr,
       log: existsSync(log) ? readFileSync(log, "utf8") : "",
     };
@@ -160,6 +167,23 @@ esac`,
     rmSync(dir, { recursive: true, force: true });
   }
 };
+
+const pushedStatus = (opts) =>
+  runShip({ args: 'is_pushed feat/x && echo rc=0 || echo "rc=$?"', ...opts }).stdout.trim();
+
+describe("is_pushed", () => {
+  it("returns 0 when the branch is on origin", () => {
+    assert.equal(pushedStatus({ remoteHeads: "abc\trefs/heads/feat/x" }), "rc=0");
+  });
+
+  it("returns 1 when the branch is not on origin", () => {
+    assert.equal(pushedStatus({}), "rc=1");
+  });
+
+  it("returns 2 when git ls-remote fails", () => {
+    assert.equal(pushedStatus({ lsRemoteFails: true }), "rc=2");
+  });
+});
 
 const invalidBranches = ["w_261105_feat_login", "feature/login", "feat/"];
 
@@ -214,6 +238,39 @@ describe("prepare", () => {
     assert.doesNotMatch(result.log, /switch/);
   });
 
+  it("reads the branches on origin once, before creating the branch", () => {
+    const result = runShip({
+      args: "prepare 1",
+      branch: "main",
+      title: "feat(x): Add Login Screen",
+    });
+    const lines = result.log.split("\n");
+    const reads = lines.filter((l) => l.startsWith("git ls-remote"));
+    assert.equal(reads.length, 1);
+    assert.ok(lines.indexOf(reads[0]) < lines.indexOf("git switch -c feat/add-login-screen"));
+  });
+
+  it("stops on a pushed branch that has no open PR", () => {
+    const result = runShip({
+      args: "prepare 1",
+      branch: "feat/add-login-screen",
+      title: "feat(x): Add Login Screen",
+      remoteHeads: "abc123\trefs/heads/feat/add-login-screen",
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /branch is pushed but has no open PR/);
+  });
+
+  it("lets an unpushed branch with no open PR through to commitlint", () => {
+    const result = runShip({
+      args: "prepare 1",
+      branch: "feat/add-login-screen",
+      title: "feat(x): Add Login Screen",
+    });
+    assert.doesNotMatch(result.stderr, /has no open PR|could not read/);
+    assert.match(result.stderr, /does not pass commitlint/);
+  });
+
   it("does not stop on the issue's own pushed branch", () => {
     const result = runShip({
       args: "prepare 1",
@@ -226,6 +283,19 @@ describe("prepare", () => {
     assert.match(result.stderr, /does not pass commitlint/);
   });
 
+  it("stops on its own branch when git ls-remote fails, naming the failed read", () => {
+    const result = runShip({
+      args: "prepare 1",
+      branch: "feat/add-login-screen",
+      title: "feat(x): Add Login Screen",
+      lsRemoteFails: true,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /could not read the branches on origin/);
+    assert.doesNotMatch(result.stderr, /commitlint/);
+    assert.doesNotMatch(result.log, /switch|commit|push/);
+  });
+
   for (const branch of invalidBranches) {
     it(`stops on the invalid branch ${branch}`, () => {
       const result = runShip({ args: "prepare 1", branch, title: "feat(x): Add Login" });
@@ -236,6 +306,37 @@ describe("prepare", () => {
 });
 
 describe("publish", () => {
+  const publishFiles = {
+    ".claude/loop/pr-1.meta":
+      "Title: feat(x): Add Login\nLabel: feat\nBranch: feat/x\nCommit: \nMode: create\n",
+    ".claude/loop/pr-1.body.md": "Closes #1\n\nBody.\n",
+  };
+
+  it("stops without pushing when git ls-remote fails", () => {
+    const result = runShip({
+      args: "publish 1",
+      branch: "feat/x",
+      title: "feat",
+      files: publishFiles,
+      pnpmPasses: true,
+      lsRemoteFails: true,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /could not read the branches on origin/);
+    assert.doesNotMatch(result.log, /push/);
+  });
+
+  it("pushes when git ls-remote answers", () => {
+    const result = runShip({
+      args: "publish 1",
+      branch: "feat/x",
+      title: "feat",
+      files: publishFiles,
+      pnpmPasses: true,
+    });
+    assert.match(result.log, /^git push -u origin feat\/x$/m);
+  });
+
   for (const branch of invalidBranches) {
     it(`stops on the invalid branch ${branch} without pushing`, () => {
       const result = runShip({

@@ -8,7 +8,10 @@
 #                               update the PR from pr-<issue>.body.md
 #
 # The PR body is prose and is written by the ship skill, not by this
-# script. This script never reads previous commits, branches or PRs.
+# script. This script reads the issue (gh issue view, gh label list), the
+# branches on origin (git ls-remote), the pull requests of the branch (gh pr
+# list, gh pr view) and the commits ahead of and behind origin/main (git
+# rev-list, git log).
 
 set -euo pipefail
 
@@ -79,7 +82,10 @@ branch_is_valid() {
 }
 
 is_pushed() {
-  [ -n "$(git ls-remote --heads origin "$1")" ]
+  # 0: on origin, 1: not on origin, 2: the read failed.
+  local heads
+  heads=$(git ls-remote --heads origin "$1") || return 2
+  [ -n "$heads" ]
 }
 
 open_pr_number() {
@@ -159,23 +165,31 @@ prepare() {
   [ -n "$slug" ] || die "the issue title yields an empty branch description"
   git fetch --quiet origin
 
-  local branch
+  local branch from_main="no"
   branch=$(git branch --show-current)
   if [ "$branch" = "main" ]; then
     [ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] ||
       die "main is not up to date with origin/main"
     branch="${TYPE}/${slug}"
-    local remote_heads
-    remote_heads=$(git ls-remote --heads origin "$branch") ||
-      die "could not read the branches on origin"
-    [ -z "$remote_heads" ] ||
-      die "branch $branch already exists on origin. If it is this issue's own branch, switch to it and run prepare there. Otherwise change the issue title, or delete the remote branch if it is stale"
+    from_main="yes"
+  else
+    branch_is_valid "$branch" || die "not on main nor on a <type>/<description> branch: $branch"
+  fi
+
+  local pushed="no" pr="" ahead pushed_rc=0
+  is_pushed "$branch" || pushed_rc=$?
+  case "$pushed_rc" in
+    0)
+      [ "$from_main" = "no" ] ||
+        die "branch $branch already exists on origin. If it is this issue's own branch, switch to it and run prepare there. Otherwise change the issue title, or delete the remote branch if it is stale"
+      pushed="yes"
+      ;;
+    1) ;;
+    *) die "could not read the branches on origin" ;;
+  esac
+  if [ "$from_main" = "yes" ]; then
     git switch -c "$branch"
   fi
-  branch_is_valid "$branch" || die "not on main nor on a <type>/<description> branch: $branch"
-
-  local pushed="no" pr="" ahead
-  is_pushed "$branch" && pushed="yes"
   pr=$(open_pr_number "$branch")
   [ "$pushed" = "no" ] || [ -n "$pr" ] || die "branch is pushed but has no open PR"
   ahead=$(git rev-list --count origin/main..HEAD)
@@ -268,6 +282,10 @@ publish() {
     "update #"*) [ "$mode" = "update #$pr" ] || die "the open PR changed: prepare again" ;;
     *) die "unknown mode: $mode" ;;
   esac
+
+  local rc=0
+  is_pushed "$branch" || rc=$?
+  [ "$rc" -ne 2 ] || die "could not read the branches on origin"
 
   git push -u origin "$branch"
 
