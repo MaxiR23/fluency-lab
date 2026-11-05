@@ -1,56 +1,77 @@
-# Welcome to your Expo app 👋
+# Fluency Lab
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+An app to practice English by writing. You open a chat about anything,
+or pick a suggested topic, and every session saves your mistakes, new
+words and progress. Suggestions get better as you use it. Following a
+plan is optional; free practice is the default.
 
-## Get started
+## Status
 
-1. Install dependencies
+Fresh Expo project. No screen is built yet. The screen map and the
+Home design are done; the rest of the design and the architecture come
+next, one step at a time.
 
-   ```bash
-   npm install
-   ```
+## Decided
 
-2. Start the app
+- Expo SDK 58, Expo Router, TypeScript; runs in Expo Go
+- pnpm as the only package manager
+- Text only: no voice in the MVP
+- Sign in with Google, Apple and email
+- AI with the user's own key (Claude or OpenAI); the user sets a
+  monthly spend limit and is warned when it is reached
+- One dark theme: black background, muted accents, nothing loud
+- App identifier: `com.maxirebolo.fluency_lab`
 
-   ```bash
-   npx expo start
-   ```
+## Pending
 
-In the output, you'll find options to open the app in a
+- Backend for accounts and progress (Supabase or another option)
+- Repository layout (single app or monorepo with shared packages)
+- Test runner and checks
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Running
 
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Requires Node 24 and pnpm.
 
-## Get a fresh project
+    pnpm install
+    pnpm start                 Expo dev server
 
-When you're ready, run:
+Open it in Expo Go by scanning the printed QR code.
 
-```bash
-npm run reset-project
-```
+## Screens (MVP)
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+    Login           Google, Apple, email
+    Onboarding      first launch only: provider, key, monthly limit, level
+    Home            free chat, continue last session, suggested topics
+    Chat            the session, corrections inline, end session
+    Summary         after a session: mistakes, new words, topic, cost
+    Plan            optional, off by default
+    Progress        session history, frequent mistakes, vocabulary
+    Session detail  one session, opened from Progress
+    Settings        key, provider, model, monthly limit and spend, level, data
 
-### Other setup steps
+Bottom navigation: Home, Progress, Settings. Chat, Summary and Session
+detail open on top of it.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Later, not in the MVP: YouTube suggestions and a small web page to see
+progress.
 
-## Learn more
+## Palette
 
-To learn more about developing your project with Expo, look at the following resources:
+| Token        | Value     | Use                               |
+| ------------ | --------- | --------------------------------- |
+| background   | `#000000` | screen                            |
+| surface      | `#141414` | cards                             |
+| border       | `#262626` | card borders, dividers            |
+| text         | `#F5F5F5` | primary text                      |
+| text-muted   | `#A3A3A3` | secondary text                    |
+| accent       | `#6DA5C0` | tags, links, active item          |
+| accent-deep  | `#072E33` | highlighted card background       |
+| accent-line  | `#0C4A50` | highlighted card border           |
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Rules
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Reusable and centralized: shared components, one source for layout,
+  spacing and color.
+- Pure functions, easy to test. Logic lives outside components.
+- TDD: the test comes first.
+- Clean code.
