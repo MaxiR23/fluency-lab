@@ -1,4 +1,4 @@
-// apps/mobile/test/components/font-load.test.ts
+// apps/mobile/test/utils/font-load.test.ts
 //
 // Tests for isFontLoadSettled.
 //
@@ -8,13 +8,13 @@
 // What is covered:
 // - Normal case, empty case, edges
 //
-// Run with: pnpm exec jest apps/mobile/test/components/font-load.test.ts
+// Run with: pnpm exec jest apps/mobile/test/utils/font-load.test.ts
 //
-// SEE: apps/mobile/src/components/font-load.ts
+// SEE: apps/mobile/src/utils/font-load.ts
 
 import { describe, expect, it } from "@jest/globals";
 
-import { isFontLoadSettled } from "@/components/font-load";
+import { isFontLoadSettled } from "@/utils/font-load";
 
 describe("isFontLoadSettled", () => {
   it("is settled when the fonts loaded", () => {

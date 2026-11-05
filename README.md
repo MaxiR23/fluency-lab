@@ -7,9 +7,9 @@ plan is optional; free practice is the default.
 
 ## Status
 
-Fresh Expo project in a pnpm monorepo. No screen is built yet. The screen map and the
-Home design are done; the rest of the design and the architecture come
-next, one step at a time.
+Expo project in a pnpm monorepo. The design layer exists (tokens and
+base components); no screen is built yet. The screen map, the palette
+and the Home design are decided.
 
 ## Decided
 
@@ -21,12 +21,18 @@ next, one step at a time.
 - AI with the user's own key (Claude or OpenAI); the user sets a
   monthly spend limit and is warned when it is reached
 - One dark theme: black background, muted accents, nothing loud
-- App identifier: `com.maxirebolo.fluency_lab`
+- Backend: Hono on Node in `apps/api`
+- Auth and storage: Supabase Auth and Postgres behind `apps/api`,
+  reached only through a port
+- Test runners: jest-expo (app), vitest (`packages/shared`, `apps/api`),
+  `node --test` (repo scripts)
+- App layout in `apps/mobile/src/`: `app/` (routes), `components/`,
+  `constants/` (theme tokens), `hooks/`, `utils/` (pure functions)
+- App identifier: `com.maxirebolo.fluencylab`
 
 ## Pending
 
-- Backend for accounts and progress (Supabase or another option)
-- Test runner and checks
+Nothing is pending.
 
 ## Running
 
@@ -68,16 +74,18 @@ progress.
 
 ## Palette
 
-| Token       | Value     | Use                         |
-| ----------- | --------- | --------------------------- |
-| background  | `#000000` | screen                      |
-| surface     | `#141414` | cards                       |
-| border      | `#262626` | card borders, dividers      |
-| text        | `#F5F5F5` | primary text                |
-| text-muted  | `#A3A3A3` | secondary text              |
-| accent      | `#6DA5C0` | tags, links, active item    |
-| accent-deep | `#072E33` | highlighted card background |
-| accent-line | `#0C4A50` | highlighted card border     |
+| Token          | Value     | Use                         |
+| -------------- | --------- | --------------------------- |
+| background     | `#000000` | screen                      |
+| surface        | `#141414` | cards                       |
+| border         | `#262626` | card borders, dividers      |
+| text           | `#F5F5F5` | primary text                |
+| text-muted     | `#A3A3A3` | secondary text              |
+| accent         | `#6DA5C0` | tags, links, active item    |
+| accent-deep    | `#072E33` | highlighted card background |
+| accent-line    | `#0C4A50` | highlighted card border     |
+| accent-pressed | `#0C7075` | pressed accent              |
+| error          | `#F87171` | error text and borders      |
 
 ## Rules
 

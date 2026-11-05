@@ -1,4 +1,4 @@
-// apps/mobile/test/components/has-text.test.ts
+// apps/mobile/test/utils/has-text.test.ts
 //
 // Tests for hasText.
 //
@@ -8,13 +8,13 @@
 // What is covered:
 // - Normal case, empty case, edges
 //
-// Run with: pnpm exec jest apps/mobile/test/components/has-text.test.ts
+// Run with: pnpm exec jest apps/mobile/test/utils/has-text.test.ts
 //
-// SEE: apps/mobile/src/components/has-text.ts
+// SEE: apps/mobile/src/utils/has-text.ts
 
 import { describe, expect, it } from "@jest/globals";
 
-import { hasText } from "@/components/has-text";
+import { hasText } from "@/utils/has-text";
 
 describe("hasText", () => {
   it("is true for a non-empty message", () => {
