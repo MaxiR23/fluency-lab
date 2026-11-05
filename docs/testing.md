@@ -6,13 +6,13 @@ Conventions for tests in this repo.
 
     pnpm test                    run all tests (every workspace, then scripts/test)
     pnpm exec jest <path>        one apps/mobile file, path from the repo root
-    pnpm exec vitest run <path>  one packages/shared file, path from the repo root
+    pnpm exec vitest run <path>  one packages/shared or apps/api file, path from the repo root
 
 ## Runner
 
 One runner per place: **jest-expo**, the Expo preset for Jest, for
 `apps/mobile` (pure functions, hooks and components); **vitest** for
-`packages/shared`, which has no Expo or React Native; and `node --test`
+`packages/shared`, which has no Expo or React Native, and for `apps/api`; and `node --test`
 for `scripts/test`.
 
 - Pure functions (recommendations, spend limit, session analysis, text
@@ -21,7 +21,7 @@ for `scripts/test`.
 - Rendering is tested only where a component has its own logic.
 - `describe` / `it` / `expect` come from explicit imports in each test
   file, not from ambient types: `@jest/globals` in `apps/mobile`,
-  `vitest` in `packages/shared`.
+  `vitest` in `packages/shared` and `apps/api`.
 - `render`, `fireEvent` and `act` from Testing Library are async and
   are awaited.
 
@@ -34,10 +34,17 @@ tests go under `apps/mobile/test/app/`.
     apps/mobile/src/<path>/<file>.ts   -> apps/mobile/test/<path>/<file>.test.ts
     apps/mobile/src/app/index.tsx      -> apps/mobile/test/app/index.test.tsx
     packages/shared/src/<file>.ts      -> packages/shared/test/<file>.test.ts
+    apps/api/src/<file>.ts             -> apps/api/test/<file>.test.ts
 
 Cross-cutting tests of a workspace that do not map to a single file
 live at the root of its `test/`. The repo scripts are tested with
 `node --test` in `scripts/test/`, not with jest or vitest.
+
+## API routes
+
+Routes of `apps/api` are chained on one `Hono` expression so the type of
+the app carries them to the typed client (RPC), and are tested through
+`app.request`, never by starting a server.
 
 ## Naming
 

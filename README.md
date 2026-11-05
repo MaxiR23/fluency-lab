@@ -40,10 +40,13 @@ Open it in Expo Go by scanning the printed QR code.
 ## Layout
 
     apps/mobile        the Expo app; routes in src/app/
+    apps/api           the Hono backend (Node); routes in src/app.ts
     packages/shared    types and pure logic shared by the app and the backend
     scripts/           repo scripts and their tests
 
-`apps/api`, the backend, is not created yet.
+`apps/api` has only `GET /health`. Its routes are chained on one `Hono`
+expression and the type of the app (`AppType`) is exported for the typed
+client (RPC). Run it with `pnpm --filter api dev`.
 
 ## Screens (MVP)
 

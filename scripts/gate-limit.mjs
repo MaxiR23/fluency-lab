@@ -53,7 +53,7 @@ function deny(reason) {
 function hint(part) {
   if (part === "lint") return "`pnpm exec eslint <path>`";
   if (part === "test")
-    return "`pnpm exec jest <path>`, or `pnpm exec vitest run <path>` for packages/shared";
+    return "`pnpm exec jest <path>`, or `pnpm exec vitest run <path>` for packages/shared or apps/api";
   return null;
 }
 

@@ -6,4 +6,7 @@ allowBuilds:
   # Pulled by jest-haste-map 30; it falls back to a crawler without the
   # native build, so no build script has to run.
   "@parcel/watcher": false
+  # Pulled by tsx and vite; it ships its binary as an optional platform
+  # package, so the postinstall check is not needed.
+  esbuild: false
   lefthook: true
