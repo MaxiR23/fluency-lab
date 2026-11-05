@@ -25,6 +25,8 @@ import {
   type SupabaseAuthClient,
 } from "@/auth/supabase-auth";
 
+import { generatedSecret } from "../helpers/generated-secret";
+
 type LibSession = { access_token: string; user: { id: string; email?: string } };
 
 const libSession: LibSession = {
@@ -63,8 +65,12 @@ function fakeClient(overrides: Partial<Omit<SupabaseAuthClient, "onAuthStateChan
   return { client, unsubscribe, auth: createSupabaseAuth(client) };
 }
 
-const credentials = { email: "a@example.com", password: "pw-1234" };
-const reset = { email: "a@example.com", code: "123456", newPassword: "new-pw-1" };
+const credentials = { email: "a@example.com", password: generatedSecret("password") };
+const reset = {
+  email: "a@example.com",
+  code: "123456",
+  newPassword: generatedSecret("new-password"),
+};
 
 describe("signInWithEmail", () => {
   it("returns the session for valid credentials", async () => {
@@ -185,7 +191,7 @@ describe("confirmPasswordReset", () => {
       token: "123456",
       type: "recovery",
     });
-    expect(client.updateUser).toHaveBeenCalledWith({ password: "new-pw-1" });
+    expect(client.updateUser).toHaveBeenCalledWith({ password: reset.newPassword });
     expect(client.signOut).not.toHaveBeenCalled();
   });
 

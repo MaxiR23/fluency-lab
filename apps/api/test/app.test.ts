@@ -21,6 +21,7 @@ import { testClient } from "hono/testing";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import type { JwksOutcome } from "../src/auth";
+import { generatedSecret } from "./helpers/generated-secret";
 
 const issuer = "http://127.0.0.1:54321/auth/v1";
 const kid = "test-key";
@@ -137,7 +138,7 @@ describe("GET /me", () => {
   it("responds 401 with an HS256 token", async () => {
     const bad = await sign(
       { sub: "user-1", aud: "authenticated", iss: issuer, exp: now() + 600 },
-      "invented-secret",
+      generatedSecret("hs256-key"),
       "HS256",
     );
     expect((await me({ Authorization: `Bearer ${bad}` })).status).toBe(401);
