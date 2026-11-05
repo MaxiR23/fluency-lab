@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { AuthScreen } from "@/components/auth-screen";
 import { Button } from "@/components/button";
 import { EmailField } from "@/components/email-field";
+import { FailureMessage } from "@/components/failure-message";
 import { Text } from "@/components/text";
 import { TextField } from "@/components/text-field";
 import { spacing } from "@/constants/theme";
@@ -15,14 +16,14 @@ import {
   validateCredentials,
   type FieldErrors,
 } from "@/utils/auth-form";
-import { authFailureMessage, signUpPendingMessage } from "@/utils/auth-message";
+import { authFailureView, signUpPendingMessage, type FailureView } from "@/utils/auth-message";
 
 export default function CreateAccount() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [running, setRunning] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [failure, setFailure] = useState<string | undefined>(undefined);
+  const [failure, setFailure] = useState<FailureView | undefined>(undefined);
   const [pending, setPending] = useState(false);
 
   async function submit() {
@@ -34,7 +35,7 @@ export default function CreateAccount() {
     const outcome = await auth.signUpWithEmail({ email: normalizeEmail(email), password });
     setRunning(false);
     if (!outcome.ok) {
-      setFailure(authFailureMessage(outcome.failure));
+      setFailure(authFailureView(outcome));
     } else if (outcome.value === null) {
       setPending(true);
     }
@@ -67,9 +68,7 @@ export default function CreateAccount() {
             autoComplete="new-password"
           />
           {failure !== undefined ? (
-            <Text variant="error" accessibilityRole="alert">
-              {failure}
-            </Text>
+            <FailureMessage message={failure.message} cause={failure.cause} />
           ) : null}
           <Button
             variant="deep"

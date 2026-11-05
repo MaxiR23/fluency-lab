@@ -4,7 +4,7 @@ import { StyleSheet, View } from "react-native";
 
 import { AuthScreen } from "@/components/auth-screen";
 import { Button } from "@/components/button";
-import { Text } from "@/components/text";
+import { FailureMessage } from "@/components/failure-message";
 import { TextField } from "@/components/text-field";
 import { spacing } from "@/constants/theme";
 import { useSession } from "@/hooks/use-session";
@@ -19,6 +19,7 @@ import {
   missingResetEmailMessage,
   resetCodeSentMessage,
   resetFailureView,
+  type FailureView,
   type ResetFailureAction,
 } from "@/utils/auth-message";
 
@@ -30,7 +31,7 @@ export default function ResetPassword() {
   const [newPassword, setNewPassword] = useState("");
   const [running, setRunning] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [failure, setFailure] = useState<string | undefined>(undefined);
+  const [failure, setFailure] = useState<FailureView | undefined>(undefined);
   const [action, setAction] = useState<ResetFailureAction>("retry");
 
   function requestCode() {
@@ -52,7 +53,7 @@ export default function ResetPassword() {
     setRunning(false);
     if (!outcome.ok) {
       const view = resetFailureView(outcome);
-      setFailure(view.message);
+      setFailure({ message: view.message, cause: view.cause });
       setAction(view.action);
     }
   }
@@ -99,9 +100,7 @@ export default function ResetPassword() {
             autoComplete="new-password"
           />
           {failure !== undefined ? (
-            <Text variant="error" accessibilityRole="alert">
-              {failure}
-            </Text>
+            <FailureMessage message={failure.message} cause={failure.cause} />
           ) : null}
           <Button
             variant="deep"
@@ -112,9 +111,9 @@ export default function ResetPassword() {
         </View>
       ) : (
         <View style={styles.form}>
-          <Text variant="error" accessibilityRole="alert">
-            {failure}
-          </Text>
+          {failure !== undefined ? (
+            <FailureMessage message={failure.message} cause={failure.cause} />
+          ) : null}
           {action === "continue" ? (
             <Button variant="deep" label="Continue" onPress={session.releaseReset} />
           ) : (

@@ -6,6 +6,7 @@
 // - Its texts, and the email prefilled from the route
 // - Validation, the request, its busy state and each failure message
 // - On success, the code screen opens with the trimmed email
+// - The development cause line under the failure
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -45,6 +46,13 @@ async function send(value: string) {
   await fireEvent.changeText(screen.getByLabelText("Email"), value);
   await fireEvent.press(screen.getByRole("button", { name: "Send code" }));
 }
+
+const networkCause = {
+  name: "AuthRetryableFetchError",
+  detail: "fetch failed: The Internet connection appears to be offline.",
+};
+const causeLine =
+  "AuthRetryableFetchError: fetch failed: The Internet connection appears to be offline.";
 
 describe("Forgot password screen", () => {
   beforeEach(() => {
@@ -117,5 +125,17 @@ describe("Forgot password screen", () => {
     await renderApp("/forgot-password", null);
     await fireEvent.press(screen.getByText("Sign in"));
     expect(screen).toHavePathname("/sign-in");
+  });
+
+  it("draws the cause line under the failure in development", async () => {
+    fakeAuth.requestPasswordReset.mockResolvedValue({
+      ok: false,
+      failure: "network",
+      cause: networkCause,
+    });
+    await renderApp("/forgot-password", null);
+    await send(email);
+    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText(causeLine)).toBeTruthy();
   });
 });

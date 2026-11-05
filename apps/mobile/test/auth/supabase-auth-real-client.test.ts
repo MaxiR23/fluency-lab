@@ -4,6 +4,7 @@
 //
 // Tested:
 // - signOut with a valid session and with an expired one, while fetch rejects
+// - The cause of the failure, with the transport message the library keeps
 //
 // What is covered:
 // - The assumptions the fake client of supabase-auth.test.ts makes about the library
@@ -76,7 +77,11 @@ describe("signOut against the real client with fetch rejecting", () => {
   it("returns network when the session was expired, because it stays stored", async () => {
     const { auth, store } = setup(now() - 3600);
 
-    expect(await settle(auth.signOut())).toEqual({ ok: false, failure: "network" });
+    expect(await settle(auth.signOut())).toEqual({
+      ok: false,
+      failure: "network",
+      cause: { name: "AuthRetryableFetchError", detail: "Network request failed" },
+    });
     expect(store.has(storageKey)).toBe(true);
   });
 });

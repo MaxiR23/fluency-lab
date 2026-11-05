@@ -6,7 +6,7 @@ import { auth } from "@/auth";
 import { AuthScreen } from "@/components/auth-screen";
 import { Button } from "@/components/button";
 import { EmailField } from "@/components/email-field";
-import { Text } from "@/components/text";
+import { FailureMessage } from "@/components/failure-message";
 import { spacing } from "@/constants/theme";
 import {
   hasFieldErrors,
@@ -15,14 +15,14 @@ import {
   validateResetRequest,
   type FieldErrors,
 } from "@/utils/auth-form";
-import { authFailureMessage } from "@/utils/auth-message";
+import { authFailureView, type FailureView } from "@/utils/auth-message";
 
 export default function ForgotPassword() {
   const params = useLocalSearchParams<{ email?: string | string[] }>();
   const [email, setEmail] = useState(readEmailParam(params.email) ?? "");
   const [running, setRunning] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [failure, setFailure] = useState<string | undefined>(undefined);
+  const [failure, setFailure] = useState<FailureView | undefined>(undefined);
 
   async function submit() {
     const errors = validateResetRequest({ email });
@@ -35,7 +35,7 @@ export default function ForgotPassword() {
     if (outcome.ok) {
       router.push({ pathname: "/reset-password", params: { email: normalizeEmail(email) } });
     } else {
-      setFailure(authFailureMessage(outcome.failure));
+      setFailure(authFailureView(outcome));
     }
   }
 
@@ -53,9 +53,7 @@ export default function ForgotPassword() {
       <View style={styles.form}>
         <EmailField value={email} onChangeText={setEmail} error={fieldErrors.email} />
         {failure !== undefined ? (
-          <Text variant="error" accessibilityRole="alert">
-            {failure}
-          </Text>
+          <FailureMessage message={failure.message} cause={failure.cause} />
         ) : null}
         <Button variant="deep" label="Send code" loading={running} onPress={() => void submit()} />
       </View>

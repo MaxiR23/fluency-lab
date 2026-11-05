@@ -1,4 +1,4 @@
-import type { AuthFailure } from "@/auth/auth-port";
+import type { AuthFailure, FailureCause } from "@/auth/auth-port";
 
 // INFO: the Supabase docs say to identify errors by name and code, never by
 // message, so message is not read.
@@ -19,4 +19,43 @@ export function toAuthFailure(error: unknown): AuthFailure {
     default:
       return "unknown";
   }
+}
+
+const maxCauseDetailLength = 200;
+const plainIdentifier = /^[A-Za-z_$][\w$]{0,63}$/;
+
+// INFO: the order matters; bodies and URLs go first so later rules do not cut them in half.
+export function redactCauseDetail(message: string): string | null {
+  const redacted = message
+    .replace(/\{[\s\S]*\}/g, "[body]")
+    .replace(/\b(https?:\/\/)(?:[^\s/@]+@)?([^\s?#]*)[?#]?\S*/g, "$1$2")
+    .replace(/\b(Bearer|Basic)\s+\S+/gi, "$1 [redacted]")
+    .replace(
+      /\b(new_password|newPassword|password|access_token|refresh_token|id_token|token|api_key|apikey|key|secret|nonce|code|authorization)\b(["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)/gi,
+      "$1$2[redacted]",
+    )
+    .replace(/[^\s@"'<>(),;:]+@[^\s@"'<>(),;:]+\.[^\s@"'<>(),;:]+/g, "[email]")
+    .replace(/\beyJ[\w-]*\.[\w-]+\.[\w-]+/g, "[token]")
+    .replace(/\bsb_(?:publishable|secret)_[\w-]+/g, "[key]")
+    .replace(/\b(?=[\w-]*\d)[\w-]{24,}\b/g, "[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxCauseDetailLength);
+  return redacted === "" ? null : redacted;
+}
+
+// INFO: only transport failures keep the message. An API error message can echo
+// the request; the transport message comes from the network stack or a 5xx
+// body, and is redacted anyway.
+export function describeAuthCause(error: unknown): FailureCause {
+  if (typeof error !== "object" || error === null) return { name: "unknown", detail: null };
+  const name =
+    "name" in error && typeof error.name === "string" && plainIdentifier.test(error.name)
+      ? error.name
+      : "unknown";
+  const detail =
+    toAuthFailure(error) === "network" && "message" in error && typeof error.message === "string"
+      ? redactCauseDetail(error.message)
+      : null;
+  return { name, detail };
 }
