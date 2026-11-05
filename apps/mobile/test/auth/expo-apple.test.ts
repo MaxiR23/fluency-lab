@@ -6,7 +6,7 @@
 // - isAvailable: true, false, a rejection
 // - requestCredential: the hash goes to Apple, the raw nonce comes back
 // - A cancel, any other Apple error, no token, a failing digest or random source
-// - The cause of an Apple failure, sanitized, and none on a cancel or a missing token
+// - The cause of an Apple failure, sanitized, with its error code, and none on a cancel or a missing token
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -111,13 +111,28 @@ describe("requestCredential", () => {
     expect(outcome).toEqual({
       ok: false,
       failure: "apple_request_failed",
-      cause: describeAuthCause(thrown),
+      cause: describeAuthCause(thrown, { code: true }),
     });
     expect(outcome).toEqual({
       ok: false,
       failure: "apple_request_failed",
-      cause: { name: "Error", detail: null },
+      cause: { name: "Error", detail: null, code: "ERR_REQUEST_FAILED" },
     });
+  });
+
+  it("keeps the Apple error code but not its message in the cause", async () => {
+    const secret = generatedSecret("nonce");
+    const { port } = setup({
+      signInAsync: () =>
+        Promise.reject(Object.assign(new Error(secret), { code: "ERR_REQUEST_UNKNOWN" })),
+    });
+    const outcome = await port.requestCredential();
+    expect(outcome).toEqual({
+      ok: false,
+      failure: "apple_request_failed",
+      cause: { name: "Error", detail: null, code: "ERR_REQUEST_UNKNOWN" },
+    });
+    expect(JSON.stringify(outcome)).not.toContain(secret);
   });
 
   it("keeps no message of the Apple error in the cause", async () => {

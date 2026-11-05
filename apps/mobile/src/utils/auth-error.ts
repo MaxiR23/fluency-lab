@@ -23,6 +23,8 @@ export function toAuthFailure(error: unknown): AuthFailure {
 
 const maxCauseDetailLength = 200;
 const plainIdentifier = /^[A-Za-z_$][\w$]{0,63}$/;
+const plainCode = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const opaqueToken = /^(?=.*\d).{24,}$/;
 
 // INFO: the order matters; bodies and URLs go first so later rules do not cut them in half.
 export function redactCauseDetail(message: string): string | null {
@@ -44,10 +46,20 @@ export function redactCauseDetail(message: string): string | null {
   return redacted === "" ? null : redacted;
 }
 
+// INFO: the code is held to a plain identifier so it cannot carry a token, email or body.
+function safeCode(error: object): string | null {
+  if (!("code" in error) || typeof error.code !== "string") return null;
+  return plainCode.test(error.code) && !opaqueToken.test(error.code) ? error.code : null;
+}
+
 // INFO: only transport failures keep the message. An API error message can echo
 // the request; the transport message comes from the network stack or a 5xx
 // body, and is redacted anyway.
-export function describeAuthCause(error: unknown): FailureCause {
+// The code is kept only when the caller asks, so Supabase causes stay as they are.
+export function describeAuthCause(
+  error: unknown,
+  options: { code: boolean } = { code: false },
+): FailureCause {
   if (typeof error !== "object" || error === null) return { name: "unknown", detail: null };
   const name =
     "name" in error && typeof error.name === "string" && plainIdentifier.test(error.name)
@@ -57,5 +69,6 @@ export function describeAuthCause(error: unknown): FailureCause {
     toAuthFailure(error) === "network" && "message" in error && typeof error.message === "string"
       ? redactCauseDetail(error.message)
       : null;
-  return { name, detail };
+  const code = options.code ? safeCode(error) : null;
+  return code === null ? { name, detail } : { name, detail, code };
 }

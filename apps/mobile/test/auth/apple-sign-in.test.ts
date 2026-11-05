@@ -5,7 +5,7 @@
 // Tested:
 // - Credential, then sign in with the raw nonce, then the name
 // - A cancel, an Apple failure, a sign in failure and a name failure
-// - The cause of a failure is passed on from either port
+// - The cause of a failure is passed on from either port, including a name that failed to save
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -130,6 +130,21 @@ describe("runAppleSignIn", () => {
       status: "name_not_saved",
       failure: "network",
       name: { fullName: "Ada", givenName: "Ada", familyName: null },
+    });
+  });
+
+  it("returns name_not_saved with the cause of the save failure", async () => {
+    fakeApple.requestCredential.mockResolvedValue(
+      credential({ givenName: "Ada", familyName: null }),
+    );
+    const cause = { name: "AuthRetryableFetchError", detail: "offline" };
+    fakeAuth.saveName.mockResolvedValue({ ok: false, failure: "network", cause });
+
+    expect(await runAppleSignIn({ apple: fakeApple, auth: fakeAuth })).toEqual({
+      status: "name_not_saved",
+      failure: "network",
+      name: { fullName: "Ada", givenName: "Ada", familyName: null },
+      cause,
     });
   });
 });

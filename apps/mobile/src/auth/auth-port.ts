@@ -14,7 +14,8 @@ export type AuthFailure =
 
 // INFO: a safe description of what failed, for development only.
 // detail is set only for transport failures and is already redacted.
-export type FailureCause = { name: string; detail: string | null };
+// code is set only where the adapter asks for it (the Apple library), and only as a plain identifier.
+export type FailureCause = { name: string; detail: string | null; code?: string };
 
 export type AuthOutcome<T> =
   { ok: true; value: T } | { ok: false; failure: AuthFailure; cause?: FailureCause };
@@ -78,4 +79,4 @@ export type AppleSignInOutcome =
   | { status: "signed_in" }
   | { status: "canceled" }
   | { status: "failed"; failure: AuthFailure; cause?: FailureCause }
-  | { status: "name_not_saved"; failure: AuthFailure; name: ProfileName };
+  | { status: "name_not_saved"; failure: AuthFailure; name: ProfileName; cause?: FailureCause };

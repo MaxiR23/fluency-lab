@@ -10,7 +10,6 @@ import { Button } from "@/components/button";
 import { Divider } from "@/components/divider";
 import { EmailField } from "@/components/email-field";
 import { FailureMessage } from "@/components/failure-message";
-import { Text } from "@/components/text";
 import { TextField } from "@/components/text-field";
 import { TextLink } from "@/components/text-link";
 import { spacing } from "@/constants/theme";
@@ -36,9 +35,9 @@ export default function SignIn() {
   const [busy, setBusy] = useState<"email" | "apple" | null>(null);
   const running = busy !== null;
   const [availability, setAvailability] = useState<AuthOutcome<boolean> | undefined>(undefined);
-  const [nameFailure, setNameFailure] = useState<
-    { message: string; name: ProfileName } | undefined
-  >(undefined);
+  const [nameFailure, setNameFailure] = useState<(FailureView & { name: ProfileName }) | undefined>(
+    undefined,
+  );
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<FailureView | undefined>(undefined);
 
@@ -55,7 +54,8 @@ export default function SignIn() {
     setBusy(null);
     const view = appleSignInView(outcome);
     if (view.kind === "message") setFailure({ message: view.message, cause: view.cause });
-    if (view.kind === "name_not_saved") setNameFailure({ message: view.message, name: view.name });
+    if (view.kind === "name_not_saved")
+      setNameFailure({ message: view.message, name: view.name, cause: view.cause });
   }
 
   async function retryName(name: ProfileName) {
@@ -63,7 +63,11 @@ export default function SignIn() {
     const outcome = await session.retryAppleName(name);
     setBusy(null);
     if (!outcome.ok) {
-      setNameFailure({ message: appleNameFailureMessage(outcome.failure), name });
+      setNameFailure({
+        message: appleNameFailureMessage(outcome.failure),
+        name,
+        cause: outcome.cause,
+      });
     }
   }
 
@@ -100,9 +104,7 @@ export default function SignIn() {
     >
       {nameFailure !== undefined ? (
         <View style={styles.form}>
-          <Text variant="error" accessibilityRole="alert">
-            {nameFailure.message}
-          </Text>
+          <FailureMessage message={nameFailure.message} cause={nameFailure.cause} />
           <Button
             variant="deep"
             label="Try again"
