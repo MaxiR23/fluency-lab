@@ -18,7 +18,8 @@ import { render, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 
 import { Divider } from "@/components/divider";
-import { borderWidth, colors } from "@/constants/theme";
+import { textStyle } from "@/components/text-style";
+import { borderWidth, colors, spacing } from "@/constants/theme";
 
 describe("Divider", () => {
   it("draws the label when it gets one", async () => {
@@ -51,5 +52,11 @@ describe("Divider", () => {
     const style = StyleSheet.flatten(line.props.style);
     expect(style.height).toBe(borderWidth.thin);
     expect(style.backgroundColor).toBe(colors.border);
+  });
+
+  it("draws the label in the caption style with the group margin", async () => {
+    await render(<Divider label="or" />);
+    const style = StyleSheet.flatten(screen.getByText("or").props.style);
+    expect(style).toEqual({ ...textStyle("caption"), marginHorizontal: spacing.group });
   });
 });

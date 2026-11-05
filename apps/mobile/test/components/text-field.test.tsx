@@ -20,6 +20,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 
 import { TextField } from "@/components/text-field";
+import { textStyle } from "@/components/text-style";
 import { colors } from "@/constants/theme";
 
 describe("TextField", () => {
@@ -81,5 +82,33 @@ describe("TextField", () => {
     await render(<TextField label="Email" value="" onChangeText={onChangeText} />);
     await fireEvent.changeText(screen.getByLabelText("Email"), "hi");
     expect(onChangeText).toHaveBeenCalledWith("hi");
+  });
+
+  it("draws the placeholder in the placeholder color", async () => {
+    await render(<TextField label="Email" value="" placeholder="name@email.com" />);
+    const input = screen.getByLabelText("Email");
+    expect(input.props.placeholder).toBe("name@email.com");
+    expect(input.props.placeholderTextColor).toBe(colors.textPlaceholder);
+  });
+
+  it("draws the label as a label", async () => {
+    await render(<TextField label="Email" value="" />);
+    expect(StyleSheet.flatten(screen.getByText("Email").props.style)).toEqual(textStyle("label"));
+  });
+
+  it("passes the keyboard props to the input", async () => {
+    await render(
+      <TextField
+        label="Email"
+        value=""
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />,
+    );
+    const input = screen.getByLabelText("Email");
+    expect(input.props.keyboardType).toBe("email-address");
+    expect(input.props.autoCapitalize).toBe("none");
+    expect(input.props.autoCorrect).toBe(false);
   });
 });

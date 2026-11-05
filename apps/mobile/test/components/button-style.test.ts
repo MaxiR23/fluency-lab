@@ -15,7 +15,7 @@
 import { describe, expect, it } from "@jest/globals";
 
 import { buttonStyle } from "@/components/button-style";
-import { colors, radius } from "@/constants/theme";
+import { colors, radius, size } from "@/constants/theme";
 
 describe("buttonStyle", () => {
   it("draws idle primary on accent with an accent-deep label", () => {
@@ -84,10 +84,35 @@ describe("buttonStyle", () => {
   });
 
   it("uses the control radius in every variant and state", () => {
-    for (const variant of ["primary", "secondary"] as const) {
+    for (const variant of ["primary", "secondary", "deep"] as const) {
       for (const state of [{}, { pressed: true }, { disabled: true }]) {
         expect(buttonStyle(variant, state).container.borderRadius).toBe(radius.control);
       }
+    }
+  });
+
+  it("draws idle deep on accent-deep with an accent-line border and a text label", () => {
+    const { container, label } = buttonStyle("deep");
+    expect(container.backgroundColor).toBe(colors.accentDeep);
+    expect(container.borderColor).toBe(colors.accentLine);
+    expect(label.color).toBe(colors.text);
+  });
+
+  it("draws pressed deep like pressed primary", () => {
+    expect(buttonStyle("deep", { pressed: true })).toEqual(
+      buttonStyle("primary", { pressed: true }),
+    );
+  });
+
+  it("draws disabled deep like disabled primary", () => {
+    expect(buttonStyle("deep", { disabled: true })).toEqual(
+      buttonStyle("primary", { disabled: true }),
+    );
+  });
+
+  it("gives every variant the control min height", () => {
+    for (const variant of ["primary", "secondary", "deep"] as const) {
+      expect(buttonStyle(variant).container.minHeight).toBe(size.control);
     }
   });
 });

@@ -10,7 +10,7 @@ export function Divider({ label }: { label?: string }) {
       <View style={styles.line} />
       {hasText(label) ? (
         <>
-          <Text variant="muted" style={styles.label}>
+          <Text variant="caption" style={styles.label}>
             {label}
           </Text>
           <View style={styles.line} />
@@ -27,5 +27,5 @@ const styles = StyleSheet.create({
     height: borderWidth.thin,
     backgroundColor: colors.border,
   },
-  label: { marginHorizontal: spacing.md },
+  label: { marginHorizontal: spacing.group },
 });

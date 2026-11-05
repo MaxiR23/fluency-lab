@@ -1,0 +1,141 @@
+// apps/mobile/test/utils/auth-message.test.ts
+//
+// Tests for the auth outcome to message functions.
+//
+// Tested:
+// - One message per failure
+// - What each failed reset step tells the user and offers
+//
+// What is covered:
+// - Normal case, edges
+//
+// Run with: pnpm exec jest apps/mobile/test/utils/auth-message.test.ts
+//
+// SEE: apps/mobile/src/utils/auth-message.ts
+
+import { describe, expect, it } from "@jest/globals";
+
+import type { AuthFailure } from "@/auth/auth-port";
+import {
+  authFailureMessage,
+  blocksResetExit,
+  missingResetEmailMessage,
+  resetCodeSentMessage,
+  resetFailureView,
+  signUpPendingMessage,
+} from "@/utils/auth-message";
+
+const failures: AuthFailure[] = [
+  "invalid_credentials",
+  "email_taken",
+  "weak_password",
+  "invalid_or_expired_code",
+  "network",
+  "unknown",
+];
+
+describe("authFailureMessage", () => {
+  it("words the invalid credentials failure", () => {
+    expect(authFailureMessage("invalid_credentials")).toBe("That email or password is not right.");
+  });
+
+  it("words the email taken failure", () => {
+    expect(authFailureMessage("email_taken")).toBe(
+      "An account with this email already exists. Sign in instead.",
+    );
+  });
+
+  it("words the weak password failure", () => {
+    expect(authFailureMessage("weak_password")).toBe(
+      "That password is too weak. Try a longer one.",
+    );
+  });
+
+  it("words the invalid or expired code failure", () => {
+    expect(authFailureMessage("invalid_or_expired_code")).toBe(
+      "That code is wrong or has expired.",
+    );
+  });
+
+  it("words the network failure", () => {
+    expect(authFailureMessage("network")).toBe(
+      "Could not reach the server. Check your connection and try again.",
+    );
+  });
+
+  it("words the unknown failure", () => {
+    expect(authFailureMessage("unknown")).toBe(
+      "Something went wrong. Wait a moment and try again.",
+    );
+  });
+
+  it("gives each of the six failures a different message", () => {
+    expect(new Set(failures.map(authFailureMessage)).size).toBe(6);
+  });
+});
+
+describe("resetFailureView", () => {
+  it("keeps the failure's message and offers a retry at step code", () => {
+    expect(
+      resetFailureView({ ok: false, step: "code", failure: "invalid_or_expired_code" }),
+    ).toEqual({ message: authFailureMessage("invalid_or_expired_code"), action: "retry" });
+  });
+
+  it("asks for a new code at step password when signed out", () => {
+    expect(
+      resetFailureView({ ok: false, step: "password", failure: "network", stillSignedIn: false }),
+    ).toEqual({
+      message: `${authFailureMessage("network")} Your code was used, so request a new one.`,
+      action: "request_new_code",
+    });
+  });
+
+  it("keeps the weak password message at step password and says the code was used", () => {
+    const view = resetFailureView({
+      ok: false,
+      step: "password",
+      failure: "weak_password",
+      stillSignedIn: false,
+    });
+    expect(view.message).toContain(authFailureMessage("weak_password"));
+    expect(view.message).toContain("Your code was used");
+  });
+
+  it("offers continue at step password when still signed in", () => {
+    expect(
+      resetFailureView({ ok: false, step: "password", failure: "unknown", stillSignedIn: true }),
+    ).toEqual({
+      message: `${authFailureMessage("unknown")} Your password did not change, and you are still signed in.`,
+      action: "continue",
+    });
+  });
+});
+
+describe("resetCodeSentMessage", () => {
+  it("names the email and does not claim the account exists", () => {
+    const message = resetCodeSentMessage("name@email.com");
+    expect(message).toBe("If an account exists for name@email.com, we sent it a code.");
+  });
+});
+
+describe("fixed messages", () => {
+  it("words the sign up pending and the missing email messages", () => {
+    expect(signUpPendingMessage).toBe("Check your email to confirm your account, then sign in.");
+    expect(missingResetEmailMessage).toBe("Request a code first.");
+  });
+});
+
+describe("blocksResetExit", () => {
+  it("blocks while the request runs", () => {
+    expect(blocksResetExit(true, "retry")).toBe(true);
+  });
+
+  it("blocks in the continue state", () => {
+    expect(blocksResetExit(false, "continue")).toBe(true);
+  });
+
+  it("does not block the form, or the request for a new code, when idle", () => {
+    expect(blocksResetExit(false, "retry")).toBe(false);
+    expect(blocksResetExit(false, "request_new_code")).toBe(false);
+  });
+});

@@ -1,4 +1,4 @@
-import { Pressable, type PressableProps } from "react-native";
+import { ActivityIndicator, Pressable, type PressableProps } from "react-native";
 
 import { buttonStyle, type ButtonVariant } from "@/components/button-style";
 import { Text } from "@/components/text";
@@ -7,22 +7,34 @@ export function Button({
   label,
   variant,
   disabled,
+  loading,
   ...rest
 }: Omit<PressableProps, "children" | "style" | "disabled"> & {
   label: string;
   variant?: ButtonVariant;
   disabled?: boolean;
+  loading?: boolean;
 }) {
+  const inactive = disabled === true || loading === true;
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
-      style={({ pressed }) => buttonStyle(variant, { pressed, disabled }).container}
+      accessibilityLabel={loading ? label : undefined}
+      accessibilityState={loading ? { busy: true } : undefined}
+      disabled={inactive}
+      style={({ pressed }) =>
+        buttonStyle(variant, { pressed, disabled: disabled === true }).container
+      }
       {...rest}
     >
-      {({ pressed }) => (
-        <Text style={buttonStyle(variant, { pressed, disabled }).label}>{label}</Text>
-      )}
+      {({ pressed }) => {
+        const style = buttonStyle(variant, { pressed, disabled: disabled === true });
+        return loading ? (
+          <ActivityIndicator color={style.label.color} />
+        ) : (
+          <Text style={style.label}>{label}</Text>
+        );
+      }}
     </Pressable>
   );
 }

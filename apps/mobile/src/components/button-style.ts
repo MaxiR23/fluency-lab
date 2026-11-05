@@ -1,15 +1,23 @@
 import type { TextStyle, ViewStyle } from "react-native";
 
-import { borderWidth, colors, fontFamily, fontSize, radius, spacing } from "@/constants/theme";
+import {
+  borderWidth,
+  colors,
+  fontFamily,
+  fontSize,
+  radius,
+  size,
+  spacing,
+} from "@/constants/theme";
 
-export type ButtonVariant = "primary" | "secondary";
+export type ButtonVariant = "primary" | "secondary" | "deep";
 
 type ButtonState = { pressed?: boolean; disabled?: boolean };
 
 type Palette = { background: string; border: string; label: string };
 
 function palette(variant: ButtonVariant, state: ButtonState): Palette {
-  if (variant === "primary") {
+  if (variant === "primary" || variant === "deep") {
     if (state.disabled) {
       return {
         background: colors.surface,
@@ -21,6 +29,13 @@ function palette(variant: ButtonVariant, state: ButtonState): Palette {
       return {
         background: colors.accentPressed,
         border: colors.accentPressed,
+        label: colors.text,
+      };
+    }
+    if (variant === "deep") {
+      return {
+        background: colors.accentDeep,
+        border: colors.accentLine,
         label: colors.text,
       };
     }
@@ -62,7 +77,7 @@ export function buttonStyle(
       borderColor: border,
       borderWidth: borderWidth.thin,
       borderRadius: radius.control,
-      paddingVertical: spacing.md,
+      minHeight: size.control,
       paddingHorizontal: spacing.lg,
       alignItems: "center",
       justifyContent: "center",
