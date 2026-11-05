@@ -5,6 +5,7 @@
 // Tested:
 // - The file name CLAUDE.md is accepted
 // - Claude, Anthropic, Co-Authored-By, Generated with and Claude-Session are rejected
+// - CLAUDE.md.bak and .CLAUDE.md are rejected; ./CLAUDE.md and a sentence ending in CLAUDE.md. are accepted
 // - A message with the file name and an attribution is rejected
 //
 // What is covered:
@@ -51,6 +52,16 @@ describe("no-attribution rule", () => {
     assert.equal(passes("docs(repo): update CLAUDE.mdx"), false);
     assert.equal(passes("docs(repo): update XCLAUDE.md"), false);
     assert.equal(passes("feat(x): add a thing\n\nCLAUDE.md-Session: abc123"), false);
+  });
+
+  it("rejects the file name with a suffix or a leading dot", () => {
+    assert.equal(passes("docs(repo): update CLAUDE.md.bak"), false);
+    assert.equal(passes("docs(repo): update .CLAUDE.md"), false);
+  });
+
+  it("accepts the file name after ./ and at the end of a sentence", () => {
+    assert.equal(passes("docs(repo): update ./CLAUDE.md"), true);
+    assert.equal(passes("docs(repo): we updated CLAUDE.md."), true);
   });
 
   it("rejects a Claude-Session line", () => {

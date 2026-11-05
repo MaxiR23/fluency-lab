@@ -54,12 +54,28 @@ issue_type() {
 }
 
 branch_slug() {
-  # "feat(mobile): bootstrap expo app" -> "bootstrap_expo_app", 5 words max
+  # "feat(mobile): bootstrap expo app" -> "bootstrap-expo-app", 5 words max
   echo "$1" |
     sed -E 's/^[a-z]+(\([^)]*\))?!?:[[:space:]]*//' |
     tr '[:upper:]' '[:lower:]' |
     sed -E 's/[^a-z0-9]+/ /g' |
-    awk '{ n = (NF < 5) ? NF : 5; out = $1; for (i = 2; i <= n; i++) out = out "_" $i; print out }'
+    awk '{ n = (NF < 5) ? NF : 5; out = $1; for (i = 2; i <= n; i++) out = out "-" $i; print out }'
+}
+
+branch_is_valid() {
+  # <type>/<description>, the type one of TYPES and the description not empty.
+  local branch="$1" type description t
+  case "$branch" in
+    */*) ;;
+    *) return 1 ;;
+  esac
+  type="${branch%%/*}"
+  description="${branch#*/}"
+  [ -n "$description" ] || return 1
+  for t in $TYPES; do
+    [ "$type" = "$t" ] && return 0
+  done
+  return 1
 }
 
 is_pushed() {
@@ -137,6 +153,10 @@ prepare() {
   TYPE=$(issue_type "$issue")
   TITLE=$(gh issue view "$issue" --json title -q '.title')
   [ "${TITLE%%[(:]*}" = "$TYPE" ] || die "title type and label differ"
+
+  local slug
+  slug=$(branch_slug "$TITLE")
+  [ -n "$slug" ] || die "the issue title yields an empty branch description"
   git fetch --quiet origin
 
   local branch
@@ -144,13 +164,10 @@ prepare() {
   if [ "$branch" = "main" ]; then
     [ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] ||
       die "main is not up to date with origin/main"
-    branch="w_$(date +%y%m%d)_${TYPE}_$(branch_slug "$TITLE")"
+    branch="${TYPE}/${slug}"
     git switch -c "$branch"
   fi
-  case "$branch" in
-    w_*) ;;
-    *) die "not on main nor on a w_ branch: $branch" ;;
-  esac
+  branch_is_valid "$branch" || die "not on main nor on a <type>/<description> branch: $branch"
 
   local pushed="no" pr="" ahead
   is_pushed "$branch" && pushed="yes"
@@ -229,10 +246,7 @@ publish() {
   commit=$(meta_field Commit)
   mode=$(meta_field Mode)
 
-  case "$branch" in
-    w_*) ;;
-    *) die "not a w_ branch: $branch" ;;
-  esac
+  branch_is_valid "$branch" || die "not a <type>/<description> branch: $branch"
 
   [ "$(git branch --show-current)" = "$branch" ] || die "not on $branch: prepare again"
   [ "$(git rev-parse HEAD)" = "$commit" ] || die "HEAD moved since prepare: prepare again"
@@ -263,14 +277,21 @@ publish() {
   gh pr view "$pr" --json number,title,labels,isDraft,baseRefName,url
 }
 
-[ "$#" -ge 2 ] || usage
-command="$1"
-shift
-case "$command" in
-  prepare) prepare "$@" ;;
-  publish)
-    [ "$#" -eq 1 ] || usage
-    publish "$1"
-    ;;
-  *) usage ;;
-esac
+main() {
+  [ "$#" -ge 2 ] || usage
+  command="$1"
+  shift
+  case "$command" in
+    prepare) prepare "$@" ;;
+    publish)
+      [ "$#" -eq 1 ] || usage
+      publish "$1"
+      ;;
+    *) usage ;;
+  esac
+}
+
+# Sourced by the tests: define the functions, run nothing.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

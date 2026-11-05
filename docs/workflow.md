@@ -22,8 +22,9 @@ Flow for every feature, fix or non-trivial change in this repo.
 
 2. **Create the branch**
    - From updated main: `git checkout main && git pull`
-   - Naming: `w_YYMMDD_type_short_description`, underscores only
-   - Check the date with `date` before naming it
+   - Naming: `<type>/<description>`, for example `feat/login-screen`.
+     The type equals the issue's label; the description is lowercase
+     with hyphens, at most 5 words
    - Or skip this step and work on main without committing:
      `scripts/ship.sh prepare` creates the branch at step 6 with the
      same naming.
@@ -134,8 +135,8 @@ the script decides, not judgment.
 ## Permissions
 
 `.claude/settings.json` is the project's permission set for the loop:
-the gate commands, `pnpm format`, `pnpm exec jest`, `pnpm exec
-commitlint`, `scripts/ship.sh`, `scripts/loop-path.sh`, read-only git
+the gate commands, `pnpm format`, `pnpm exec jest`, `pnpm exec vitest`,
+`pnpm exec commitlint`, `scripts/ship.sh`, `scripts/loop-path.sh`, read-only git
 (`fetch`, `diff`, `status`, `log`, `ls-files`), `gh issue view`,
 `gh issue create`, `gh issue edit`, `gh label list`, `gh pr view` and
 `gh pr list` run without a prompt. Any direct `git push` (the script is

@@ -128,7 +128,8 @@ Only `scripts/ship.sh`, driven by the `ship` skill, creates branches,
 commits, pushes and opens pull requests, and only when the owner
 invokes the skill. Agents never push and never merge.
 
-Branches: `w_<YYMMDD>_<type>_<desc>`. Run `date` before naming one.
+Branches: `<type>/<description>`, the type equal to the issue's label,
+the description lowercase with hyphens, at most 5 words.
 Commits: conventional commits, `type(scope): description`, one line,
 no body. The reasoning goes in the pull request. Pull requests target
 `main`, close their issue with `Closes #N` and are squash merged.
