@@ -9,6 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.maxirebolo.fluencylab",
+      "usesAppleSignIn": true,
       "icon": "./assets/expo.icon"
     },
     "android": {
@@ -35,7 +36,8 @@
           "imageWidth": 76
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true,

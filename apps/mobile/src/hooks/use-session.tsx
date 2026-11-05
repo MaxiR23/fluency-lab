@@ -1,10 +1,17 @@
 import { createContext, type ReactNode, use, useEffect, useReducer } from "react";
 
-import { auth } from "@/auth";
-import type { PasswordResetOutcome } from "@/auth/auth-port";
+import { apple, auth } from "@/auth";
+import { runAppleSignIn } from "@/auth/apple-sign-in";
+import type {
+  AppleSignInOutcome,
+  AuthOutcome,
+  PasswordResetOutcome,
+  ProfileName,
+} from "@/auth/auth-port";
 import {
   canEnterApp,
   initialSessionState,
+  keepsAppleHold,
   keepsResetHold,
   sessionReducer,
   type SessionState,
@@ -17,6 +24,9 @@ type SessionValue = {
   signedIn: boolean;
   confirmPasswordReset: (input: ConfirmInput) => Promise<PasswordResetOutcome>;
   releaseReset: () => void;
+  signInWithApple: () => Promise<AppleSignInOutcome>;
+  retryAppleName: (name: ProfileName) => Promise<AuthOutcome<null>>;
+  releaseApple: () => void;
 };
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -39,11 +49,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return outcome;
   }
 
+  async function signInWithApple(): Promise<AppleSignInOutcome> {
+    dispatch({ type: "apple_started" });
+    const outcome = await runAppleSignIn({ apple, auth });
+    if (!keepsAppleHold(outcome)) {
+      dispatch({ type: "apple_finished" });
+    }
+    return outcome;
+  }
+
+  async function retryAppleName(name: ProfileName): Promise<AuthOutcome<null>> {
+    const outcome = await auth.saveName(name);
+    if (outcome.ok) dispatch({ type: "apple_finished" });
+    return outcome;
+  }
+
   const value: SessionValue = {
     state,
     signedIn: canEnterApp(state),
     confirmPasswordReset,
     releaseReset: () => dispatch({ type: "reset_finished" }),
+    signInWithApple,
+    retryAppleName,
+    releaseApple: () => dispatch({ type: "apple_finished" }),
   };
 
   return <SessionContext value={value}>{children}</SessionContext>;

@@ -347,6 +347,45 @@ describe("signInWithApple", () => {
   });
 });
 
+describe("saveName", () => {
+  const profileName = { fullName: "Ada Lovelace", givenName: "Ada", familyName: "Lovelace" };
+
+  it("sends the three name fields as user data and returns ok", async () => {
+    const { auth, client } = fakeClient();
+
+    expect(await auth.saveName(profileName)).toEqual({ ok: true, value: null });
+    expect(client.updateUser).toHaveBeenCalledWith({
+      data: { full_name: "Ada Lovelace", given_name: "Ada", family_name: "Lovelace" },
+    });
+  });
+
+  it("sends null for a name part Apple left out and returns ok", async () => {
+    const { auth, client } = fakeClient();
+
+    expect(await auth.saveName({ fullName: "Ada", givenName: "Ada", familyName: null })).toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(client.updateUser).toHaveBeenCalledWith({
+      data: { full_name: "Ada", given_name: "Ada", family_name: null },
+    });
+  });
+
+  it("returns unknown when the server refuses the name", async () => {
+    const { auth } = fakeClient({
+      updateUser: async () => ({ error: { name: "AuthApiError", code: "validation_failed" } }),
+    });
+
+    expect(await auth.saveName(profileName)).toEqual({ ok: false, failure: "unknown" });
+  });
+
+  it("returns network when the name cannot reach the server", async () => {
+    const { auth } = fakeClient({ updateUser: async () => ({ error: networkError }) });
+
+    expect(await auth.saveName(profileName)).toEqual({ ok: false, failure: "network" });
+  });
+});
+
 describe("signOut", () => {
   it("returns ok when the session is revoked", async () => {
     const { auth, client } = fakeClient();
@@ -485,6 +524,11 @@ describe("a client that rejects", () => {
       "signInWithApple",
       { signInWithIdToken: boom },
       (a) => a.signInWithApple({ idToken: "t", nonce: "n" }),
+    ],
+    [
+      "saveName",
+      { updateUser: boom },
+      (a) => a.saveName({ fullName: "Ada", givenName: "Ada", familyName: null }),
     ],
     ["signOut", { signOut: boom }, (a) => a.signOut()],
     ["currentSession", { getSession: boom }, (a) => a.currentSession()],

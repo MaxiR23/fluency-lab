@@ -5,7 +5,7 @@
 // Tested:
 // - The reducer over session and reset events
 // - When the app is ready and when a user may enter it
-// - Which reset outcomes keep the guard on hold
+// - Which reset and Apple outcomes keep the guard on hold
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -16,11 +16,12 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import type { AuthSession } from "@/auth/auth-port";
+import type { AppleSignInOutcome, AuthSession } from "@/auth/auth-port";
 import {
   canEnterApp,
   initialSessionState,
   isAppReady,
+  keepsAppleHold,
   keepsResetHold,
   sessionReducer,
   type SessionState,
@@ -39,7 +40,12 @@ function state(overrides: Partial<SessionState>): SessionState {
 
 describe("sessionReducer", () => {
   it("starts loading with no session and no reset", () => {
-    expect(initialSessionState).toEqual({ loaded: false, session: null, resetRunning: false });
+    expect(initialSessionState).toEqual({
+      loaded: false,
+      session: null,
+      resetRunning: false,
+      appleRunning: false,
+    });
   });
 
   it("marks loaded with no session on the first null event", () => {
@@ -48,6 +54,7 @@ describe("sessionReducer", () => {
         loaded: true,
         session: null,
         resetRunning: false,
+        appleRunning: false,
       },
     );
   });
@@ -57,6 +64,7 @@ describe("sessionReducer", () => {
       loaded: true,
       session,
       resetRunning: false,
+      appleRunning: false,
     });
   });
 
@@ -73,6 +81,7 @@ describe("sessionReducer", () => {
       loaded: true,
       session,
       resetRunning: true,
+      appleRunning: false,
     });
   });
 
@@ -81,7 +90,7 @@ describe("sessionReducer", () => {
       type: "session_changed",
       session,
     });
-    expect(next).toEqual({ loaded: true, session, resetRunning: true });
+    expect(next).toEqual({ loaded: true, session, resetRunning: true, appleRunning: false });
   });
 
   it("ends the reset without touching the session", () => {
@@ -89,12 +98,44 @@ describe("sessionReducer", () => {
       sessionReducer(state({ loaded: true, session, resetRunning: true }), {
         type: "reset_finished",
       }),
-    ).toEqual({ loaded: true, session, resetRunning: false });
+    ).toEqual({ loaded: true, session, resetRunning: false, appleRunning: false });
   });
 
   it("ignores a finish with no reset running", () => {
     const before = state({ loaded: true, session });
     expect(sessionReducer(before, { type: "reset_finished" })).toEqual(before);
+  });
+});
+
+describe("sessionReducer, Apple events", () => {
+  it("keeps the session when an Apple sign-in starts", () => {
+    expect(sessionReducer(state({ loaded: true, session }), { type: "apple_started" })).toEqual({
+      loaded: true,
+      session,
+      resetRunning: false,
+      appleRunning: true,
+    });
+  });
+
+  it("records a session that arrives during an Apple sign-in", () => {
+    const next = sessionReducer(state({ loaded: true, appleRunning: true }), {
+      type: "session_changed",
+      session,
+    });
+    expect(next).toEqual({ loaded: true, session, resetRunning: false, appleRunning: true });
+  });
+
+  it("ends the Apple hold without touching the session", () => {
+    expect(
+      sessionReducer(state({ loaded: true, session, appleRunning: true }), {
+        type: "apple_finished",
+      }),
+    ).toEqual({ loaded: true, session, resetRunning: false, appleRunning: false });
+  });
+
+  it("ignores an Apple finish with nothing running", () => {
+    const before = state({ loaded: true, session });
+    expect(sessionReducer(before, { type: "apple_finished" })).toEqual(before);
   });
 });
 
@@ -128,6 +169,27 @@ describe("canEnterApp", () => {
 
   it("is false with no session while a reset runs", () => {
     expect(canEnterApp(state({ loaded: true, resetRunning: true }))).toBe(false);
+  });
+});
+
+describe("canEnterApp, Apple", () => {
+  it("is false with a session while an Apple sign-in runs", () => {
+    expect(canEnterApp(state({ loaded: true, session, appleRunning: true }))).toBe(false);
+  });
+});
+
+describe("keepsAppleHold", () => {
+  it("is true only for name_not_saved", () => {
+    const name = { fullName: "Ada", givenName: "Ada", familyName: null };
+    const outcomes: [AppleSignInOutcome, boolean][] = [
+      [{ status: "signed_in" }, false],
+      [{ status: "canceled" }, false],
+      [{ status: "failed", failure: "network" }, false],
+      [{ status: "name_not_saved", failure: "network", name }, true],
+    ];
+    for (const [outcome, expected] of outcomes) {
+      expect(keepsAppleHold(outcome)).toBe(expected);
+    }
   });
 });
 

@@ -18,7 +18,11 @@ export type SupabaseAuthClient = {
   signInWithIdToken(c: { provider: "apple"; token: string; nonce: string }): Promise<SessionResult>;
   resetPasswordForEmail(email: string): Promise<{ error: LibError }>;
   verifyOtp(p: { email: string; token: string; type: "recovery" }): Promise<SessionResult>;
-  updateUser(a: { password: string }): Promise<{ error: LibError }>;
+  updateUser(
+    a:
+      | { password: string }
+      | { data: { full_name: string; given_name: string | null; family_name: string | null } },
+  ): Promise<{ error: LibError }>;
   signOut(o?: { scope: "local" }): Promise<{ error: LibError }>;
   getSession(): Promise<SessionResult>;
   onAuthStateChange(cb: (event: string, session: LibSession | null) => void): {
@@ -125,6 +129,18 @@ export function createSupabaseAuth(client: SupabaseAuthClient): AuthPort {
             provider: "apple",
             token: input.idToken,
             nonce: input.nonce,
+          }),
+        ),
+      ),
+    saveName: (name) =>
+      guarded(async () =>
+        fromError(
+          await client.updateUser({
+            data: {
+              full_name: name.fullName,
+              given_name: name.givenName,
+              family_name: name.familyName,
+            },
           }),
         ),
       ),

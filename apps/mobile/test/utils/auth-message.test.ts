@@ -15,8 +15,10 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import type { AuthFailure } from "@/auth/auth-port";
+import type { AppleSignInOutcome, AuthFailure } from "@/auth/auth-port";
 import {
+  appleNameFailureMessage,
+  appleSignInView,
   authFailureMessage,
   blocksResetExit,
   missingResetEmailMessage,
@@ -30,6 +32,7 @@ const failures: AuthFailure[] = [
   "email_taken",
   "weak_password",
   "invalid_or_expired_code",
+  "apple_request_failed",
   "network",
   "unknown",
 ];
@@ -69,8 +72,56 @@ describe("authFailureMessage", () => {
     );
   });
 
-  it("gives each of the six failures a different message", () => {
-    expect(new Set(failures.map(authFailureMessage)).size).toBe(6);
+  it("words the Apple request failure", () => {
+    expect(authFailureMessage("apple_request_failed")).toBe(
+      "Apple could not sign you in. Try again.",
+    );
+  });
+
+  it("gives each of the seven failures a different message", () => {
+    expect(new Set(failures.map(authFailureMessage)).size).toBe(7);
+  });
+});
+
+describe("appleSignInView", () => {
+  it("draws nothing for a signed in outcome", () => {
+    expect(appleSignInView({ status: "signed_in" })).toEqual({ kind: "none" });
+  });
+
+  it("draws nothing for a cancel", () => {
+    expect(appleSignInView({ status: "canceled" })).toEqual({ kind: "none" });
+  });
+
+  it("shows the failure's message for a failed Apple sign-in", () => {
+    expect(appleSignInView({ status: "failed", failure: "network" })).toEqual({
+      kind: "message",
+      message: authFailureMessage("network"),
+    });
+  });
+
+  it("does not use the email and password wording for invalid credentials", () => {
+    expect(appleSignInView({ status: "failed", failure: "invalid_credentials" })).toEqual({
+      kind: "message",
+      message: authFailureMessage("apple_request_failed"),
+    });
+  });
+
+  it("keeps the name and says the user is signed in when the name was not saved", () => {
+    const name = { fullName: "Ada Lovelace", givenName: "Ada", familyName: "Lovelace" };
+    const outcome: AppleSignInOutcome = { status: "name_not_saved", failure: "unknown", name };
+    expect(appleSignInView(outcome)).toEqual({
+      kind: "name_not_saved",
+      message: `${authFailureMessage("unknown")} You are signed in, but your name was not saved.`,
+      name,
+    });
+  });
+});
+
+describe("appleNameFailureMessage", () => {
+  it("says the user is signed in but the name was not saved", () => {
+    expect(appleNameFailureMessage("network")).toBe(
+      `${authFailureMessage("network")} You are signed in, but your name was not saved.`,
+    );
   });
 });
 

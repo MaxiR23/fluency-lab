@@ -8,6 +8,7 @@ export type AuthFailure =
   | "email_taken"
   | "weak_password"
   | "invalid_or_expired_code"
+  | "apple_request_failed"
   | "network"
   | "unknown";
 
@@ -35,8 +36,34 @@ export type AuthPort = {
   }): Promise<PasswordResetOutcome>;
   // INFO: nonce is the raw value; the hashed one is what goes to Apple.
   signInWithApple(input: { idToken: string; nonce: string }): Promise<AuthOutcome<AuthSession>>;
+  saveName(name: ProfileName): Promise<AuthOutcome<null>>;
   signOut(): Promise<AuthOutcome<null>>;
   currentSession(): Promise<AuthOutcome<AuthSession | null>>;
   // INFO: returns the unsubscribe function. Fires at once with the current session.
   onSessionChange(listener: (session: AuthSession | null) => void): () => void;
 };
+
+export type ProfileName = {
+  fullName: string;
+  givenName: string | null;
+  familyName: string | null;
+};
+export type AppleFullName = { givenName: string | null; familyName: string | null };
+// INFO: rawNonce is what goes to signInWithApple; its hash already went to Apple.
+export type AppleCredential = {
+  idToken: string;
+  rawNonce: string;
+  fullName: AppleFullName | null;
+};
+export type AppleCredentialOutcome =
+  | { ok: true; value: AppleCredential }
+  | { ok: false; failure: "canceled" | "apple_request_failed" };
+export type ApplePort = {
+  isAvailable(): Promise<AuthOutcome<boolean>>;
+  requestCredential(): Promise<AppleCredentialOutcome>;
+};
+export type AppleSignInOutcome =
+  | { status: "signed_in" }
+  | { status: "canceled" }
+  | { status: "failed"; failure: AuthFailure }
+  | { status: "name_not_saved"; failure: AuthFailure; name: ProfileName };

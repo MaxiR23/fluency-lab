@@ -25,8 +25,8 @@ palette and the Home design are decided (see README.md).
   on the `Hono` expression and `AppType` is exported for the typed
   client (RPC). The workspace package is named `api`, without the
   `@fluency-lab` scope, so `pnpm --filter api` works.
-- Inside `apps/mobile/src/`: `app/` (routes only), `auth/` (the auth port
-  and its adapter), `components/` (shared components), `constants/` (`theme.ts`, the only source of visual values),
+- Inside `apps/mobile/src/`: `app/` (routes only), `auth/` (the auth and Apple
+  ports, their adapters and the Apple sign-in flow), `components/` (shared components), `constants/` (`theme.ts`, the only source of visual values),
   `hooks/` (shared hooks) and `utils/` (pure functions not tied to one
   component).
 - pnpm is the only package manager. Add Expo packages with
