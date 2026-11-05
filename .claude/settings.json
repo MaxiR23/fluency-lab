@@ -48,6 +48,9 @@
     "deny": [
       "Bash(git push:*)",
       "Bash(gh pr merge:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(yarn:*)",
       "Read(./.env)",
       "Read(./.env*.local)"
     ]
