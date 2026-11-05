@@ -1,0 +1,26 @@
+# INFO: git hooks. pre-commit fixes what it can on the staged files,
+# commit-msg checks the message shape, pre-push runs the slow half of
+# the gate. CI runs the whole gate again and is not skippable.
+
+pre-commit:
+  jobs:
+    - name: eslint
+      glob: "*.{js,mjs,cjs,ts,tsx}"
+      run: pnpm exec eslint --fix {staged_files}
+      stage_fixed: true
+    - name: prettier
+      glob: "*.{js,mjs,cjs,ts,tsx,json,md,yml,yaml}"
+      run: pnpm exec prettier --write {staged_files}
+      stage_fixed: true
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: pnpm exec commitlint --edit {1}
+
+pre-push:
+  jobs:
+    - name: typecheck
+      run: pnpm typecheck
+    - name: test
+      run: pnpm test
