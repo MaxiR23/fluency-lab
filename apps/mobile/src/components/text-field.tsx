@@ -1,9 +1,9 @@
-import { StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, TextInput, type TextInputProps, View } from "react-native";
 
 import { hasText } from "@/utils/has-text";
 import { Text } from "@/components/text";
 import { textFieldStyle } from "@/components/text-field-style";
-import { spacing } from "@/constants/theme";
+import { colors, spacing } from "@/constants/theme";
 
 export function TextField({
   label,
@@ -11,7 +11,8 @@ export function TextField({
   onChangeText,
   secure = false,
   error,
-}: {
+  ...rest
+}: Omit<TextInputProps, "style" | "value" | "onChangeText" | "secureTextEntry"> & {
   label: string;
   value: string;
   onChangeText?: (text: string) => void;
@@ -21,9 +22,11 @@ export function TextField({
   const style = textFieldStyle({ hasError: hasText(error) });
   return (
     <View style={styles.container}>
-      <Text variant="muted">{label}</Text>
+      <Text variant="label">{label}</Text>
       <TextInput
         accessibilityLabel={label}
+        placeholderTextColor={colors.textPlaceholder}
+        {...rest}
         value={value}
         onChangeText={onChangeText}
         secureTextEntry={secure}

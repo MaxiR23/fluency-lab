@@ -5,6 +5,7 @@
 // Tested:
 // - The root scripts that start, stop and report the stack, and the pinned CLI
 // - The Apple and email providers in supabase/config.toml
+// - The recovery email template: a code, no link
 // - No supabase-js import in screens or components
 // - The env examples and the ignore rules
 //
@@ -91,6 +92,21 @@ describe("supabase/config.toml", () => {
   it("enables email and password sign-in", () => {
     assert.match(section(toml, "auth"), /^enable_signup = true$/m);
     assert.match(section(toml, "auth.email"), /^enabled = true$/m);
+  });
+});
+
+describe("the recovery email template", () => {
+  it("sets the recovery subject and template path", () => {
+    const recovery = section(read("supabase/config.toml"), "auth.email.template.recovery");
+    assert.match(recovery, /^subject = "Your Fluency Lab reset code"$/m);
+    assert.match(recovery, /^content_path = "\.\/supabase\/templates\/recovery\.html"$/m);
+  });
+
+  it("has a recovery template with the code and no link", () => {
+    const html = read("supabase/templates/recovery.html");
+    assert.match(html, /\{\{ \.Token \}\}/);
+    assert.doesNotMatch(html, /ConfirmationURL/);
+    assert.doesNotMatch(html, /href=/);
   });
 });
 

@@ -8,8 +8,9 @@ plan is optional; free practice is the default.
 ## Status
 
 Expo project in a pnpm monorepo. The design layer exists (tokens and
-base components); no screen is built yet. The screen map, the palette
-and the Home design are decided.
+base components); email sign-in, sign-up, password reset and a Home
+placeholder are built, the other screens are not. The screen map, the
+palette and the Home design are decided.
 
 ## Decided
 
@@ -68,14 +69,16 @@ update the mobile URL when the network changes. `SUPABASE_URL` in `apps/api`
 stays on `127.0.0.1` because the token's `iss` is always
 `http://127.0.0.1:54321/auth/v1`. No other key of the status output goes into
 a mobile env file or a doc. Read the emails the stack sends in Mailpit at
-`http://127.0.0.1:54324`.
+`http://127.0.0.1:54324`. The reset email template is
+`supabase/templates/recovery.html`; restart the stack (`pnpm supabase:stop`,
+then `pnpm supabase:start`) after changing it.
 
 ## Layout
 
     apps/mobile        the Expo app; routes in src/app/
     apps/api           the Hono backend (Node); routes in src/app.ts
     packages/shared    types and pure logic shared by the app and the backend
-    supabase/          local Supabase config (config.toml)
+    supabase/          local Supabase config (config.toml) and email templates
     scripts/           repo scripts and their tests
 
 `apps/api` has `GET /health` and `GET /me` (the user of a valid Supabase
@@ -105,18 +108,19 @@ progress.
 
 ## Palette
 
-| Token          | Value     | Use                         |
-| -------------- | --------- | --------------------------- |
-| background     | `#000000` | screen                      |
-| surface        | `#141414` | cards                       |
-| border         | `#262626` | card borders, dividers      |
-| text           | `#F5F5F5` | primary text                |
-| text-muted     | `#A3A3A3` | secondary text              |
-| accent         | `#6DA5C0` | tags, links, active item    |
-| accent-deep    | `#072E33` | highlighted card background |
-| accent-line    | `#0C4A50` | highlighted card border     |
-| accent-pressed | `#0C7075` | pressed accent              |
-| error          | `#F87171` | error text and borders      |
+| Token            | Value     | Use                                                             |
+| ---------------- | --------- | --------------------------------------------------------------- |
+| background       | `#000000` | screen                                                          |
+| surface          | `#141414` | cards, input background                                         |
+| border           | `#262626` | card borders, dividers                                          |
+| text             | `#F5F5F5` | primary text                                                    |
+| text-muted       | `#A3A3A3` | secondary text                                                  |
+| text-placeholder | `#737373` | input placeholder                                               |
+| accent           | `#6DA5C0` | tags, links, active item                                        |
+| accent-deep      | `#072E33` | highlighted card background, Logo badge, deep button background |
+| accent-line      | `#0C4A50` | highlighted card border, Logo badge border, deep button border  |
+| accent-pressed   | `#0C7075` | pressed accent                                                  |
+| error            | `#F87171` | error text and borders                                          |
 
 ## Rules
 

@@ -14,8 +14,9 @@
 
 import { describe, expect, it } from "@jest/globals";
 
+import { textStyle } from "@/components/text-style";
 import { textFieldStyle } from "@/components/text-field-style";
-import { borderWidth, colors, fontSize, radius } from "@/constants/theme";
+import { borderWidth, colors, radius, size, spacing } from "@/constants/theme";
 
 describe("textFieldStyle", () => {
   it("uses the border color when there is no error", () => {
@@ -25,8 +26,7 @@ describe("textFieldStyle", () => {
   it("uses the error color on the border and the message when there is an error", () => {
     const { input, error } = textFieldStyle({ hasError: true });
     expect(input.borderColor).toBe(colors.error);
-    expect(error.color).toBe(colors.error);
-    expect(error.fontSize).toBe(fontSize.small);
+    expect(error).toEqual(textStyle("error"));
   });
 
   it("keeps the control radius and thickness with and without an error", () => {
@@ -35,5 +35,12 @@ describe("textFieldStyle", () => {
       expect(input.borderRadius).toBe(radius.control);
       expect(input.borderWidth).toBe(borderWidth.thin);
     }
+  });
+
+  it("gives the input the control min height and the side padding", () => {
+    const { input } = textFieldStyle({ hasError: false });
+    expect(input.minHeight).toBe(size.control);
+    expect(input.paddingVertical).toBe(0);
+    expect(input.paddingHorizontal).toBe(spacing.md);
   });
 });

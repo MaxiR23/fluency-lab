@@ -38,4 +38,14 @@ describe("Screen", () => {
       colors.background,
     );
   });
+
+  it("passes the edges to the safe area when it gets them", async () => {
+    await render(<Screen testID="screen" edges={["left", "right"]} />);
+    expect(screen.getByTestId("screen").props.edges).toEqual({
+      top: "off",
+      bottom: "off",
+      left: "additive",
+      right: "additive",
+    });
+  });
 });

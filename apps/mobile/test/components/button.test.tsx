@@ -63,4 +63,43 @@ describe("Button", () => {
     await fireEvent.press(screen.getByRole("button", { disabled: true }));
     expect(onPress).not.toHaveBeenCalled();
   });
+
+  it("draws the deep background when asked", async () => {
+    await render(<Button label="Go" variant="deep" />);
+    const style = StyleSheet.flatten(screen.getByRole("button").props.style);
+    expect(style.backgroundColor).toBe(colors.accentDeep);
+    expect(style.borderColor).toBe(colors.accentLine);
+  });
+
+  it("shows a spinner in place of the label while loading", async () => {
+    await render(<Button label="Go" loading />);
+    expect(screen.queryByText("Go")).toBeNull();
+    const root = screen.toJSON();
+    if (root === null || Array.isArray(root)) {
+      throw new Error("expected a single root");
+    }
+    const child = root.children?.[0];
+    if (child === undefined || typeof child === "string") {
+      throw new Error("expected a spinner element");
+    }
+    expect(child.type).toBe("ActivityIndicator");
+    expect(child.props.color).toBe(buttonStyle("primary").label.color);
+  });
+
+  it("keeps its name while loading", async () => {
+    await render(<Button label="Go" loading />);
+    expect(screen.getByRole("button", { name: "Go" })).toBeTruthy();
+  });
+
+  it("reports itself busy and disabled while loading", async () => {
+    await render(<Button label="Go" loading />);
+    expect(screen.getByRole("button", { name: "Go", busy: true, disabled: true })).toBeTruthy();
+  });
+
+  it("does not call onPress while loading", async () => {
+    const onPress = jest.fn();
+    await render(<Button label="Go" loading onPress={onPress} />);
+    await fireEvent.press(screen.getByRole("button", { name: "Go" }));
+    expect(onPress).not.toHaveBeenCalled();
+  });
 });

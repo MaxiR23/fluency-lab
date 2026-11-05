@@ -1,6 +1,15 @@
 import type { TextStyle } from "react-native";
 
-import { borderWidth, colors, fontFamily, fontSize, radius, spacing } from "@/constants/theme";
+import { textStyle } from "@/components/text-style";
+import {
+  borderWidth,
+  colors,
+  fontFamily,
+  fontSize,
+  radius,
+  size,
+  spacing,
+} from "@/constants/theme";
 
 export function textFieldStyle({ hasError }: { hasError: boolean }): {
   input: TextStyle;
@@ -12,14 +21,13 @@ export function textFieldStyle({ hasError }: { hasError: boolean }): {
       borderColor: hasError ? colors.error : colors.border,
       borderWidth: borderWidth.thin,
       borderRadius: radius.control,
-      padding: spacing.md,
+      minHeight: size.control,
+      paddingVertical: 0,
+      paddingHorizontal: spacing.md,
       color: colors.text,
       fontFamily: fontFamily.regular,
       fontSize: fontSize.body,
     },
-    error: {
-      color: colors.error,
-      fontSize: fontSize.small,
-    },
+    error: textStyle("error"),
   };
 }
