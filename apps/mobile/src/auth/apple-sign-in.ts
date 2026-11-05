@@ -8,11 +8,11 @@ export async function runAppleSignIn(ports: {
   const credential = await ports.apple.requestCredential();
   if (!credential.ok) {
     if (credential.failure === "canceled") return { status: "canceled" };
-    return { status: "failed", failure: credential.failure };
+    return { status: "failed", failure: credential.failure, cause: credential.cause };
   }
   const { idToken, rawNonce, fullName } = credential.value;
   const signedIn = await ports.auth.signInWithApple({ idToken, nonce: rawNonce });
-  if (!signedIn.ok) return { status: "failed", failure: signedIn.failure };
+  if (!signedIn.ok) return { status: "failed", failure: signedIn.failure, cause: signedIn.cause };
   const name = appleProfileName(fullName);
   if (name === null) return { status: "signed_in" };
   const saved = await ports.auth.saveName(name);

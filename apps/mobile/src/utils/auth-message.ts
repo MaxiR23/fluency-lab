@@ -77,7 +77,7 @@ export function blocksResetExit(running: boolean, action: ResetFailureAction): b
 
 export type AppleSignInView =
   | { kind: "none" }
-  | { kind: "message"; message: string }
+  | { kind: "message"; message: string; cause?: FailureCause }
   | { kind: "name_not_saved"; message: string; name: ProfileName };
 
 export function appleNameFailureMessage(failure: AuthFailure): string {
@@ -97,7 +97,11 @@ export function appleSignInView(outcome: AppleSignInOutcome): AppleSignInView {
     case "canceled":
       return { kind: "none" };
     case "failed":
-      return { kind: "message", message: appleFailureMessage(outcome.failure) };
+      return {
+        kind: "message",
+        message: appleFailureMessage(outcome.failure),
+        cause: outcome.cause,
+      };
     case "name_not_saved":
       return {
         kind: "name_not_saved",

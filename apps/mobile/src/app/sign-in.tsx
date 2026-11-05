@@ -54,7 +54,7 @@ export default function SignIn() {
     const outcome = await session.signInWithApple();
     setBusy(null);
     const view = appleSignInView(outcome);
-    if (view.kind === "message") setFailure({ message: view.message });
+    if (view.kind === "message") setFailure({ message: view.message, cause: view.cause });
     if (view.kind === "name_not_saved") setNameFailure({ message: view.message, name: view.name });
   }
 

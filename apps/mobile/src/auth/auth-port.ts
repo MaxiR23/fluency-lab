@@ -68,7 +68,8 @@ export type AppleCredential = {
 };
 export type AppleCredentialOutcome =
   | { ok: true; value: AppleCredential }
-  | { ok: false; failure: "canceled" | "apple_request_failed" };
+  | { ok: false; failure: "canceled" }
+  | { ok: false; failure: "apple_request_failed"; cause?: FailureCause };
 export type ApplePort = {
   isAvailable(): Promise<AuthOutcome<boolean>>;
   requestCredential(): Promise<AppleCredentialOutcome>;
@@ -76,5 +77,5 @@ export type ApplePort = {
 export type AppleSignInOutcome =
   | { status: "signed_in" }
   | { status: "canceled" }
-  | { status: "failed"; failure: AuthFailure }
+  | { status: "failed"; failure: AuthFailure; cause?: FailureCause }
   | { status: "name_not_saved"; failure: AuthFailure; name: ProfileName };

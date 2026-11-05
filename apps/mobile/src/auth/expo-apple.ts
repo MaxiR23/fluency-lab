@@ -4,6 +4,7 @@ import type {
   ApplePort,
   AuthOutcome,
 } from "@/auth/auth-port";
+import { describeAuthCause } from "@/utils/auth-error";
 import { createAppleNonce } from "@/utils/apple-sign-in";
 
 function isCancel(thrown: unknown): boolean {
@@ -51,7 +52,7 @@ export function createExpoApple<Scope>(deps: {
     } catch (thrown) {
       // INFO: a cancel is the user's choice, so it is its own outcome and not a failure.
       if (isCancel(thrown)) return { ok: false, failure: "canceled" };
-      return { ok: false, failure: "apple_request_failed" };
+      return { ok: false, failure: "apple_request_failed", cause: describeAuthCause(thrown) };
     }
   }
 

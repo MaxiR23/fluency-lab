@@ -10,7 +10,7 @@
 // - Validation, the request, its busy state and each failure message
 // - The guard: signed in users skip Login
 // - The links to Create account and to the password reset
-// - The development cause line under the failure
+// - The development cause line under the email and the Apple failure, and none outside development
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -28,6 +28,9 @@ import { appleNameFailureMessage, authFailureMessage } from "@/utils/auth-messag
 import { emitSession, fakeApple, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { generatedSecret } from "../helpers/generated-secret";
 import { renderApp } from "../helpers/render-app";
+import { setDev } from "../helpers/set-dev";
+
+const savedDev = __DEV__;
 
 jest.mock("expo-font", () => ({ useFonts: jest.fn(() => [true, null]) }));
 jest.mock("expo-splash-screen", () => ({
@@ -102,6 +105,7 @@ describe("Login screen", () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    setDev(savedDev);
   });
 
   it("draws every text of the approved Login", async () => {
@@ -179,7 +183,50 @@ describe("Login screen", () => {
     await pressApple();
     expect(screen).toHavePathname("/sign-in");
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Error")).toBeNull();
     expect(fakeAuth.signInWithApple).not.toHaveBeenCalled();
+  });
+
+  it("draws the cause line under the Apple failure in development", async () => {
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue(appleCredential);
+    fakeAuth.signInWithApple.mockResolvedValue({
+      ok: false,
+      failure: "network",
+      cause: networkCause,
+    });
+    await renderApp("/sign-in", null);
+    await pressApple();
+    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText(causeLine)).toBeTruthy();
+  });
+
+  it("draws the cause line of an Apple library failure in development", async () => {
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue({
+      ok: false,
+      failure: "apple_request_failed",
+      cause: { name: "Error", detail: null },
+    });
+    await renderApp("/sign-in", null);
+    await pressApple();
+    expect(screen.getByText(authFailureMessage("apple_request_failed"))).toBeTruthy();
+    expect(screen.getByText("Error")).toBeTruthy();
+  });
+
+  it("draws only the Apple failure message outside development", async () => {
+    setDev(false);
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue(appleCredential);
+    fakeAuth.signInWithApple.mockResolvedValue({
+      ok: false,
+      failure: "network",
+      cause: networkCause,
+    });
+    await renderApp("/sign-in", null);
+    await pressApple();
+    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
+    expect(screen.queryByText(/AuthRetryableFetchError/)).toBeNull();
   });
 
   it("shows the Apple failure message and stays on Login", async () => {
