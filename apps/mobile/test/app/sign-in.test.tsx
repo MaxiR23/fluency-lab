@@ -10,7 +10,7 @@
 // - Validation, the request, its busy state and each failure message
 // - The guard: signed in users skip Login
 // - The links to Create account and to the password reset
-// - The development cause line under the email and the Apple failure, and none outside development
+// - The development cause line under the email, the Apple and the name failure, with the Apple error code, and none outside development
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -24,6 +24,7 @@ import { act, fireEvent, screen } from "@testing-library/react-native";
 import { router } from "expo-router";
 import { Platform } from "react-native";
 
+import type { FailureCause } from "@/auth/auth-port";
 import { appleNameFailureMessage, authFailureMessage } from "@/utils/auth-message";
 import { emitSession, fakeApple, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { generatedSecret } from "../helpers/generated-secret";
@@ -76,11 +77,11 @@ async function pressApple() {
   await fireEvent.press(await screen.findByTestId("apple-button"));
 }
 
-async function startNameFailure() {
+async function startNameFailure(cause?: FailureCause) {
   appleAvailable();
   fakeApple.requestCredential.mockResolvedValue(appleCredential);
   fakeAuth.signInWithApple.mockResolvedValue({ ok: true, value: fakeSession() });
-  fakeAuth.saveName.mockResolvedValue({ ok: false, failure: "network" });
+  fakeAuth.saveName.mockResolvedValue({ ok: false, failure: "network", cause });
   await renderApp("/sign-in", null);
   await pressApple();
   await act(async () => emitSession(fakeSession()));
@@ -311,6 +312,64 @@ describe("Login screen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
     expect(screen.getByText(appleNameFailureMessage("unknown"))).toBeTruthy();
     expect(screen).toHavePathname("/sign-in");
+  });
+
+  it("draws the cause line under the name failure in development", async () => {
+    await startNameFailure(networkCause);
+    expect(screen.getByText(appleNameFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText(causeLine)).toBeTruthy();
+  });
+
+  it("draws the cause of the failed Try again under the name failure", async () => {
+    await startNameFailure();
+    fakeAuth.saveName.mockResolvedValue({
+      ok: false,
+      failure: "unknown",
+      cause: { name: "AuthApiError", detail: null },
+    });
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByText(appleNameFailureMessage("unknown"))).toBeTruthy();
+    expect(screen.getByText("AuthApiError")).toBeTruthy();
+  });
+
+  it("draws only the name failure message outside development", async () => {
+    setDev(false);
+    await startNameFailure(networkCause);
+    expect(screen.getByText(appleNameFailureMessage("network"))).toBeTruthy();
+    expect(screen.queryByText(/AuthRetryableFetchError/)).toBeNull();
+  });
+
+  it("draws the name failure as one alert", async () => {
+    await startNameFailure();
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    expect(screen.getByText(appleNameFailureMessage("network"))).toBeTruthy();
+  });
+
+  it("draws the Apple library error code in the cause line in development", async () => {
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue({
+      ok: false,
+      failure: "apple_request_failed",
+      cause: { name: "Error", detail: null, code: "ERR_REQUEST_FAILED" },
+    });
+    await renderApp("/sign-in", null);
+    await pressApple();
+    expect(screen.getByText("Error (ERR_REQUEST_FAILED)")).toBeTruthy();
+  });
+
+  it("draws no Apple error code outside development", async () => {
+    setDev(false);
+    appleAvailable();
+    fakeApple.requestCredential.mockResolvedValue({
+      ok: false,
+      failure: "apple_request_failed",
+      cause: { name: "Error", detail: null, code: "ERR_REQUEST_FAILED" },
+    });
+    await renderApp("/sign-in", null);
+    await pressApple();
+    expect(screen.getByText(authFailureMessage("apple_request_failed"))).toBeTruthy();
+    expect(screen.queryByText(/ERR_REQUEST_FAILED/)).toBeNull();
   });
 
   it("moves to Home without the name on Continue", async () => {

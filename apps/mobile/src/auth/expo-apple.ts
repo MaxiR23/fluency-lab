@@ -52,7 +52,11 @@ export function createExpoApple<Scope>(deps: {
     } catch (thrown) {
       // INFO: a cancel is the user's choice, so it is its own outcome and not a failure.
       if (isCancel(thrown)) return { ok: false, failure: "canceled" };
-      return { ok: false, failure: "apple_request_failed", cause: describeAuthCause(thrown) };
+      return {
+        ok: false,
+        failure: "apple_request_failed",
+        cause: describeAuthCause(thrown, { code: true }),
+      };
     }
   }
 

@@ -5,7 +5,8 @@
 // Tested:
 // - A library error maps to one typed failure the screen can branch on
 // - A failure keeps the error name and, for transport failures, the redacted message
-// - The cause never holds a token, key, password, email or request body
+// - The cause never holds a token, key, password, email or request body, in the detail or the code
+// - The library error code, only when the caller asks and only as a plain code with no secret
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -145,6 +146,95 @@ describe("describeAuthCause", () => {
       "invalid_credentials",
     );
     expect(toAuthFailure("boom")).toBe("unknown");
+  });
+});
+
+describe("describeAuthCause code", () => {
+  const asked = { code: true };
+  const withCode = (code: unknown) => Object.assign(new Error("x"), { code });
+  const keptNone = (code: unknown) => {
+    const cause = describeAuthCause(withCode(code), asked);
+    expect("code" in cause).toBe(false);
+    return cause;
+  };
+
+  it("keeps the code of an Apple library error when asked", () => {
+    expect(describeAuthCause(withCode("ERR_REQUEST_FAILED"), asked)).toStrictEqual({
+      name: "Error",
+      detail: null,
+      code: "ERR_REQUEST_FAILED",
+    });
+  });
+
+  it("keeps no code when not asked, even if the error has one", () => {
+    expect(describeAuthCause(withCode("ERR_REQUEST_FAILED"))).toStrictEqual({
+      name: "Error",
+      detail: null,
+    });
+  });
+
+  it("keeps no code from a Supabase error by default", () => {
+    expect(
+      describeAuthCause(new AuthApiError("Invalid login", 400, "invalid_credentials")),
+    ).toStrictEqual({ name: "AuthApiError", detail: null });
+  });
+
+  it("keeps no code when the error has none", () => {
+    expect(describeAuthCause(new Error("boom"), asked)).toStrictEqual({
+      name: "Error",
+      detail: null,
+    });
+  });
+
+  it("keeps no code that is not a string", () => {
+    keptNone(1001);
+    keptNone({ a: 1 });
+  });
+
+  it("keeps no code that holds an email", () => {
+    expect(JSON.stringify(keptNone("name@email.com"))).not.toContain("name@email.com");
+  });
+
+  it("keeps no code that holds a token", () => {
+    const jwt = `eyJ${generatedSecret("a")}.${generatedSecret("b")}.${generatedSecret("c")}`;
+    expect(JSON.stringify(keptNone(jwt))).not.toContain(jwt);
+  });
+
+  it("keeps no code that holds a generated secret", () => {
+    const secret = generatedSecret("password");
+    expect(JSON.stringify(keptNone(secret))).not.toContain(secret);
+  });
+
+  it("keeps no code that holds a key, a labeled value or a body", () => {
+    keptNone(`sk-${"a1".repeat(16)}`);
+    keptNone("password=abc");
+    keptNone('{"password":"x"}');
+  });
+
+  it("keeps no long opaque code with a digit", () => {
+    keptNone(`A${"1b".repeat(12)}`);
+  });
+
+  it("keeps a code of exactly 64 characters with no digit", () => {
+    expect(describeAuthCause(withCode("A".repeat(64)), asked).code).toBe("A".repeat(64));
+  });
+
+  it("keeps no code of 65 characters", () => {
+    keptNone("A".repeat(65));
+  });
+
+  it("keeps a 23 character code with a digit", () => {
+    const code = `A${"1".repeat(22)}`;
+    expect(describeAuthCause(withCode(code), asked).code).toBe(code);
+  });
+
+  it("keeps no 24 character code with a digit", () => {
+    keptNone(`A${"1".repeat(23)}`);
+  });
+
+  it("keeps no code from a thrown string or null", () => {
+    expect(describeAuthCause("boom", asked)).toStrictEqual({ name: "unknown", detail: null });
+    expect(describeAuthCause(null, asked)).toStrictEqual({ name: "unknown", detail: null });
   });
 });
 

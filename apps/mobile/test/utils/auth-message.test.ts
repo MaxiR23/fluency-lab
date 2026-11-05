@@ -6,6 +6,7 @@
 // - One message per failure
 // - What each failed reset step tells the user and offers
 // - The development line that shows the cause under a failure
+// - The library error code in the development line, and nothing outside development
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -144,6 +145,19 @@ describe("appleSignInView", () => {
   });
 });
 
+describe("appleSignInView name cause", () => {
+  it("carries the cause of a name that was not saved", () => {
+    const name = { fullName: "Ada Lovelace", givenName: "Ada", familyName: "Lovelace" };
+    const cause = { name: "AuthApiError", detail: null };
+    expect(appleSignInView({ status: "name_not_saved", failure: "unknown", name, cause })).toEqual({
+      kind: "name_not_saved",
+      message: appleNameFailureMessage("unknown"),
+      name,
+      cause,
+    });
+  });
+});
+
 describe("appleNameFailureMessage", () => {
   it("says the user is signed in but the name was not saved", () => {
     expect(appleNameFailureMessage("network")).toBe(
@@ -161,6 +175,22 @@ describe("failureCauseLine", () => {
 
   it("shows only the name when there is no detail", () => {
     expect(failureCauseLine({ name: "AuthApiError", detail: null }, true)).toBe("AuthApiError");
+  });
+
+  it("shows the name and the code when there is no detail", () => {
+    expect(
+      failureCauseLine({ name: "Error", detail: null, code: "ERR_REQUEST_FAILED" }, true),
+    ).toBe("Error (ERR_REQUEST_FAILED)");
+  });
+
+  it("shows the name, the code and the detail", () => {
+    expect(failureCauseLine({ name: "Error", detail: "offline", code: "ERR_X" }, true)).toBe(
+      "Error (ERR_X): offline",
+    );
+  });
+
+  it("returns null outside development even with a code", () => {
+    expect(failureCauseLine({ name: "Error", detail: "offline", code: "ERR_X" }, false)).toBeNull();
   });
 
   it("returns null when there is no cause", () => {

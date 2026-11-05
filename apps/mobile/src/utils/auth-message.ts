@@ -33,7 +33,8 @@ export function authFailureView(outcome: {
 // INFO: dev is a parameter so the production branch is testable; the component passes __DEV__.
 export function failureCauseLine(cause: FailureCause | undefined, dev: boolean): string | null {
   if (!dev || cause === undefined) return null;
-  return cause.detail === null ? cause.name : `${cause.name}: ${cause.detail}`;
+  const head = cause.code === undefined ? cause.name : `${cause.name} (${cause.code})`;
+  return cause.detail === null ? head : `${head}: ${cause.detail}`;
 }
 
 export type ResetFailureAction = "retry" | "request_new_code" | "continue";
@@ -78,7 +79,7 @@ export function blocksResetExit(running: boolean, action: ResetFailureAction): b
 export type AppleSignInView =
   | { kind: "none" }
   | { kind: "message"; message: string; cause?: FailureCause }
-  | { kind: "name_not_saved"; message: string; name: ProfileName };
+  | { kind: "name_not_saved"; message: string; name: ProfileName; cause?: FailureCause };
 
 export function appleNameFailureMessage(failure: AuthFailure): string {
   return `${authFailureMessage(failure)} You are signed in, but your name was not saved.`;
@@ -107,6 +108,7 @@ export function appleSignInView(outcome: AppleSignInOutcome): AppleSignInView {
         kind: "name_not_saved",
         message: appleNameFailureMessage(outcome.failure),
         name: outcome.name,
+        cause: outcome.cause,
       };
   }
 }

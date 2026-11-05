@@ -16,6 +16,7 @@ export async function runAppleSignIn(ports: {
   const name = appleProfileName(fullName);
   if (name === null) return { status: "signed_in" };
   const saved = await ports.auth.saveName(name);
-  if (!saved.ok) return { status: "name_not_saved", failure: saved.failure, name };
+  if (!saved.ok)
+    return { status: "name_not_saved", failure: saved.failure, name, cause: saved.cause };
   return { status: "signed_in" };
 }
