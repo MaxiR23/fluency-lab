@@ -28,6 +28,11 @@ Flow for every feature, fix or non-trivial change in this repo.
    - Or skip this step and work on main without committing:
      `scripts/ship.sh prepare` creates the branch at step 6 with the
      same naming.
+   - If two issues generate the same branch name (same type and same
+     first five words of the description), `scripts/ship.sh prepare`
+     stops, because `git switch -c` cannot create a branch that already
+     exists. Resolve it by changing the issue title before running
+     `prepare`.
 
 3. **Implement**
    - Through the agent loop, driven by an orchestrator that dispatches
