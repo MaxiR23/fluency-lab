@@ -5,9 +5,10 @@
 // Tested:
 // - One message per failure
 // - What each failed reset step tells the user and offers
+// - The development line that shows the cause under a failure
 //
 // What is covered:
-// - Normal case, edges
+// - Normal case, empty case, edges
 //
 // Run with: pnpm exec jest apps/mobile/test/utils/auth-message.test.ts
 //
@@ -20,7 +21,9 @@ import {
   appleNameFailureMessage,
   appleSignInView,
   authFailureMessage,
+  authFailureView,
   blocksResetExit,
+  failureCauseLine,
   missingResetEmailMessage,
   resetCodeSentMessage,
   resetFailureView,
@@ -125,7 +128,66 @@ describe("appleNameFailureMessage", () => {
   });
 });
 
+describe("failureCauseLine", () => {
+  it("joins the name and the detail in development", () => {
+    expect(failureCauseLine({ name: "AuthRetryableFetchError", detail: "offline" }, true)).toBe(
+      "AuthRetryableFetchError: offline",
+    );
+  });
+
+  it("shows only the name when there is no detail", () => {
+    expect(failureCauseLine({ name: "AuthApiError", detail: null }, true)).toBe("AuthApiError");
+  });
+
+  it("returns null when there is no cause", () => {
+    expect(failureCauseLine(undefined, true)).toBeNull();
+  });
+
+  it("returns null outside development even with a cause", () => {
+    expect(failureCauseLine({ name: "AuthApiError", detail: "x" }, false)).toBeNull();
+  });
+});
+
+describe("authFailureView", () => {
+  it("pairs the failure message with the cause", () => {
+    const cause = { name: "AuthApiError", detail: null };
+    expect(authFailureView({ failure: "network", cause })).toEqual({
+      message: authFailureMessage("network"),
+      cause,
+    });
+  });
+
+  it("has no cause when the outcome has none", () => {
+    expect(authFailureView({ failure: "unknown" }).cause).toBeUndefined();
+  });
+});
+
 describe("resetFailureView", () => {
+  it("carries the cause of the failed step", () => {
+    const cause = { name: "AuthRetryableFetchError", detail: "offline" };
+    expect(resetFailureView({ ok: false, step: "code", failure: "network", cause }).cause).toEqual(
+      cause,
+    );
+    expect(
+      resetFailureView({
+        ok: false,
+        step: "password",
+        failure: "network",
+        cause,
+        stillSignedIn: false,
+      }).cause,
+    ).toEqual(cause);
+    expect(
+      resetFailureView({
+        ok: false,
+        step: "password",
+        failure: "network",
+        cause,
+        stillSignedIn: true,
+      }).cause,
+    ).toEqual(cause);
+  });
+
   it("keeps the failure's message and offers a retry at step code", () => {
     expect(
       resetFailureView({ ok: false, step: "code", failure: "invalid_or_expired_code" }),

@@ -9,6 +9,7 @@ import { AuthScreen } from "@/components/auth-screen";
 import { Button } from "@/components/button";
 import { Divider } from "@/components/divider";
 import { EmailField } from "@/components/email-field";
+import { FailureMessage } from "@/components/failure-message";
 import { Text } from "@/components/text";
 import { TextField } from "@/components/text-field";
 import { TextLink } from "@/components/text-link";
@@ -21,7 +22,12 @@ import {
   validateCredentials,
   type FieldErrors,
 } from "@/utils/auth-form";
-import { appleNameFailureMessage, appleSignInView, authFailureMessage } from "@/utils/auth-message";
+import {
+  appleNameFailureMessage,
+  appleSignInView,
+  authFailureView,
+  type FailureView,
+} from "@/utils/auth-message";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
@@ -34,7 +40,7 @@ export default function SignIn() {
     { message: string; name: ProfileName } | undefined
   >(undefined);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [failure, setFailure] = useState<string | undefined>(undefined);
+  const [failure, setFailure] = useState<FailureView | undefined>(undefined);
 
   // INFO: the port never rejects; a failed check is a typed value that hides the button.
   useEffect(() => {
@@ -48,7 +54,7 @@ export default function SignIn() {
     const outcome = await session.signInWithApple();
     setBusy(null);
     const view = appleSignInView(outcome);
-    if (view.kind === "message") setFailure(view.message);
+    if (view.kind === "message") setFailure({ message: view.message });
     if (view.kind === "name_not_saved") setNameFailure({ message: view.message, name: view.name });
   }
 
@@ -74,7 +80,7 @@ export default function SignIn() {
     setBusy("email");
     const outcome = await auth.signInWithEmail({ email: normalizeEmail(email), password });
     setBusy(null);
-    if (!outcome.ok) setFailure(authFailureMessage(outcome.failure));
+    if (!outcome.ok) setFailure(authFailureView(outcome));
   }
 
   return (
@@ -133,9 +139,7 @@ export default function SignIn() {
               />
             </View>
             {failure !== undefined ? (
-              <Text variant="error" accessibilityRole="alert">
-                {failure}
-              </Text>
+              <FailureMessage message={failure.message} cause={failure.cause} />
             ) : null}
             <Button
               variant="deep"

@@ -10,6 +10,7 @@
 // - Validation, the request, its busy state and each failure message
 // - The guard: signed in users skip Login
 // - The links to Create account and to the password reset
+// - The development cause line under the failure
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -86,6 +87,13 @@ async function fill(values: { email: string; password: string }) {
   await fireEvent.changeText(screen.getByLabelText("Email"), values.email);
   await fireEvent.changeText(screen.getByLabelText("Password"), values.password);
 }
+
+const networkCause = {
+  name: "AuthRetryableFetchError",
+  detail: "fetch failed: The Internet connection appears to be offline.",
+};
+const causeLine =
+  "AuthRetryableFetchError: fetch failed: The Internet connection appears to be offline.";
 
 describe("Login screen", () => {
   beforeEach(() => {
@@ -385,5 +393,27 @@ describe("Login screen", () => {
     await renderApp("/sign-in", null);
     await fireEvent.press(screen.getByText("Forgot password?"));
     expect(screen).toHavePathname("/forgot-password");
+  });
+
+  it("draws the cause line under the failure in development", async () => {
+    fakeAuth.signInWithEmail.mockResolvedValue({
+      ok: false,
+      failure: "network",
+      cause: networkCause,
+    });
+    await renderApp("/sign-in", null);
+    await fill({ email, password });
+    await fireEvent.press(screen.getByRole("button", { name: "Sign in" }));
+    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText(causeLine)).toBeTruthy();
+  });
+
+  it("draws only the message when the failure has no cause", async () => {
+    fakeAuth.signInWithEmail.mockResolvedValue({ ok: false, failure: "network" });
+    await renderApp("/sign-in", null);
+    await fill({ email, password });
+    await fireEvent.press(screen.getByRole("button", { name: "Sign in" }));
+    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
+    expect(screen.queryByText(/AuthRetryableFetchError/)).toBeNull();
   });
 });

@@ -7,6 +7,7 @@
 // - Validation, the request through the session provider and its busy state
 // - Each failed step: its message, and what the screen offers next
 // - The guard does not move while the confirmation runs
+// - The development cause line under the failure
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -57,6 +58,13 @@ async function submit() {
   await fireEvent.changeText(screen.getByLabelText("New password"), newPassword);
   await fireEvent.press(screen.getByRole("button", { name: "Set new password" }));
 }
+
+const networkCause = {
+  name: "AuthRetryableFetchError",
+  detail: "fetch failed: The Internet connection appears to be offline.",
+};
+const causeLine =
+  "AuthRetryableFetchError: fetch failed: The Internet connection appears to be offline.";
 
 describe("Reset password screen", () => {
   beforeEach(() => {
@@ -286,5 +294,32 @@ describe("Reset password screen", () => {
       await act(async () => router.back());
       expect(screen).toHavePathname("/forgot-password");
     });
+  });
+
+  it("draws the cause line under the failure at step code in development", async () => {
+    fakeAuth.confirmPasswordReset.mockResolvedValue({
+      ok: false,
+      step: "code",
+      failure: "network",
+      cause: networkCause,
+    });
+    await renderApp(url, null);
+    await submit();
+    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText(causeLine)).toBeTruthy();
+  });
+
+  it("draws the cause line under the failure at step password in development", async () => {
+    fakeAuth.confirmPasswordReset.mockResolvedValue({
+      ok: false,
+      step: "password",
+      failure: "network",
+      cause: networkCause,
+      stillSignedIn: false,
+    });
+    await renderApp(url, null);
+    await submit();
+    expect(screen.getByText(/Could not reach the server/)).toBeTruthy();
+    expect(screen.getByText(causeLine)).toBeTruthy();
   });
 });

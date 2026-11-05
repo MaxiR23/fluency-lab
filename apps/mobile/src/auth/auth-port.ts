@@ -12,14 +12,25 @@ export type AuthFailure =
   | "network"
   | "unknown";
 
-export type AuthOutcome<T> = { ok: true; value: T } | { ok: false; failure: AuthFailure };
+// INFO: a safe description of what failed, for development only.
+// detail is set only for transport failures and is already redacted.
+export type FailureCause = { name: string; detail: string | null };
+
+export type AuthOutcome<T> =
+  { ok: true; value: T } | { ok: false; failure: AuthFailure; cause?: FailureCause };
 
 // INFO: step "code" means nothing changed and the code can be retried.
 // Step "password" means the code is spent: a new one must be requested.
 export type PasswordResetOutcome =
   | { ok: true; value: AuthSession }
-  | { ok: false; step: "code"; failure: AuthFailure }
-  | { ok: false; step: "password"; failure: AuthFailure; stillSignedIn: boolean };
+  | { ok: false; step: "code"; failure: AuthFailure; cause?: FailureCause }
+  | {
+      ok: false;
+      step: "password";
+      failure: AuthFailure;
+      cause?: FailureCause;
+      stillSignedIn: boolean;
+    };
 
 export type AuthPort = {
   signInWithEmail(input: { email: string; password: string }): Promise<AuthOutcome<AuthSession>>;
