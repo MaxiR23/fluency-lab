@@ -273,7 +273,13 @@ publish() {
 
   run_gate
 
-  gh label list --json name -q '.[].name' | grep -qx "$label" || die "label $label does not exist"
+  # Read the whole list before matching: grep -q on a pipe exits at the first
+  # match, gh gets SIGPIPE and pipefail turns that into a failure. --limit
+  # because gh label list returns only 30 labels by default; 1000 is well
+  # above any label count this repo will have.
+  local existing
+  existing=$(gh label list --limit 1000 --json name -q '.[].name') || die "could not read the labels"
+  grep -qxF "$label" <<<"$existing" || die "label $label does not exist"
 
   local pr
   pr=$(open_pr_number "$branch")

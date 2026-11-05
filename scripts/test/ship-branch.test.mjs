@@ -16,7 +16,8 @@
 // - prepare on its own branch: stops naming the failed read when ls-remote fails
 // - publish: stops on a w_ branch, an unknown prefix and an empty description,
 //   without pushing; stops without pushing when ls-remote fails, pushes when it
-//   does not
+//   does not; label check passes an existing label near the top of a long list,
+//   stops on a missing label, stops naming the failed read when gh label list fails
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -100,7 +101,9 @@ describe("branch_is_valid", () => {
 // gh answers the label and the title given; git logs every call and reports
 // the current branch given; git ls-remote prints remoteHeads, or fails when
 // lsRemoteFails is set; gh answers the open PR count and number from openPr;
-// pnpm fails, so no real gate runs, unless pnpmPasses is set.
+// pnpm fails, so no real gate runs, unless pnpmPasses is set. gh label list
+// honors --limit and defaults to 30 like the real one; labelBefore puts that
+// many other labels ahead of the label, labelCount after it.
 const runShip = ({
   args,
   branch = "",
@@ -111,6 +114,9 @@ const runShip = ({
   openPr = "",
   lsRemoteFails = false,
   pnpmPasses = false,
+  labelCount = 0,
+  labelBefore = 0,
+  labelListFails = false,
 }) => {
   const dir = mkdtempSync(path.join(tmpdir(), "ship-branch-"));
   try {
@@ -122,6 +128,18 @@ const runShip = ({
     fake(
       "gh",
       `case "$*" in
+  "label list"*)
+    [ -z "$GH_LABEL_FAIL" ] || exit 1
+    limit=30
+    while [ $# -gt 0 ]; do
+      [ "$1" != "--limit" ] || limit="$2"
+      shift
+    done
+    {
+      [ "$GH_LABEL_BEFORE" -eq 0 ] || seq 1 "$GH_LABEL_BEFORE" | sed 's/^/before-/'
+      echo "$GH_LABEL"
+      [ "$GH_LABEL_COUNT" -eq 0 ] || seq 1 "$GH_LABEL_COUNT" | sed 's/^/other-/'
+    } | head -n "$limit" ;;
   *labels*) echo "$GH_LABEL" ;;
   *length*) if [ -n "$GH_PR" ]; then echo 1; else echo 0; fi ;;
   *number*) echo "$GH_PR" ;;
@@ -152,6 +170,9 @@ esac`,
         GIT_BRANCH: branch,
         GH_TITLE: title,
         GH_LABEL: label,
+        GH_LABEL_COUNT: String(labelCount),
+        GH_LABEL_BEFORE: String(labelBefore),
+        GH_LABEL_FAIL: labelListFails ? "1" : "",
         GIT_REMOTE_HEADS: remoteHeads,
         GH_PR: openPr,
         GIT_LS_REMOTE_FAIL: lsRemoteFails ? "1" : "",
@@ -335,6 +356,56 @@ describe("publish", () => {
       pnpmPasses: true,
     });
     assert.match(result.log, /^git push -u origin feat\/x$/m);
+  });
+
+  const labelMeta = (label) => ({
+    ".claude/loop/pr-1.meta": `Title: feat(x): Add Login\nLabel: ${label}\nBranch: feat/x\nCommit: \nMode: create\n`,
+    ".claude/loop/pr-1.body.md": "Closes #1\n\nBody.\n",
+  });
+  const labelRun = (opts) =>
+    runShip({
+      args: "publish 1",
+      branch: "feat/x",
+      title: "feat",
+      pnpmPasses: true,
+      ...opts,
+    });
+
+  it("passes an existing label near the top of a long list, every run", () => {
+    for (let i = 0; i < 5; i++) {
+      const result = labelRun({
+        files: labelMeta("chore"),
+        label: "chore",
+        labelCount: 200000,
+      });
+      assert.doesNotMatch(result.stderr, /label chore|labels/);
+      assert.match(result.log, /^git push -u origin feat\/x$/m);
+    }
+  });
+
+  it("passes an existing label past the 30th, so the read asks for more than the default page", () => {
+    const result = labelRun({
+      files: labelMeta("chore"),
+      label: "chore",
+      labelBefore: 100,
+    });
+    assert.doesNotMatch(result.stderr, /label chore|labels/);
+    assert.match(result.log, /^git push -u origin feat\/x$/m);
+  });
+
+  it("stops on a label that does not exist", () => {
+    const result = labelRun({ files: labelMeta("docs"), label: "chore" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /label docs does not exist/);
+    assert.doesNotMatch(result.log, /push/);
+  });
+
+  it("stops naming the failed read when gh label list fails", () => {
+    const result = labelRun({ files: labelMeta("chore"), label: "chore", labelListFails: true });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /could not read the labels/);
+    assert.doesNotMatch(result.stderr, /does not exist/);
+    assert.doesNotMatch(result.log, /push/);
   });
 
   for (const branch of invalidBranches) {
