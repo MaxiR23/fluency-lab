@@ -57,16 +57,16 @@ progress.
 
 ## Palette
 
-| Token        | Value     | Use                               |
-| ------------ | --------- | --------------------------------- |
-| background   | `#000000` | screen                            |
-| surface      | `#141414` | cards                             |
-| border       | `#262626` | card borders, dividers            |
-| text         | `#F5F5F5` | primary text                      |
-| text-muted   | `#A3A3A3` | secondary text                    |
-| accent       | `#6DA5C0` | tags, links, active item          |
-| accent-deep  | `#072E33` | highlighted card background       |
-| accent-line  | `#0C4A50` | highlighted card border           |
+| Token       | Value     | Use                         |
+| ----------- | --------- | --------------------------- |
+| background  | `#000000` | screen                      |
+| surface     | `#141414` | cards                       |
+| border      | `#262626` | card borders, dividers      |
+| text        | `#F5F5F5` | primary text                |
+| text-muted  | `#A3A3A3` | secondary text              |
+| accent      | `#6DA5C0` | tags, links, active item    |
+| accent-deep | `#072E33` | highlighted card background |
+| accent-line | `#0C4A50` | highlighted card border     |
 
 ## Rules
 

@@ -1,5 +1,5 @@
-import { View } from 'react-native';
+import { View } from "react-native";
 
 export default function Index() {
-  return <View style={{ flex: 1, backgroundColor: '#000000' }} />;
+  return <View style={{ flex: 1, backgroundColor: "#000000" }} />;
 }
