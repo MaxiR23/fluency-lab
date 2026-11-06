@@ -1,5 +1,11 @@
-import { type ComponentRef, useRef } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { useRef } from "react";
+import { StyleSheet } from "react-native";
+import {
+  KeyboardChatScrollView,
+  type KeyboardChatScrollViewRef,
+} from "react-native-keyboard-controller";
+import Animated, { LayoutAnimationConfig } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CorrectionsCard } from "@/components/corrections-card";
 import { MessageBubble } from "@/components/message-bubble";
@@ -8,13 +14,17 @@ import { NewWord } from "@/components/new-word";
 import { TypingIndicator } from "@/components/typing-indicator";
 import { spacing } from "@/constants/theme";
 import type { ChatItem } from "@/utils/chat-items";
+import { chatKeyboardLayout } from "@/utils/chat-keyboard";
+import type { ChatMotion } from "@/utils/chat-motion";
+import { enterTransition } from "@/utils/chat-transitions";
 
-export function MessageList({ items }: { items: ChatItem[] }) {
-  const list = useRef<ComponentRef<typeof ScrollView>>(null);
-  // INFO: the newest message stays in view when the content grows and when the keyboard resizes the list.
+export function MessageList({ items, motion }: { items: ChatItem[]; motion: ChatMotion }) {
+  const list = useRef<KeyboardChatScrollViewRef>(null);
+  const { bottom } = useSafeAreaInsets();
+  // INFO: the newest message stays in view when the content grows; the keyboard lift is the library's.
   const scrollToNewest = () => list.current?.scrollToEnd({ animated: false });
   return (
-    <ScrollView
+    <KeyboardChatScrollView
       ref={list}
       testID="message-list"
       style={styles.list}
@@ -22,25 +32,40 @@ export function MessageList({ items }: { items: ChatItem[] }) {
       keyboardShouldPersistTaps="handled"
       onContentSizeChange={scrollToNewest}
       onLayout={scrollToNewest}
+      offset={chatKeyboardLayout(bottom).listOffset}
     >
-      {items.map((item) => {
-        if (item.kind === "typing") return <TypingIndicator key={item.id} />;
-        if (item.kind === "new_word") return <NewWord key={item.id} word={item.word} />;
-        if (item.kind === "tutor") {
+      <LayoutAnimationConfig skipEntering>
+        {items.map((item) => {
+          if (item.kind === "typing") return <TypingIndicator key={item.id} motion={motion} />;
+          if (item.kind === "new_word") return <NewWord key={item.id} word={item.word} />;
+          if (item.kind === "tutor") {
+            return (
+              <Animated.View
+                key={item.id}
+                style={messageBubbleStyle("tutor").row}
+                entering={enterTransition(motion.enter)}
+              >
+                <MessageBubble role="tutor" text={item.text} />
+              </Animated.View>
+            );
+          }
           return (
-            <View key={item.id} style={messageBubbleStyle("tutor").row}>
-              <MessageBubble role="tutor" text={item.text} />
-            </View>
+            <Animated.View
+              key={item.id}
+              style={messageBubbleStyle("user").row}
+              entering={enterTransition(motion.enter)}
+            >
+              <MessageBubble role="user" text={item.text} />
+              <CorrectionsCard
+                corrections={item.corrections}
+                explanation={item.explanation}
+                entering={enterTransition(motion.enter)}
+              />
+            </Animated.View>
           );
-        }
-        return (
-          <View key={item.id} style={messageBubbleStyle("user").row}>
-            <MessageBubble role="user" text={item.text} />
-            <CorrectionsCard corrections={item.corrections} explanation={item.explanation} />
-          </View>
-        );
-      })}
-    </ScrollView>
+        })}
+      </LayoutAnimationConfig>
+    </KeyboardChatScrollView>
   );
 }
 

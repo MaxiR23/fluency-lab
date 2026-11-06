@@ -43,7 +43,8 @@ export function chatItems(c: Conversation): ChatItem[] {
   if (c.pending !== null) {
     items.push({
       kind: "user",
-      id: "pending",
+      // INFO: the reducer stores the sent message under this id when the reply arrives, so the row is not mounted again.
+      id: `message-${c.messages.length}`,
       text: c.pending,
       corrections: [],
       explanation: null,

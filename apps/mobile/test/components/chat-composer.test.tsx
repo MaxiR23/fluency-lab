@@ -6,6 +6,7 @@
 // - The composer: input and the Send icon button, enabled, disabled or locked
 // - The typed text and the send press are reported
 // - Busy keeps the open input and disables Send
+// - Send scales while pressed, and not with reduce motion on (press null)
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -16,9 +17,25 @@
 
 import { describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
+
+import * as Reanimated from "react-native-reanimated";
 
 import { ChatComposer } from "@/components/chat-composer";
-import { colors } from "@/constants/theme";
+import { colors, motion } from "@/constants/theme";
+import { chatMotion } from "@/utils/chat-motion";
+
+// INFO: Reanimated styles do not advance under jest, so the press is proven by the target
+// Send is animated to: withTiming is wrapped to record it and still return the real value.
+jest.mock("react-native-reanimated", () => {
+  const actual = jest.requireActual<typeof Reanimated>("react-native-reanimated");
+  return {
+    ...actual,
+    __esModule: true,
+    default: actual.default,
+    withTiming: jest.fn(actual.withTiming),
+  };
+});
 
 function composer(props: Partial<React.ComponentProps<typeof ChatComposer>> = {}) {
   return (
@@ -28,6 +45,7 @@ function composer(props: Partial<React.ComponentProps<typeof ChatComposer>> = {}
       onSend={() => {}}
       placeholder="Type here"
       locked={false}
+      press={chatMotion(false).press}
       {...props}
     />
   );
@@ -94,5 +112,35 @@ describe("ChatComposer", () => {
     expect(screen.getByTestId("send-glow")).toBeTruthy();
     await rerender(composer({ value: "" }));
     expect(screen.queryByTestId("send-glow")).toBeNull();
+  });
+
+  it("starts Send at full scale", async () => {
+    await render(composer({ value: "Hello" }));
+    const style = StyleSheet.flatten(screen.getByTestId("send-scale").props.style);
+    expect(style.transform).toEqual([{ scale: 1 }]);
+  });
+
+  it("keeps Send at full scale when pressed with reduce motion on", async () => {
+    await render(composer({ value: "Hello", press: null }));
+    await fireEvent(screen.getByRole("button", { name: "Send" }), "pressIn");
+    const style = StyleSheet.flatten(screen.getByTestId("send-scale").props.style);
+    expect(style.transform).toEqual([{ scale: 1 }]);
+  });
+
+  it("animates Send down to the design's press scale on press in, and back on press out", async () => {
+    const withTiming = jest.mocked(Reanimated.withTiming);
+    withTiming.mockClear();
+    await render(composer({ value: "Hello" }));
+    const send = screen.getByRole("button", { name: "Send" });
+    await fireEvent(send, "pressIn");
+    expect(withTiming.mock.calls.map(([target]) => target)).toEqual([motion.pressScale]);
+    await fireEvent(send, "pressOut");
+    expect(withTiming.mock.calls.map(([target]) => target)).toEqual([motion.pressScale, 1]);
+  });
+
+  it("leaves the bottom padding to the footer", async () => {
+    await render(composer());
+    const row = screen.getByLabelText("Message").parent;
+    expect(StyleSheet.flatten(row?.props.style).paddingBottom).toBeUndefined();
   });
 });

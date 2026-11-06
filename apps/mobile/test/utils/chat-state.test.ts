@@ -4,6 +4,7 @@
 //
 // Tested:
 // - chatView, originTitle, providerLine, noKeyProviderLine, canSend
+// - endPromptTitle, endPromptButtons
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -25,6 +26,8 @@ import {
   chatNotice,
   chatView,
   contextRefresh,
+  endPromptButtons,
+  endPromptTitle,
   noKeyProviderLine,
   originTitle,
   providerLine,
@@ -386,5 +389,34 @@ describe("canSend", () => {
 describe("MAX_MESSAGE_LENGTH", () => {
   it("is the longest message the API saves", () => {
     expect(MAX_MESSAGE_LENGTH).toBe(4000);
+  });
+});
+
+describe("endPromptButtons", () => {
+  it("asks End this session? with Cancel first and End as destructive", () => {
+    const buttons = endPromptButtons(() => {});
+
+    expect(endPromptTitle).toBe("End this session?");
+    expect(buttons.map((button) => [button.text, button.style])).toEqual([
+      ["Cancel", "cancel"],
+      ["End", "destructive"],
+    ]);
+  });
+
+  it("End runs the given end action", () => {
+    const calls: string[] = [];
+    const buttons = endPromptButtons(() => calls.push("end"));
+
+    buttons[1].onPress?.();
+
+    expect(calls).toEqual(["end"]);
+  });
+
+  it("Cancel runs nothing", () => {
+    const calls: string[] = [];
+    const buttons = endPromptButtons(() => calls.push("end"));
+
+    expect(buttons[0].onPress).toBeUndefined();
+    expect(calls).toEqual([]);
   });
 });

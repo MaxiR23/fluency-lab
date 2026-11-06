@@ -1,9 +1,8 @@
 import { Pressable, StyleSheet, View } from "react-native";
 
-import { Button } from "@/components/button";
 import { Icon } from "@/components/icon";
 import { Text } from "@/components/text";
-import { borderWidth, colors, size, spacing } from "@/constants/theme";
+import { borderWidth, colors, radius, size, spacing, strokeWidth } from "@/constants/theme";
 
 export function ChatHeader({
   title,
@@ -35,10 +34,31 @@ export function ChatHeader({
         <Text variant="why">{subtitle}</Text>
       </View>
       {onEnd === undefined ? null : (
-        <Button variant="secondary" small label="End" disabled={endDisabled} onPress={onEnd} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="End session"
+          disabled={endDisabled}
+          hitSlop={spacing.tight}
+          onPress={onEnd}
+          style={({ pressed }) => endStyle({ pressed, disabled: endDisabled === true })}
+        >
+          <Icon
+            name="close"
+            color={endDisabled === true ? colors.textMuted : colors.text}
+            size={size.iconCard}
+            strokeWidth={strokeWidth.action}
+          />
+        </Pressable>
       )}
     </View>
   );
+}
+
+// INFO: the same look the secondary Button drew: dimmed when disabled, accent border pressed.
+function endStyle(state: { pressed: boolean; disabled: boolean }) {
+  if (state.disabled) return [styles.end, { backgroundColor: colors.background }];
+  if (state.pressed) return [styles.end, { borderColor: colors.accentPressed }];
+  return styles.end;
 }
 
 const styles = StyleSheet.create({
@@ -54,5 +74,15 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   back: { width: size.touch, height: size.touch, alignItems: "center", justifyContent: "center" },
+  end: {
+    width: size.badge,
+    height: size.badge,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: borderWidth.thin,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   texts: { flex: 1, gap: spacing.tight },
 });

@@ -18,6 +18,8 @@ import { StyleSheet } from "react-native";
 
 import { CorrectionsCard } from "@/components/corrections-card";
 import { colors } from "@/constants/theme";
+import { chatMotion } from "@/utils/chat-motion";
+import { enterTransition } from "@/utils/chat-transitions";
 
 const corrections = [
   { original: "goed", corrected: "went" },
@@ -58,6 +60,20 @@ describe("CorrectionsCard", () => {
   it("draws nothing for no corrections", async () => {
     await render(<CorrectionsCard corrections={[]} explanation="Ignored." />);
     expect(screen.toJSON()).toBeNull();
+  });
+
+  it("draws nothing for no corrections, with or without an entering animation", async () => {
+    const entering = enterTransition(chatMotion(false).enter);
+    await render(<CorrectionsCard corrections={[]} explanation={null} entering={entering} />);
+    expect(screen.toJSON()).toBeNull();
+  });
+
+  it("draws the card with an entering animation", async () => {
+    const entering = enterTransition(chatMotion(false).enter);
+    await render(
+      <CorrectionsCard corrections={corrections} explanation={null} entering={entering} />,
+    );
+    expect(screen.getByText("2 corrections")).toBeTruthy();
   });
 
   it("omits the explanation line when there is none", async () => {

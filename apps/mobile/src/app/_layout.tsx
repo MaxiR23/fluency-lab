@@ -6,6 +6,7 @@ import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { OnboardingProvider, useOnboarding } from "@/hooks/use-onboarding";
 import { SessionProvider, useSession } from "@/hooks/use-session";
@@ -73,12 +74,14 @@ export default function RootLayout() {
   });
 
   return (
-    <ThemeProvider value={navigationTheme}>
-      <SessionProvider>
-        <OnboardingProvider>
-          <RootNavigator fontsSettled={isFontLoadSettled(loaded, error)} />
-        </OnboardingProvider>
-      </SessionProvider>
-    </ThemeProvider>
+    <KeyboardProvider>
+      <ThemeProvider value={navigationTheme}>
+        <SessionProvider>
+          <OnboardingProvider>
+            <RootNavigator fontsSettled={isFontLoadSettled(loaded, error)} />
+          </OnboardingProvider>
+        </SessionProvider>
+      </ThemeProvider>
+    </KeyboardProvider>
   );
 }

@@ -21,6 +21,7 @@ import {
   fontSize,
   letterSpacing,
   lineHeight,
+  motion,
   radius,
   shadow,
   size,
@@ -118,6 +119,7 @@ describe("theme", () => {
       badgeLarge: 52,
       iconBadgeLarge: 24,
       tag: 28,
+      typingDot: 7,
       messageMaxWidth: "82%",
     });
     expect(strokeWidth).toEqual({ icon: 1.8, action: 2, check: 2.4, send: 1.9 });
@@ -244,8 +246,44 @@ describe("theme", () => {
     expect({
       tight: spacing.tight,
       composerBottom: spacing.composerBottom,
+      composerKeyboard: spacing.composerKeyboard,
+      typingDot: spacing.typingDot,
       panel: spacing.panel,
-    }).toEqual({ tight: 2, composerBottom: 36, panel: 28 });
+    }).toEqual({
+      tight: 2,
+      composerBottom: 36,
+      composerKeyboard: 18,
+      typingDot: 5,
+      panel: 28,
+    });
+  });
+
+  it("holds the typing dot size of the design", () => {
+    expect(size.typingDot).toBe(7);
+  });
+
+  it("holds the chat motion: enter, fade, press and the dot loop", () => {
+    expect(motion).toEqual({
+      enterDuration: 240,
+      enterOffset: 12,
+      fadeDuration: 200,
+      pressDuration: 200,
+      pressScale: 0.9,
+      dotCycle: 1200,
+      dotStagger: 150,
+      dotPeakAt: 0.3,
+      dotSettleAt: 0.6,
+      dotLift: 4,
+      dotRestOpacity: 0.3,
+      easeOut: [0, 0, 0.58, 1],
+      easeInOut: [0.42, 0, 0.58, 1],
+    });
+  });
+
+  it("keeps the dot keyframes inside one cycle", () => {
+    expect(motion.dotPeakAt).toBeGreaterThan(0);
+    expect(motion.dotPeakAt).toBeLessThan(motion.dotSettleAt);
+    expect(motion.dotSettleAt).toBeLessThan(1);
   });
 
   it("holds the floating shadow and the accent glow", () => {

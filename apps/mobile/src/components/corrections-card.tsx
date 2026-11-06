@@ -1,4 +1,5 @@
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
+import Animated, { type FadeInDown } from "react-native-reanimated";
 
 import { Text } from "@/components/text";
 import { borderWidth, colors, radius, spacing } from "@/constants/theme";
@@ -7,14 +8,16 @@ import { correctionsLabel, type Correction } from "@/utils/chat-items";
 export function CorrectionsCard({
   corrections,
   explanation,
+  entering,
 }: {
   corrections: Correction[];
   explanation: string | null;
+  entering?: FadeInDown;
 }) {
   const label = correctionsLabel(corrections.length);
   if (label === null) return null;
   return (
-    <View style={styles.card}>
+    <Animated.View entering={entering} style={styles.card}>
       <Text variant="tabActive">{label}</Text>
       {corrections.map((correction, index) => (
         <Text key={`${index}:${correction.original}>${correction.corrected}`} variant="correction">
@@ -24,7 +27,7 @@ export function CorrectionsCard({
         </Text>
       ))}
       {explanation === null ? null : <Text variant="explanation">{explanation}</Text>}
-    </View>
+    </Animated.View>
   );
 }
 

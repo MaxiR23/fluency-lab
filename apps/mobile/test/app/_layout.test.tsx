@@ -8,6 +8,7 @@
 // - The faces are loaded under the names the theme uses
 // - The root view background is set to the background token when the module loads
 // - The tree is wrapped in a ThemeProvider with the token dark theme
+// - The whole app is wrapped in the keyboard provider
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -69,7 +70,7 @@ describe("RootLayout", () => {
   it("renders nothing and keeps the splash while the fonts load", async () => {
     jest.mocked(useFonts).mockReturnValue([false, null]);
     await render(<RootLayout />);
-    expect(screen.toJSON()).toBeNull();
+    expect(screen.toJSON()).toMatchObject({ type: "KeyboardProvider", children: [] });
     expect(SplashScreen.hide).not.toHaveBeenCalled();
     expect(Stack).not.toHaveBeenCalled();
   });
@@ -105,7 +106,7 @@ describe("RootLayout", () => {
   it("keeps the splash and renders nothing while the session loads, with the fonts loaded", async () => {
     jest.mocked(useFonts).mockReturnValue([true, null]);
     await render(<RootLayout />);
-    expect(screen.toJSON()).toBeNull();
+    expect(screen.toJSON()).toMatchObject({ type: "KeyboardProvider", children: [] });
     expect(SplashScreen.hide).not.toHaveBeenCalled();
     expect(Stack).not.toHaveBeenCalled();
   });
@@ -133,5 +134,11 @@ describe("RootLayout", () => {
     expect(value).toEqual(darkNavigationTheme(DarkTheme));
     expect(value?.colors.background).toBe(colors.background);
     expect(Stack).toHaveBeenCalled();
+  });
+
+  it("wraps the app in the keyboard provider", async () => {
+    jest.mocked(useFonts).mockReturnValue([true, null]);
+    await render(<RootLayout />);
+    expect(JSON.stringify(screen.toJSON())).toContain('"type":"KeyboardProvider"');
   });
 });
