@@ -69,6 +69,7 @@ function palette(variant: ButtonVariant, state: ButtonState): Palette {
 export function buttonStyle(
   variant: ButtonVariant = "primary",
   state: ButtonState = {},
+  options: { compact?: boolean } = {},
 ): { container: ViewStyle; label: TextStyle } {
   const { background, border, label } = palette(variant, state);
   return {
@@ -77,7 +78,7 @@ export function buttonStyle(
       borderColor: border,
       borderWidth: borderWidth.thin,
       borderRadius: radius.control,
-      minHeight: size.control,
+      minHeight: options.compact === true ? size.controlCompact : size.control,
       paddingHorizontal: spacing.lg,
       alignItems: "center",
       justifyContent: "center",

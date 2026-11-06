@@ -115,4 +115,14 @@ describe("buttonStyle", () => {
       expect(buttonStyle(variant).container.minHeight).toBe(size.control);
     }
   });
+
+  it("draws a compact button 48 high", () => {
+    expect(buttonStyle("deep", {}, { compact: true }).container.minHeight).toBe(
+      size.controlCompact,
+    );
+  });
+
+  it("keeps the control height when not compact", () => {
+    expect(buttonStyle("deep", {}, { compact: false }).container.minHeight).toBe(size.control);
+  });
 });

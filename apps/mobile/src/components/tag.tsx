@@ -1,21 +1,13 @@
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 
+import { tagStyle, type TagVariant } from "@/components/tag-style";
 import { Text } from "@/components/text";
-import { colors, radius, spacing } from "@/constants/theme";
 
-export function Tag({ label }: { label: string }) {
+export function Tag({ label, variant }: { label: string; variant?: TagVariant }) {
+  const style = tagStyle(variant);
   return (
-    <View style={styles.tag}>
-      <Text variant="tag">{label}</Text>
+    <View style={style.box}>
+      <Text variant={style.label}>{label}</Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  tag: {
-    backgroundColor: colors.accentTag,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.hair,
-  },
-});

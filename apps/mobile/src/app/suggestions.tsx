@@ -11,8 +11,8 @@ import { colors, spacing } from "@/constants/theme";
 import { useAllSuggestions } from "@/hooks/use-all-suggestions";
 import { dataFailureMessage } from "@/utils/data-message";
 
-function openChat() {
-  router.push("/chat");
+function openChat(topic?: string) {
+  router.push(topic === undefined ? "/chat" : { pathname: "/chat", params: { topic } });
 }
 
 export default function Suggestions() {
@@ -46,7 +46,7 @@ export default function Suggestions() {
                 key={suggestion.id}
                 suggestion={suggestion}
                 layout="list"
-                onPress={openChat}
+                onPress={() => openChat(suggestion.title)}
               />
             ))}
           </View>

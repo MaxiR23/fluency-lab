@@ -1,42 +1,27 @@
-import { router, useIsFocused } from "expo-router";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
+import { ActivityIndicator, KeyboardAvoidingView, StyleSheet, View } from "react-native";
 
 import { Button } from "@/components/button";
 import { ChatComposer } from "@/components/chat-composer";
+import { ChatHeader } from "@/components/chat-header";
+import { ConnectAiCard } from "@/components/connect-ai-card";
 import { FailureMessage } from "@/components/failure-message";
+import { MessageList } from "@/components/message-list";
 import { Screen } from "@/components/screen";
-import { Text } from "@/components/text";
 import { colors, spacing } from "@/constants/theme";
-import { keys } from "@/keys";
-import { chatKeyView, type ChatKeyView } from "@/utils/chat-state";
-import { keyReadFailureMessage } from "@/utils/data-message";
+import { useChat } from "@/hooks/use-chat";
+import { chatTitle, noKeyProviderLine, providerLine } from "@/utils/chat-state";
 
 export default function Chat() {
-  const [view, setView] = useState<ChatKeyView>({ kind: "loading" });
-  const focused = useIsFocused();
-
-  // INFO: read on every focus, so the state updates when the key step goes back here.
-  useEffect(() => {
-    if (!focused) return;
-    let live = true;
-    void keys.hasApiKey().then((outcome) => {
-      if (live) setView(chatKeyView(outcome));
-    });
-    return () => {
-      live = false;
-    };
-  }, [focused]);
-
-  async function retry() {
-    setView({ kind: "loading" });
-    setView(chatKeyView(await keys.hasApiKey()));
-  }
+  const { view, retry } = useChat();
+  const params = useLocalSearchParams<{ topic?: string | string[] }>();
+  const [draft, setDraft] = useState("");
 
   if (view.kind === "loading") {
     return (
       <Screen>
-        <View style={styles.center}>
+        <View style={styles.loading}>
           <ActivityIndicator color={colors.accent} testID="chat-loading" />
         </View>
       </Screen>
@@ -46,41 +31,51 @@ export default function Chat() {
     return (
       <Screen>
         <View style={styles.content}>
-          <FailureMessage message={keyReadFailureMessage} cause={view.cause} />
+          <FailureMessage message={view.message} cause={view.cause} />
           <Button variant="deep" label="Try again" onPress={() => void retry()} />
         </View>
       </Screen>
     );
   }
-  if (view.kind === "ready") {
-    return (
-      <Screen>
-        <View style={styles.content}>
-          <Text variant="title">Chat</Text>
-          <Text variant="muted">Chat is coming soon.</Text>
-        </View>
-      </Screen>
-    );
-  }
+  const ready = view.kind === "ready";
+  // INFO: edges left and right only: the design's top and bottom already clear the safe area.
   return (
-    <Screen>
-      <View style={[styles.content, styles.fill]}>
-        <View style={styles.centered}>
-          <Text variant="title">Connect your AI to start</Text>
-          <Text variant="subtitle">
-            Add your Claude or OpenAI key. It stays only on this device.
-          </Text>
-          <Button variant="deep" label="Add API key" onPress={() => router.push("/api-key")} />
-        </View>
-        <ChatComposer placeholder="Add a key to start chatting" disabled />
-      </View>
+    <Screen edges={["left", "right"]}>
+      <KeyboardAvoidingView behavior="padding" style={styles.fill} testID="chat-keyboard-view">
+        <ChatHeader
+          title={chatTitle(params.topic)}
+          subtitle={ready ? providerLine(view.provider) : noKeyProviderLine}
+          onBack={() => router.back()}
+        />
+        {ready ? (
+          <MessageList items={[]} />
+        ) : (
+          <View style={styles.center}>
+            <ConnectAiCard onAddKey={() => router.push("/api-key")} />
+          </View>
+        )}
+        <ChatComposer
+          value={draft}
+          onChangeText={setDraft}
+          // INFO: sending is issue 3; the draft stays until then.
+          onSend={() => {}}
+          placeholder={ready ? "Write in English…" : "Add a key to start chatting"}
+          locked={!ready}
+        />
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  loading: { flex: 1, alignItems: "center", justifyContent: "center" },
   content: { padding: spacing.screenSide, gap: spacing.md },
   fill: { flex: 1 },
-  centered: { flex: 1, justifyContent: "center", gap: spacing.md },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.screenSide,
+  },
 });

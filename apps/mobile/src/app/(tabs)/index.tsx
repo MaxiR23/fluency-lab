@@ -17,8 +17,8 @@ import { useHome } from "@/hooks/use-home";
 import { dataFailureMessage } from "@/utils/data-message";
 import { avatarInitial, continueCard, greeting } from "@/utils/home";
 
-function openChat() {
-  router.push("/chat");
+function openChat(topic?: string) {
+  router.push(topic === undefined ? "/chat" : { pathname: "/chat", params: { topic } });
 }
 
 function openAll() {
@@ -64,7 +64,7 @@ export default function Home() {
           <Avatar initial={avatarInitial(profile.displayName)} />
         </View>
         <WeekStrip week={state.week} />
-        <HeroCard onPress={openChat} />
+        <HeroCard onPress={() => openChat()} />
         {card === null ? null : (
           <View style={styles.section}>
             <SectionHeader title="Continue" />
@@ -73,7 +73,7 @@ export default function Home() {
               meta={card.meta}
               icon={card.icon}
               action="Resume"
-              onPress={openChat}
+              onPress={() => openChat(card.title)}
             />
           </View>
         )}
@@ -91,7 +91,7 @@ export default function Home() {
                 key={suggestion.id}
                 suggestion={suggestion}
                 layout="carousel"
-                onPress={openChat}
+                onPress={() => openChat(suggestion.title)}
               />
             ))}
           </ScrollView>

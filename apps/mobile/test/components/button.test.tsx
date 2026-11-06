@@ -19,7 +19,7 @@ import { StyleSheet } from "react-native";
 
 import { Button } from "@/components/button";
 import { buttonStyle } from "@/components/button-style";
-import { colors } from "@/constants/theme";
+import { colors, size } from "@/constants/theme";
 
 describe("Button", () => {
   it("draws the primary background by default", async () => {
@@ -101,5 +101,11 @@ describe("Button", () => {
     await render(<Button label="Go" loading onPress={onPress} />);
     await fireEvent.press(screen.getByRole("button", { name: "Go" }));
     expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it("draws the compact height when compact", async () => {
+    await render(<Button label="Go" compact />);
+    const style = StyleSheet.flatten(screen.getByRole("button").props.style);
+    expect(style.minHeight).toBe(size.controlCompact);
   });
 });

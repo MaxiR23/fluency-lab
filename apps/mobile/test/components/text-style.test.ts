@@ -215,6 +215,77 @@ describe("textStyle", () => {
     });
   });
 
+  it("draws message in regular body text with the body line height", () => {
+    expect(textStyle("message")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.body,
+      color: colors.text,
+      lineHeight: lineHeight.body,
+    });
+  });
+
+  it("draws correction in regular small text with the small line height", () => {
+    expect(textStyle("correction")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.small,
+      color: colors.text,
+      lineHeight: lineHeight.small,
+    });
+  });
+
+  it("draws struck muted with a line through", () => {
+    expect(textStyle("struck")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.small,
+      color: colors.textMuted,
+      textDecorationLine: "line-through",
+    });
+  });
+
+  it("draws explanation muted at the caption size with the explanation line height", () => {
+    expect(textStyle("explanation")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.caption,
+      color: colors.textMuted,
+      lineHeight: lineHeight.explanation,
+    });
+  });
+
+  it("draws chatTitle in bold at the chat title size", () => {
+    expect(textStyle("chatTitle")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.chatTitle,
+      color: colors.text,
+    });
+  });
+
+  it("draws cardHeading in bold at the card heading size, centered", () => {
+    expect(textStyle("cardHeading")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.cardHeading,
+      color: colors.text,
+      textAlign: "center",
+    });
+  });
+
+  it("draws cardBody muted, centered, with the small line height", () => {
+    expect(textStyle("cardBody")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.small,
+      color: colors.textMuted,
+      lineHeight: lineHeight.small,
+      textAlign: "center",
+    });
+  });
+
+  it("draws tagOutline in semibold accent at the caption size", () => {
+    expect(textStyle("tagOutline")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.caption,
+      color: colors.accent,
+    });
+  });
+
   it("uses a Plus Jakarta Sans face in every variant", () => {
     const variants: TextVariant[] = [
       "title",
@@ -244,6 +315,14 @@ describe("textStyle", () => {
       "avatar",
       "tab",
       "tabActive",
+      "message",
+      "correction",
+      "struck",
+      "explanation",
+      "chatTitle",
+      "cardHeading",
+      "cardBody",
+      "tagOutline",
     ];
     for (const variant of variants) {
       expect(Object.values(fontFamily)).toContain(textStyle(variant).fontFamily);
