@@ -17,6 +17,11 @@ export const colors = {
   accentBubbleLine: "rgba(109,165,192,0.35)",
   shadow: "#000000",
   error: "#F87171",
+  surfaceRaised: "#1A1A1A",
+  borderRaised: "#2E2E2E",
+  surfaceDisabled: "#0F0F0F",
+  borderDisabled: "#1F1F1F",
+  textDisabled: "#525252",
 } as const;
 
 export const spacing = {
@@ -39,6 +44,9 @@ export const spacing = {
   screenSide: 20,
   screenBottom: 40,
   screenTop: 72,
+  tight: 2,
+  composerBottom: 36,
+  panel: 28,
 } as const;
 export const radius = {
   control: 18,
@@ -48,6 +56,10 @@ export const radius = {
   badgeSmall: 11,
   bubble: 12,
   bubbleTail: 4,
+  message: 18,
+  messageTail: 6,
+  note: 14,
+  badgeLarge: 16,
 } as const;
 export const size = {
   control: 52,
@@ -72,8 +84,13 @@ export const size = {
   bubbleLargeHeight: 28,
   bubbleSmallWidth: 34,
   bubbleSmallHeight: 24,
+  controlCompact: 48,
+  badgeLarge: 52,
+  iconBadgeLarge: 24,
+  tag: 28,
+  messageMaxWidth: "82%",
 } as const;
-export const strokeWidth = { icon: 1.8, action: 2, check: 2.4 } as const;
+export const strokeWidth = { icon: 1.8, action: 2, check: 2.4, send: 1.9 } as const;
 export const borderWidth = { thin: 1 } as const;
 export const fontSize = {
   micro: 11,
@@ -86,6 +103,8 @@ export const fontSize = {
   hero: 19,
   heading: 26,
   title: 28,
+  chatTitle: 16,
+  cardHeading: 18,
 } as const;
 // INFO: React Native takes these in pixels; the design gives them as ratios and em.
 export const lineHeight = {
@@ -94,6 +113,8 @@ export const lineHeight = {
   heading: 31.2,
   heroText: 20.3,
   cardTitle: 19.5,
+  small: 21,
+  explanation: 18.2,
 } as const;
 export const letterSpacing = {
   brand: -0.17,
@@ -103,7 +124,9 @@ export const letterSpacing = {
   section: 1.04,
 } as const;
 // INFO: iOS reads the shadow props and Android reads elevation. The CSS blur of 24 is
-// shadowRadius 12 (half the blur); the design's inset highlight has no equivalent.
+// shadowRadius 12 (half the blur); the design's inset highlight has no equivalent. The chat's
+// blur of 20 is shadowRadius 10. The glow is iOS only, because Android elevation draws one
+// black shadow.
 export const shadow = {
   raised: {
     shadowColor: colors.shadow,
@@ -111,6 +134,19 @@ export const shadow = {
     shadowOpacity: 0.6,
     shadowRadius: 12,
     elevation: 12,
+  },
+  floating: {
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.7,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  glow: {
+    shadowColor: colors.accentBubble,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
   },
 } as const;
 export const fontFamily = {

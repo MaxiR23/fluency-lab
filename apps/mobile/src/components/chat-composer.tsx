@@ -1,32 +1,77 @@
-import { StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
-import { Button } from "@/components/button";
-import { textFieldStyle } from "@/components/text-field-style";
-import { colors, spacing } from "@/constants/theme";
+import { composerInputStyle, sendButtonStyle } from "@/components/chat-composer-style";
+import { Icon } from "@/components/icon";
+import { size, spacing, strokeWidth } from "@/constants/theme";
+import { canSend } from "@/utils/chat-state";
 
-// INFO: no value and no send handler yet: the real chat is a later issue.
 export function ChatComposer({
+  value,
+  onChangeText,
+  onSend,
   placeholder,
-  disabled,
+  locked,
 }: {
+  value: string;
+  onChangeText: (text: string) => void;
+  onSend: () => void;
   placeholder: string;
-  disabled: boolean;
+  locked: boolean;
 }) {
+  const input = composerInputStyle({ locked });
+  const enabled = canSend(value, locked);
   return (
     <View style={styles.row}>
       <TextInput
-        style={[textFieldStyle({ hasError: false }).input, styles.input]}
+        style={input.input}
+        value={value}
+        onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={colors.textPlaceholder}
-        editable={!disabled}
-        accessibilityLabel={placeholder}
+        placeholderTextColor={input.placeholderColor}
+        editable={!locked}
+        accessibilityLabel="Message"
       />
-      <Button variant="deep" label="Send" disabled={disabled} />
+      <SendButton enabled={enabled} onSend={onSend} />
+    </View>
+  );
+}
+
+function SendButton({ enabled, onSend }: { enabled: boolean; onSend: () => void }) {
+  const glow = sendButtonStyle({ enabled, pressed: false }).glow;
+  const button = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Send"
+      disabled={!enabled}
+      onPress={onSend}
+      style={({ pressed }) => sendButtonStyle({ enabled, pressed }).button}
+    >
+      {({ pressed }) => (
+        <Icon
+          name="send"
+          size={size.iconBadge}
+          strokeWidth={strokeWidth.send}
+          color={sendButtonStyle({ enabled, pressed }).icon}
+        />
+      )}
+    </Pressable>
+  );
+  return glow === null ? (
+    button
+  ) : (
+    <View testID="send-glow" style={glow}>
+      {button}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  input: { flex: 1 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.cluster,
+    paddingTop: spacing.group,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.composerBottom,
+  },
 });

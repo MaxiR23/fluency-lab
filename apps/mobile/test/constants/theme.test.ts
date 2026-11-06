@@ -82,6 +82,10 @@ describe("theme", () => {
       badgeSmall: 11,
       bubble: 12,
       bubbleTail: 4,
+      message: 18,
+      messageTail: 6,
+      note: 14,
+      badgeLarge: 16,
     });
   });
 
@@ -109,8 +113,13 @@ describe("theme", () => {
       bubbleLargeHeight: 28,
       bubbleSmallWidth: 34,
       bubbleSmallHeight: 24,
+      controlCompact: 48,
+      badgeLarge: 52,
+      iconBadgeLarge: 24,
+      tag: 28,
+      messageMaxWidth: "82%",
     });
-    expect(strokeWidth).toEqual({ icon: 1.8, action: 2, check: 2.4 });
+    expect(strokeWidth).toEqual({ icon: 1.8, action: 2, check: 2.4, send: 1.9 });
   });
 
   it("holds the design's font sizes", () => {
@@ -125,6 +134,8 @@ describe("theme", () => {
       hero: 19,
       heading: 26,
       title: 28,
+      chatTitle: 16,
+      cardHeading: 18,
     });
   });
 
@@ -135,6 +146,8 @@ describe("theme", () => {
       heading: 31.2,
       heroText: 20.3,
       cardTitle: 19.5,
+      small: 21,
+      explanation: 18.2,
     });
     expect(letterSpacing).toEqual({
       brand: -0.17,
@@ -207,6 +220,46 @@ describe("theme", () => {
       shadowOpacity: 0.6,
       shadowRadius: 12,
       elevation: 12,
+    });
+  });
+
+  it("holds the chat input colors: raised and disabled", () => {
+    expect({
+      surfaceRaised: colors.surfaceRaised,
+      borderRaised: colors.borderRaised,
+      surfaceDisabled: colors.surfaceDisabled,
+      borderDisabled: colors.borderDisabled,
+      textDisabled: colors.textDisabled,
+    }).toEqual({
+      surfaceRaised: "#1A1A1A",
+      borderRaised: "#2E2E2E",
+      surfaceDisabled: "#0F0F0F",
+      borderDisabled: "#1F1F1F",
+      textDisabled: "#525252",
+    });
+  });
+
+  it("holds the chat spacings by role", () => {
+    expect({
+      tight: spacing.tight,
+      composerBottom: spacing.composerBottom,
+      panel: spacing.panel,
+    }).toEqual({ tight: 2, composerBottom: 36, panel: 28 });
+  });
+
+  it("holds the floating shadow and the accent glow", () => {
+    expect(shadow.floating).toEqual({
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.7,
+      shadowRadius: 10,
+      elevation: 10,
+    });
+    expect(shadow.glow).toEqual({
+      shadowColor: colors.accentBubble,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 8,
     });
   });
 

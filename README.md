@@ -9,8 +9,8 @@ plan is optional; free practice is the default.
 
 Expo project in a pnpm monorepo. The design layer exists (tokens and
 base components); email sign-in, sign-up, password reset, onboarding, Home
-with the tab bar (Progress and Settings as placeholders) and the Chat no-key
-state are built, the other screens are not. The screen map, the
+with the tab bar (Progress and Settings as placeholders) and the Chat screen (layout
+and no-key state) are built, the other screens are not. The screen map, the
 palette and the Home design are decided.
 
 ## Decided
@@ -148,10 +148,15 @@ progress.
 | accent-pressed     | `#0C7075`                | pressed accent                                                  |
 | accent-soft        | `rgba(109,165,192,0.12)` | icon box tint                                                   |
 | accent-tag         | `rgba(109,165,192,0.16)` | tag pill background                                             |
-| accent-bubble      | `rgba(109,165,192,0.18)` | tutor bubble in the Free chat card                              |
+| accent-bubble      | `rgba(109,165,192,0.18)` | tutor bubble in the Free chat card, send button glow            |
 | accent-bubble-line | `rgba(109,165,192,0.35)` | tutor bubble border                                             |
 | shadow             | `#000000`                | raised card shadow                                              |
 | error              | `#F87171`                | error text and borders                                          |
+| surface-raised     | `#1A1A1A`                | open chat input                                                 |
+| border-raised      | `#2E2E2E`                | open chat input border                                          |
+| surface-disabled   | `#0F0F0F`                | locked input, disabled send                                     |
+| border-disabled    | `#1F1F1F`                | locked input and disabled send border                           |
+| text-disabled      | `#525252`                | locked placeholder, disabled send icon                          |
 
 ## Rules
 

@@ -29,7 +29,15 @@ export type TextVariant =
   | "why"
   | "avatar"
   | "tab"
-  | "tabActive";
+  | "tabActive"
+  | "message"
+  | "correction"
+  | "struck"
+  | "explanation"
+  | "chatTitle"
+  | "cardHeading"
+  | "cardBody"
+  | "tagOutline";
 
 const variants: Record<TextVariant, TextStyle> = {
   title: {
@@ -176,6 +184,53 @@ const variants: Record<TextVariant, TextStyle> = {
   tabActive: {
     fontFamily: fontFamily.semibold,
     fontSize: fontSize.xsmall,
+    color: colors.accent,
+  },
+  message: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.body,
+    color: colors.text,
+    lineHeight: lineHeight.body,
+  },
+  correction: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.small,
+    color: colors.text,
+    lineHeight: lineHeight.small,
+  },
+  struck: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+    textDecorationLine: "line-through",
+  },
+  explanation: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+    lineHeight: lineHeight.explanation,
+  },
+  chatTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.chatTitle,
+    color: colors.text,
+  },
+  cardHeading: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.cardHeading,
+    color: colors.text,
+    textAlign: "center",
+  },
+  cardBody: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+    lineHeight: lineHeight.small,
+    textAlign: "center",
+  },
+  tagOutline: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.caption,
     color: colors.accent,
   },
 };

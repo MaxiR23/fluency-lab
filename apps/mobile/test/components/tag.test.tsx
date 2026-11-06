@@ -17,6 +17,7 @@ import { render, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 
 import { Tag } from "@/components/tag";
+import { tagStyle } from "@/components/tag-style";
 import { textStyle } from "@/components/text-style";
 import { colors, radius, spacing } from "@/constants/theme";
 
@@ -32,5 +33,12 @@ describe("Tag", () => {
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.hair,
     });
+  });
+
+  it("draws the outline variant", async () => {
+    await render(<Tag label="New word" variant="outline" />);
+    const label = screen.getByText("New word");
+    expect(StyleSheet.flatten(label.props.style)).toMatchObject(textStyle("tagOutline"));
+    expect(StyleSheet.flatten(label.parent?.props.style)).toMatchObject(tagStyle("outline").box);
   });
 });

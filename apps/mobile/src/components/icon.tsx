@@ -23,7 +23,10 @@ export type IconName =
   | "heart"
   | "flask"
   | "sun"
-  | "clipboard";
+  | "clipboard"
+  | "back"
+  | "lock"
+  | "send";
 
 // INFO: shapes the source draws as a circle or a rect are written as path data,
 // so Icon only draws Path.
@@ -92,6 +95,12 @@ const paths: Record<IconName, readonly string[]> = {
     "M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2",
     "M9 14l2 2 4-4",
   ],
+  back: ["M15 18l-6-6 6-6"],
+  lock: [
+    "M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z",
+    "M8 11V7a4 4 0 0 1 8 0v4",
+  ],
+  send: ["M22 2 11 13", "M22 2 15 22l-4-9-9-4z"],
 };
 
 export function Icon({
