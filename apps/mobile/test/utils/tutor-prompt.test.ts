@@ -5,6 +5,7 @@
 // Tested:
 // - tutorPrompt includes each rule, the level, the learner, the topic and the opening line
 // - tutorPrompt asks for a rule label on each correction
+// - tutorPrompt requires originals copied exactly from the learner's last message
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -39,6 +40,14 @@ describe("tutorPrompt", () => {
   it("asks for a short rule label naming the grammar point on each correction", () => {
     expect(OUTPUT_GUIDE).toContain("rule");
     expect(OUTPUT_GUIDE).toContain("Present perfect for experiences");
+    expect(tutorPrompt(input)).toContain(OUTPUT_GUIDE);
+  });
+
+  it("requires each original to be copied exactly from the learner's last message and nothing else to be corrected", () => {
+    expect(OUTPUT_GUIDE).toContain(
+      "copied exactly, character for character, from the learner's last message",
+    );
+    expect(OUTPUT_GUIDE).toContain("Never correct anything outside the learner's last message");
     expect(tutorPrompt(input)).toContain(OUTPUT_GUIDE);
   });
 

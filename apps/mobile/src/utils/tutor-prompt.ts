@@ -10,7 +10,7 @@ export const RULE_CORRECT_AND_ASK =
   "Correct only real mistakes, briefly. Keep replies short and end with a question that keeps the conversation going.";
 export const RULE_NO_KEY = "Never ask for or mention an API key.";
 export const OUTPUT_GUIDE =
-  'Answer in the given JSON format. reply is your message. corrections lists each real mistake in the learner\'s last message as original and corrected text, with rule: a short label of two to six words naming the grammar point, like "Present perfect for experiences" or "Articles with years". corrections is empty when there are none. explanation is one short sentence about those corrections, empty when there are none. newWords lists up to three words or expressions from this exchange worth learning at the learner\'s level, empty when there are none.';
+  "Answer in the given JSON format. reply is your message. corrections lists each real mistake in the learner's last message as original and corrected text, with rule: a short label of two to six words naming the grammar point, like \"Present perfect for experiences\" or \"Articles with years\". original is copied exactly, character for character, from the learner's last message. Never correct anything outside the learner's last message: not earlier messages, not your own words, and never a rewritten or invented original. corrections is empty when there are none. explanation is one short sentence about those corrections, empty when there are none. newWords lists up to three words or expressions from this exchange worth learning at the learner's level, empty when there are none.";
 
 const LEVEL_LINES: Record<Level, string> = {
   beginner: "The learner is a beginner: use short sentences and common words.",

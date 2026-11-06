@@ -1,10 +1,11 @@
 // apps/mobile/test/utils/tutor-reply.test.ts
 //
-// Tests for the normalization of the tutor's structured reply.
+// Tests for the normalization and grounding of the tutor's structured reply.
 //
 // Tested:
 // - toTutorReply trims, filters and caps the reply so it passes messageCreateSchema
 // - toTutorReply keeps a correction's rule trimmed and capped, and drops a blank one
+// - groundCorrections keeps only corrections whose original is in the learner's last message
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -15,7 +16,7 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { toTutorReply } from "@/utils/tutor-reply";
+import { groundCorrections, toTutorReply } from "@/utils/tutor-reply";
 
 const base = { reply: "Nice!", corrections: [], explanation: "", newWords: [] };
 
@@ -144,5 +145,75 @@ describe("toTutorReply", () => {
     expect(
       toTutorReply({ ...base, corrections, explanation: "e".repeat(301) })?.explanation,
     ).toHaveLength(300);
+  });
+});
+
+const reported =
+  "yes an app we can chat together and learn Enlighs just fluently just chilling, I hope the ia can help me with exercises and help me with practice I need to level up";
+const english = { original: "Enlighs", corrected: "English" };
+const invented = { original: "I'm most exited", corrected: "I'm most excited" };
+
+describe("groundCorrections", () => {
+  it("keeps a correction whose original is copied exactly from the message", () => {
+    expect(groundCorrections(reported, [english], "Spelling.")).toEqual({
+      corrections: [english],
+      explanation: "Spelling.",
+    });
+  });
+
+  it("keeps an original that differs from the message only in case and repeated whitespace", () => {
+    const item = { original: "i never been", corrected: "I have never been" };
+    expect(groundCorrections("I  never   Been to Rome", [item], "Tense.")).toEqual({
+      corrections: [item],
+      explanation: "Tense.",
+    });
+  });
+
+  it("keeps an original that differs from the message only in curly versus straight quotes", () => {
+    const straight = { original: "I don't like", corrected: "I do not like" };
+    const curly = { original: "I don’t like", corrected: "I do not like" };
+    expect(groundCorrections("I don’t like it", [straight], "x").corrections).toEqual([straight]);
+    expect(groundCorrections("I don't like it", [curly], "x").corrections).toEqual([curly]);
+  });
+
+  it("drops an invented original and the explanation, the reported case", () => {
+    expect(groundCorrections(reported, [invented], "Spelling.")).toEqual({
+      corrections: [],
+      explanation: null,
+    });
+  });
+
+  it("drops a correction of an earlier message", () => {
+    const earlier = { original: "I goed to Rome", corrected: "I went to Rome" };
+    expect(groundCorrections("Yes, I liked it", [earlier], "Past.")).toEqual({
+      corrections: [],
+      explanation: null,
+    });
+  });
+
+  it("keeps the valid corrections and the explanation from a mix of valid and invalid", () => {
+    expect(groundCorrections(reported, [english, invented], "Spelling.")).toEqual({
+      corrections: [english],
+      explanation: "Spelling.",
+    });
+  });
+
+  it("drops an original that is only whitespace", () => {
+    const blank = { original: "  ", corrected: "x" };
+    expect(groundCorrections(reported, [blank], "Spelling.")).toEqual({
+      corrections: [],
+      explanation: null,
+    });
+  });
+
+  it("returns no corrections and no explanation when there are none", () => {
+    expect(groundCorrections(reported, [], null)).toEqual({ corrections: [], explanation: null });
+  });
+
+  it("drops every correction when the learner's message is empty", () => {
+    expect(groundCorrections("", [english], "Spelling.")).toEqual({
+      corrections: [],
+      explanation: null,
+    });
   });
 });
