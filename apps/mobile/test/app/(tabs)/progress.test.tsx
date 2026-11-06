@@ -4,6 +4,7 @@
 //
 // Tested:
 // - Progress draws its title when signed in
+// - The end of Progress is padded by the tab bar clearance
 // - Signed out users cannot reach Progress
 //
 // What is covered:
@@ -15,6 +16,9 @@
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { screen } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
+
+import { tabBarLayout } from "@/utils/tab-bar";
 
 import { fakeSession, resetFakeAuth } from "../../helpers/fake-auth";
 import { resetFakeData } from "../../helpers/fake-data";
@@ -51,6 +55,12 @@ describe("Progress placeholder", () => {
     await renderAppAt("/progress", fakeSession());
     expect(screen).toHavePathname("/progress");
     expect(screen.getAllByText("Progress").length).toBe(2);
+  });
+
+  it("pads the end of Progress by the tab bar clearance", async () => {
+    await renderAppAt("/progress", fakeSession());
+    const style = StyleSheet.flatten(screen.getByTestId("progress-content").props.style);
+    expect(style.paddingBottom).toBe(tabBarLayout(0).clearance);
   });
 
   it("lands on Login when signed out at Progress", async () => {

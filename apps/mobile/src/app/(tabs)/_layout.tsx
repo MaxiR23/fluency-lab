@@ -3,11 +3,13 @@ import { Tabs } from "expo-router/js-tabs";
 import { Icon } from "@/components/icon";
 import { TabBar } from "@/components/tab-bar";
 import { colors } from "@/constants/theme";
+import { useTabPillMotion } from "@/hooks/use-tab-pill-motion";
 
 export default function TabsLayout() {
+  const pill = useTabPillMotion();
   return (
     <Tabs
-      tabBar={(props) => <TabBar {...props} />}
+      tabBar={(props) => <TabBar {...props} pill={pill} />}
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: colors.background },

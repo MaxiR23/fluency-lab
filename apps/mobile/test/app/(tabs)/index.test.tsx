@@ -7,6 +7,7 @@
 // - The greeting, the avatar, the week, Free chat, Continue and the suggestions
 // - Free chat, Continue and a suggestion open Chat, and See all opens the list
 // - See all (N) next to Continue with more than one open session, opening Open chats
+// - The end of Home is padded by the tab bar clearance
 // - The tab bar: Home is the current tab and not a link or a button
 // - Signed out users cannot reach Home
 //
@@ -21,9 +22,11 @@ import { suggestTopics } from "@fluency-lab/shared";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, fireEvent, screen, within } from "@testing-library/react-native";
 import { router } from "expo-router";
+import { StyleSheet } from "react-native";
 
 import { dataFailureMessage } from "@/utils/data-message";
 import { greeting } from "@/utils/home";
+import { tabBarLayout } from "@/utils/tab-bar";
 import { fakeSession, resetFakeAuth } from "../../helpers/fake-auth";
 import {
   activeSessionWith,
@@ -263,6 +266,14 @@ describe("Home", () => {
     await renderApp("/", fakeSession());
     await fireEvent.press(screen.getByRole("link", { name: "See all" }));
     expect(screen).toHavePathname("/suggestions");
+  });
+
+  it("pads the end of Home by the tab bar clearance so the last card clears the bar", async () => {
+    await renderApp("/", fakeSession());
+    const style = StyleSheet.flatten(
+      screen.getByTestId("home-content").props.contentContainerStyle,
+    );
+    expect(style.paddingBottom).toBe(tabBarLayout(0).clearance);
   });
 
   it("marks Home as the current tab and stays on Home when it is pressed", async () => {
