@@ -18,8 +18,8 @@ export function StepScreen({
   children,
   footer,
 }: {
-  step: number;
-  total: number;
+  step?: number;
+  total?: number;
   title: string;
   onBack?: () => void;
   backDisabled?: boolean;
@@ -40,7 +40,9 @@ export function StepScreen({
               />
             </View>
           )}
-          <StepProgress step={step} total={total} />
+          {step === undefined || total === undefined ? null : (
+            <StepProgress step={step} total={total} />
+          )}
           <Text variant="title">{title}</Text>
           {children}
         </ScrollView>

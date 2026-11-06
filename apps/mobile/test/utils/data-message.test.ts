@@ -4,7 +4,7 @@
 //
 // Tested:
 // - One message per data failure
-// - The message of a key that could not be saved
+// - The message of a key that could not be saved or read
 //
 // What is covered:
 // - Normal case, edges
@@ -16,7 +16,11 @@
 import { describe, expect, it } from "@jest/globals";
 
 import type { DataFailure } from "@/data/data-port";
-import { dataFailureMessage, keySaveFailureMessage } from "@/utils/data-message";
+import {
+  dataFailureMessage,
+  keyReadFailureMessage,
+  keySaveFailureMessage,
+} from "@/utils/data-message";
 
 describe("dataFailureMessage", () => {
   it("tells the user to check the connection on network", () => {
@@ -42,5 +46,11 @@ describe("dataFailureMessage", () => {
 describe("keySaveFailureMessage", () => {
   it("says the key was not saved on this device", () => {
     expect(keySaveFailureMessage).toBe("Could not save your key on this device. Try again.");
+  });
+});
+
+describe("keyReadFailureMessage", () => {
+  it("tells the user the key could not be read", () => {
+    expect(keyReadFailureMessage).toBe("Could not read your key on this device. Try again.");
   });
 });

@@ -5,6 +5,7 @@
 // Tested:
 // - saveApiKey: the item name, the accessibility option and the stored value
 // - deleteApiKey: the item name, a missing item, a rejected delete
+// - hasApiKey: a stored key, no key, an empty item, a rejected read
 // - A rejected write, a thrown non-Error value
 // - The key never reaches the failure cause
 //
@@ -28,18 +29,23 @@ type SetItem = (
 
 type DeleteItem = (key: string) => Promise<void>;
 
+type GetItem = (key: string) => Promise<string | null>;
+
 function setup(
   setItemAsync: SetItem = async () => undefined,
   deleteItemAsync: DeleteItem = async () => undefined,
+  getItemAsync: GetItem = async () => null,
 ) {
   const store = jest.fn<SetItem>(setItemAsync);
   const remove = jest.fn<DeleteItem>(deleteItemAsync);
+  const read = jest.fn<GetItem>(getItemAsync);
   const port = createSecureStoreKeys({
     setItemAsync: store,
     deleteItemAsync: remove,
+    getItemAsync: read,
     keychainAccessible: "this-device-only",
   });
-  return { port, store, remove };
+  return { port, store, remove, read };
 }
 
 describe("saveApiKey", () => {
@@ -143,5 +149,58 @@ describe("deleteApiKey", () => {
 
     expect(JSON.stringify(outcome)).not.toContain(key);
     expect(outcome).toMatchObject({ ok: false, cause: { detail: null } });
+  });
+});
+
+describe("hasApiKey", () => {
+  it("reports a saved key as present and reads the api_key item", async () => {
+    const { port, read } = setup(undefined, undefined, async () => generatedSecret("api-key"));
+
+    expect(await port.hasApiKey()).toEqual({ ok: true, value: true });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledWith("api_key");
+  });
+
+  it("reports no key when the item is missing", async () => {
+    const { port } = setup(undefined, undefined, async () => null);
+
+    expect(await port.hasApiKey()).toEqual({ ok: true, value: false });
+  });
+
+  it("reports no key for an empty item", async () => {
+    const { port } = setup(undefined, undefined, async () => "");
+
+    expect(await port.hasApiKey()).toEqual({ ok: true, value: false });
+  });
+
+  it("returns not_read with the error name and no detail when the read rejects", async () => {
+    const { port } = setup(undefined, undefined, async () => {
+      throw new Error("keychain locked");
+    });
+
+    expect(await port.hasApiKey()).toEqual({
+      ok: false,
+      failure: "not_read",
+      cause: { name: "Error", detail: null },
+    });
+  });
+
+  it("returns not_read when the read throws a non-Error value", async () => {
+    const { port } = setup(undefined, undefined, async () => {
+      throw "denied";
+    });
+
+    expect(await port.hasApiKey()).toEqual({
+      ok: false,
+      failure: "not_read",
+      cause: { name: "unknown", detail: null },
+    });
+  });
+
+  it("never puts the stored value in the outcome", async () => {
+    const key = generatedSecret("api-key");
+    const { port } = setup(undefined, undefined, async () => key);
+
+    expect(JSON.stringify(await port.hasApiKey())).not.toContain(key);
   });
 });

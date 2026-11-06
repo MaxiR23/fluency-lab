@@ -39,7 +39,9 @@ function RootNavigator({ fontsSettled }: { fontsSettled: boolean }) {
       screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}
     >
       <Stack.Protected guard={entry === "home"}>
-        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="chat" />
+        <Stack.Screen name="api-key" />
       </Stack.Protected>
       <Stack.Protected guard={entry === "onboarding"}>
         <Stack.Screen name="onboarding" />

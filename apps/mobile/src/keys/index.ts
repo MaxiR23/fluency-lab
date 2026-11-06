@@ -7,5 +7,6 @@ import { createSecureStoreKeys } from "@/keys/secure-store-keys";
 export const keys: KeyPort = createSecureStoreKeys({
   setItemAsync: SecureStore.setItemAsync,
   deleteItemAsync: SecureStore.deleteItemAsync,
+  getItemAsync: SecureStore.getItemAsync,
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 });

@@ -6,6 +6,7 @@ export const API_KEY_ITEM = "api_key";
 export function createSecureStoreKeys<A>(deps: {
   setItemAsync(key: string, value: string, options: { keychainAccessible: A }): Promise<void>;
   deleteItemAsync(key: string): Promise<void>;
+  getItemAsync(key: string): Promise<string | null>;
   keychainAccessible: A;
 }): KeyPort {
   return {
@@ -31,6 +32,19 @@ export function createSecureStoreKeys<A>(deps: {
         return {
           ok: false,
           failure: "not_deleted",
+          cause: { ...describeAuthCause(thrown), detail: null },
+        };
+      }
+    },
+    async hasApiKey() {
+      try {
+        const stored = await deps.getItemAsync(API_KEY_ITEM);
+        return { ok: true, value: stored !== null && stored !== "" };
+      } catch (thrown) {
+        // INFO: detail is forced to null for the same reason as in saveApiKey.
+        return {
+          ok: false,
+          failure: "not_read",
           cause: { ...describeAuthCause(thrown), detail: null },
         };
       }

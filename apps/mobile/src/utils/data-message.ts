@@ -18,3 +18,4 @@ export function dataFailureMessage(failure: DataFailure): string {
 export const keySaveFailureMessage = "Could not save your key on this device. Try again.";
 export const keyDeleteFailureMessage =
   "Could not remove the saved key from this device. Try again.";
+export const keyReadFailureMessage = "Could not read your key on this device. Try again.";

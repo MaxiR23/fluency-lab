@@ -19,6 +19,7 @@ import { describe, expect, it } from "@jest/globals";
 import { profileUpdateSchema, type TopicId } from "@fluency-lab/shared";
 
 import {
+  aiStepUpdate,
   canContinue,
   initialOnboardingForm,
   normalizeApiKey,
@@ -232,6 +233,15 @@ describe("validateAiStep", () => {
     expect(validateAiStep({ apiKey: "   ", monthlyLimit: "10" })).toEqual({ apiKey: message });
   });
 
+  it("asks for the key without mentioning skip in the key variant", () => {
+    const message = "Enter your API key.";
+    expect(validateAiStep({ apiKey: "", monthlyLimit: "10" }, "key")).toEqual({ apiKey: message });
+    expect(validateAiStep({ apiKey: "  ", monthlyLimit: "10" }, "key")).toEqual({
+      apiKey: message,
+    });
+    expect(validateAiStep({ apiKey, monthlyLimit: "10" }, "key")).toEqual({});
+  });
+
   it("asks for an amount when the limit is empty", () => {
     expect(validateAiStep({ apiKey, monthlyLimit: " " })).toEqual({
       monthlyLimit: "Enter an amount in USD.",
@@ -306,5 +316,35 @@ describe("onboardingUpdate", () => {
 describe("normalizeApiKey", () => {
   it("trims the key", () => {
     expect(normalizeApiKey("  abc  ")).toBe("abc");
+  });
+});
+
+describe("aiStepUpdate", () => {
+  it("sends the provider and the parsed limit", () => {
+    expect(aiStepUpdate({ provider: "openai", monthlyLimit: "25.5" })).toEqual({
+      provider: "openai",
+      monthlyLimitUsd: 25.5,
+    });
+  });
+
+  it("leaves the limit out when it cannot be parsed", () => {
+    expect(aiStepUpdate({ provider: "claude", monthlyLimit: "abc" })).toEqual({
+      provider: "claude",
+    });
+  });
+
+  it("sends 0.01 and 10000 at the edges", () => {
+    expect(aiStepUpdate({ provider: "claude", monthlyLimit: "0.01" })).toMatchObject({
+      monthlyLimitUsd: 0.01,
+    });
+    expect(aiStepUpdate({ provider: "claude", monthlyLimit: "10000" })).toMatchObject({
+      monthlyLimitUsd: 10000,
+    });
+  });
+
+  it("never carries the API key", () => {
+    // INFO: the function takes no key at all, so the result holds only these fields.
+    const update = aiStepUpdate({ provider: "claude", monthlyLimit: "10" });
+    expect(Object.keys(update).sort()).toEqual(["monthlyLimitUsd", "provider"]);
   });
 });

@@ -8,8 +8,9 @@ plan is optional; free practice is the default.
 ## Status
 
 Expo project in a pnpm monorepo. The design layer exists (tokens and
-base components); email sign-in, sign-up, password reset, onboarding and a
-Home placeholder are built, the other screens are not. The screen map, the
+base components); email sign-in, sign-up, password reset, onboarding, Home
+with the tab bar (Progress and Settings as placeholders) and the Chat no-key
+state are built, the other screens are not. The screen map, the
 palette and the Home design are decided.
 
 ## Decided
