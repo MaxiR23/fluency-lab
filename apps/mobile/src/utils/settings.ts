@@ -3,23 +3,9 @@ import type { ModelId, MonthSpend, Profile, Provider } from "@fluency-lab/shared
 import type { FailureCause } from "@/auth/auth-port";
 import type { DataOutcome } from "@/data/data-port";
 import type { KeyPresenceOutcome } from "@/keys/key-port";
+import { MONTH_SHORT } from "@/utils/calendar";
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
 import { providerOptions } from "@/utils/onboarding-options";
-
-const MONTH_SHORT = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const;
 
 const NOT_SET = "Not set";
 

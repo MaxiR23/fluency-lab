@@ -1,7 +1,10 @@
 import type {
   ActiveSession,
+  HistoryPage,
   Message,
   MessageCreate,
+  MistakePage,
+  MonthProgress,
   MonthSpend,
   Profile,
   ProfileStats,
@@ -12,6 +15,7 @@ import type {
   SessionUsage,
   SessionWeek,
   SessionWithMessages,
+  WordPage,
 } from "@fluency-lab/shared";
 
 export type DataFailure =
@@ -40,6 +44,14 @@ export type DataPort = {
   getProfileStats(timeZone: string): Promise<DataOutcome<ProfileStats>>;
   // INFO: no corrections and no words are the expected empty.
   getSessionSummary(sessionId: string): Promise<DataOutcome<SessionSummary>>;
+  // INFO: zeros are the expected empty: nothing this month.
+  getMonthProgress(timeZone: string): Promise<DataOutcome<MonthProgress>>;
+  // INFO: an empty page is the expected empty. Newest first; nextOffset is null on the last page.
+  listHistory(timeZone: string, offset: number): Promise<DataOutcome<HistoryPage>>;
+  // INFO: an empty page is the expected empty. Most frequent first; nextOffset is null on the last page.
+  listMistakes(offset: number): Promise<DataOutcome<MistakePage>>;
+  // INFO: an empty page is the expected empty. Newest first; nextOffset is null on the last page.
+  listWords(timeZone: string, offset: number): Promise<DataOutcome<WordPage>>;
   // INFO: deletes the signed in user's account and data on the server; nothing is returned.
   deleteAccount(): Promise<DataOutcome<null>>;
 };

@@ -11,6 +11,7 @@
 // - The open sessions response
 // - The session week response and its query
 // - The profile stats response and the account deleted response
+// - The progress responses and their page queries
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -24,15 +25,20 @@ import {
   accountDeletedSchema,
   activeSessionResponseSchema,
   correctionSchema,
+  historyPageSchema,
+  mistakePageSchema,
+  mistakesQuerySchema,
   messageCorrectionsSchema,
   messageCreateSchema,
   messageSchema,
+  monthProgressSchema,
   monthSpendSchema,
   openSessionsResponseSchema,
   newWordsSchema,
   profileSchema,
   profileStatsSchema,
   profileUpdateSchema,
+  progressPageQuerySchema,
   sessionCreateSchema,
   sessionIdParamSchema,
   sessionMessagesResponseSchema,
@@ -41,6 +47,7 @@ import {
   sessionWeekSchema,
   tutorReplySchema,
   weekQuerySchema,
+  wordPageSchema,
 } from "../src/contract";
 import { TUTOR_MODEL } from "../src/model-price";
 import { STARTERS } from "../src/suggestions";
@@ -556,5 +563,110 @@ describe("accountDeletedSchema", () => {
     expect(accountDeletedSchema.safeParse({ deleted: false }).success).toBe(false);
     expect(accountDeletedSchema.safeParse({}).success).toBe(false);
     expect(accountDeletedSchema.safeParse({ deleted: "true" }).success).toBe(false);
+  });
+});
+
+describe("progressPageQuerySchema and mistakesQuerySchema", () => {
+  it("reads the zone and an offset as a number", () => {
+    expect(progressPageQuerySchema.parse({ tz: "UTC", offset: "20" })).toEqual({
+      tz: "UTC",
+      offset: 20,
+    });
+    expect(mistakesQuerySchema.parse({ offset: "20" })).toEqual({ offset: 20 });
+  });
+
+  it("leaves the offset out when it is absent", () => {
+    expect(progressPageQuerySchema.parse({ tz: "UTC" })).toEqual({ tz: "UTC" });
+    expect(mistakesQuerySchema.parse({})).toEqual({});
+  });
+
+  it("accepts offset 0 and 999999", () => {
+    expect(progressPageQuerySchema.parse({ tz: "UTC", offset: "0" }).offset).toBe(0);
+    expect(progressPageQuerySchema.parse({ tz: "UTC", offset: "999999" }).offset).toBe(999999);
+    expect(mistakesQuerySchema.parse({ offset: "0" }).offset).toBe(0);
+    expect(mistakesQuerySchema.parse({ offset: "999999" }).offset).toBe(999999);
+  });
+
+  it("rejects a negative, a decimal, a leading zero, a non-number and an offset over 999999", () => {
+    for (const offset of ["-1", "1.5", "01", "abc", "1000000"]) {
+      expect(progressPageQuerySchema.safeParse({ tz: "UTC", offset }).success).toBe(false);
+      expect(mistakesQuerySchema.safeParse({ offset }).success).toBe(false);
+    }
+  });
+
+  it("rejects an empty zone", () => {
+    expect(progressPageQuerySchema.safeParse({ tz: "" }).success).toBe(false);
+  });
+});
+
+describe("monthProgressSchema", () => {
+  const body = { monthStart: "2026-11-01", sessions: 12, corrections: 31, newWords: 48 };
+
+  it("parses the month and its three counts", () => {
+    expect(monthProgressSchema.parse(body)).toEqual(body);
+  });
+
+  it("parses zeros", () => {
+    const zeros = { monthStart: "2026-11-01", sessions: 0, corrections: 0, newWords: 0 };
+    expect(monthProgressSchema.parse(zeros)).toEqual(zeros);
+  });
+
+  it("rejects a negative count", () => {
+    expect(monthProgressSchema.safeParse({ ...body, corrections: -1 }).success).toBe(false);
+  });
+});
+
+describe("historyPageSchema", () => {
+  const item = { session, day: "2026-11-05", messageCount: 14, correctionCount: 3 };
+
+  it("parses ended sessions with their day and counts and the next offset", () => {
+    const body = { items: [item], nextOffset: 20 };
+    expect(historyPageSchema.parse(body)).toEqual(body);
+  });
+
+  it("parses an empty page with no next offset", () => {
+    const body = { items: [], nextOffset: null };
+    expect(historyPageSchema.parse(body)).toEqual(body);
+  });
+
+  it("rejects a day that is not a date", () => {
+    const body = { items: [{ ...item, day: "Nov 5" }], nextOffset: null };
+    expect(historyPageSchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe("mistakePageSchema", () => {
+  it("parses a group with a rule and one without (null)", () => {
+    const body = {
+      items: [
+        { rule: "Present perfect", times: 5, latest: { original: "I goed", corrected: "I went" } },
+        { rule: null, times: 1, latest: { original: "a", corrected: "b" } },
+      ],
+      nextOffset: null,
+    };
+    expect(mistakePageSchema.parse(body)).toEqual(body);
+  });
+
+  it("rejects times of 0", () => {
+    const body = {
+      items: [{ rule: null, times: 0, latest: { original: "a", corrected: "b" } }],
+      nextOffset: null,
+    };
+    expect(mistakePageSchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe("wordPageSchema", () => {
+  it("parses words with their sentence and day", () => {
+    const body = {
+      items: [{ word: "catchy", sentence: "That song is catchy.", day: "2026-11-05" }],
+      nextOffset: 20,
+    };
+    expect(wordPageSchema.parse(body)).toEqual(body);
+  });
+
+  it("parses an empty page", () => {
+    const body = { items: [], nextOffset: null };
+    expect(wordPageSchema.parse(body)).toEqual(body);
   });
 });

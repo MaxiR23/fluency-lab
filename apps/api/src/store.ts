@@ -38,6 +38,28 @@ export type UserStore = {
   getStats(
     timeZone: string,
   ): Promise<StoreOutcome<{ sessionCount: number; sessionDays: string[]; newWords: number }>>;
+  // INFO: the month's numbers in one read; zeros are the expected empty.
+  getMonthProgress(
+    timeZone: string,
+    monthStart: string,
+  ): Promise<StoreOutcome<{ sessionCount: number; correctionCount: number; newWordCount: number }>>;
+  // INFO: ended sessions newest first, up to limit rows from offset; [] is the expected empty.
+  listEndedSessions(
+    offset: number,
+    limit: number,
+  ): Promise<StoreOutcome<{ session: Session; messageCount: number; correctionCount: number }[]>>;
+  // INFO: mistakes grouped by rule (null for none), most frequent first, with the latest example.
+  listMistakeGroups(
+    offset: number,
+    limit: number,
+  ): Promise<
+    StoreOutcome<{ rule: string | null; times: number; original: string; corrected: string }[]>
+  >;
+  // INFO: each new word once, at its first appearance, newest first, with its message text.
+  listNewWords(
+    offset: number,
+    limit: number,
+  ): Promise<StoreOutcome<{ word: string; sentence: string; createdAt: string }[]>>;
   // INFO: deletes the caller's auth user; their data goes with it through the
   // cascades. A user who is already gone is a success.
   deleteAccount(): Promise<StoreOutcome<null>>;

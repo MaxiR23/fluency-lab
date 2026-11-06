@@ -3,6 +3,9 @@ import {
   type ProfileUpdate,
   accountDeletedSchema,
   activeSessionResponseSchema,
+  historyPageSchema,
+  mistakePageSchema,
+  monthProgressSchema,
   messageSchema,
   monthSpendSchema,
   openSessionsResponseSchema,
@@ -12,6 +15,7 @@ import {
   sessionSchema,
   sessionSummarySchema,
   sessionWeekSchema,
+  wordPageSchema,
 } from "@fluency-lab/shared";
 // INFO: type-only, so Metro never bundles the server.
 import type { AppType } from "api";
@@ -130,6 +134,27 @@ export function createHonoData(config: HonoDataConfig): DataPort {
       const outcome = await call((client) => client.account.$delete(), accountDeletedSchema);
       return outcome.ok ? { ok: true, value: null } : outcome;
     },
+    getMonthProgress: (timeZone) =>
+      call(
+        (client) => client.progress.month.$get({ query: { tz: timeZone } }),
+        monthProgressSchema,
+      ),
+    listHistory: (timeZone, offset) =>
+      call(
+        (client) =>
+          client.progress.history.$get({ query: { tz: timeZone, offset: String(offset) } }),
+        historyPageSchema,
+      ),
+    listMistakes: (offset) =>
+      call(
+        (client) => client.progress.mistakes.$get({ query: { offset: String(offset) } }),
+        mistakePageSchema,
+      ),
+    listWords: (timeZone, offset) =>
+      call(
+        (client) => client.progress.words.$get({ query: { tz: timeZone, offset: String(offset) } }),
+        wordPageSchema,
+      ),
     getMonthSpend: (timeZone) =>
       call((client) => client.sessions.spend.$get({ query: { tz: timeZone } }), monthSpendSchema),
   };

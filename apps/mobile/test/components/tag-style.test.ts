@@ -3,7 +3,7 @@
 // Tests for tagStyle.
 //
 // Tested:
-// - The box and label variant of the tint, the outline and the word tag
+// - The box and label variant of the tint, the outline, the word and the count tag
 //
 // What is covered:
 // - Normal case, edges
@@ -59,5 +59,9 @@ describe("tagStyle", () => {
       },
       label: "footerLink",
     });
+  });
+
+  it("draws the count pill as the tint pill with a semibold 12 accent label", () => {
+    expect(tagStyle("count")).toEqual({ box: tagStyle("tint").box, label: "tabActive" });
   });
 });

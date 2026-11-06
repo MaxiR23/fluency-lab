@@ -3,7 +3,7 @@ import type { ViewStyle } from "react-native";
 import type { TextVariant } from "@/components/text-style";
 import { borderWidth, colors, radius, size, spacing } from "@/constants/theme";
 
-export type TagVariant = "tint" | "outline" | "word";
+export type TagVariant = "tint" | "outline" | "word" | "count";
 
 export function tagStyle(variant: TagVariant = "tint"): { box: ViewStyle; label: TextVariant } {
   if (variant === "word") {
@@ -41,6 +41,6 @@ export function tagStyle(variant: TagVariant = "tint"): { box: ViewStyle; label:
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.hair,
     },
-    label: "tag",
+    label: variant === "count" ? "tabActive" : "tag",
   };
 }

@@ -11,6 +11,7 @@
 // - listOpenSessions and deleteSession
 // - getSessionSummary
 // - getProfileStats and deleteAccount
+// - getMonthProgress, listHistory, listMistakes and listWords
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -814,5 +815,158 @@ describe("deleteAccount", () => {
   it("returns bad_response for a body other than { deleted: true }", async () => {
     const { data } = setup(reply({ deleted: false }));
     expect(await data.deleteAccount()).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("getMonthProgress", () => {
+  const month = { monthStart: "2026-11-01", sessions: 12, corrections: 31, newWords: 48 };
+
+  it("sends the time zone and returns the parsed month", async () => {
+    const { data, seen } = setup(reply(month));
+
+    expect(await data.getMonthProgress("America/Argentina/Buenos_Aires")).toEqual({
+      ok: true,
+      value: month,
+    });
+    expect(seen[0].url).toBe(
+      "http://api.test/progress/month?tz=America%2FArgentina%2FBuenos_Aires",
+    );
+    expect(seen[0].method).toBe("GET");
+  });
+
+  it("returns zeros as a success", async () => {
+    const zeros = { monthStart: "2026-11-01", sessions: 0, corrections: 0, newWords: 0 };
+    const { data } = setup(reply(zeros));
+    expect(await data.getMonthProgress("UTC")).toEqual({ ok: true, value: zeros });
+  });
+
+  it("returns unauthorized on 401", async () => {
+    const { data } = setup(reply({ error: "unauthorized" }, 401));
+    expect(await data.getMonthProgress("UTC")).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns network when the fetch rejects", async () => {
+    const { data } = setup(new TypeError("network down"));
+    expect(await data.getMonthProgress("UTC")).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for a body of the wrong shape", async () => {
+    const { data } = setup(reply({ ...month, sessions: -1 }));
+    expect(await data.getMonthProgress("UTC")).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("listHistory", () => {
+  const page = {
+    items: [
+      {
+        session: { ...session, status: "ended" },
+        day: "2026-11-05",
+        messageCount: 14,
+        correctionCount: 3,
+      },
+    ],
+    nextOffset: 20,
+  };
+  const empty = { items: [], nextOffset: null };
+
+  it("sends the zone and the offset and returns the page", async () => {
+    const { data, seen } = setup(reply(page));
+
+    expect(await data.listHistory("UTC", 20)).toEqual({ ok: true, value: page });
+    expect(seen[0].url).toBe("http://api.test/progress/history?tz=UTC&offset=20");
+    expect(seen[0].method).toBe("GET");
+  });
+
+  it("returns an empty page as a success", async () => {
+    const { data } = setup(reply(empty));
+    expect(await data.listHistory("UTC", 0)).toEqual({ ok: true, value: empty });
+  });
+
+  it("returns unauthorized on 401", async () => {
+    const { data } = setup(reply({ error: "unauthorized" }, 401));
+    expect(await data.listHistory("UTC", 0)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns network when the fetch rejects", async () => {
+    const { data } = setup(new TypeError("network down"));
+    expect(await data.listHistory("UTC", 0)).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for a body of the wrong shape", async () => {
+    const { data } = setup(reply({ items: [{ day: "x" }], nextOffset: null }));
+    expect(await data.listHistory("UTC", 0)).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("listMistakes", () => {
+  const page = {
+    items: [{ rule: null, times: 2, latest: { original: "a", corrected: "b" } }],
+    nextOffset: null,
+  };
+  const empty = { items: [], nextOffset: null };
+
+  it("sends the offset and returns the page", async () => {
+    const { data, seen } = setup(reply(page));
+
+    expect(await data.listMistakes(0)).toEqual({ ok: true, value: page });
+    expect(seen[0].url).toBe("http://api.test/progress/mistakes?offset=0");
+    expect(seen[0].method).toBe("GET");
+  });
+
+  it("returns an empty page as a success", async () => {
+    const { data } = setup(reply(empty));
+    expect(await data.listMistakes(0)).toEqual({ ok: true, value: empty });
+  });
+
+  it("returns unauthorized on 401", async () => {
+    const { data } = setup(reply({ error: "unauthorized" }, 401));
+    expect(await data.listMistakes(0)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns network when the fetch rejects", async () => {
+    const { data } = setup(new TypeError("network down"));
+    expect(await data.listMistakes(0)).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for a body of the wrong shape", async () => {
+    const { data } = setup(reply({ items: [{ rule: "x", times: 0 }], nextOffset: null }));
+    expect(await data.listMistakes(0)).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("listWords", () => {
+  const page = {
+    items: [{ word: "catchy", sentence: "That song.", day: "2026-11-05" }],
+    nextOffset: 20,
+  };
+  const empty = { items: [], nextOffset: null };
+
+  it("sends the zone and the offset and returns the page", async () => {
+    const { data, seen } = setup(reply(page));
+
+    expect(await data.listWords("UTC", 20)).toEqual({ ok: true, value: page });
+    expect(seen[0].url).toBe("http://api.test/progress/words?tz=UTC&offset=20");
+    expect(seen[0].method).toBe("GET");
+  });
+
+  it("returns an empty page as a success", async () => {
+    const { data } = setup(reply(empty));
+    expect(await data.listWords("UTC", 0)).toEqual({ ok: true, value: empty });
+  });
+
+  it("returns unauthorized on 401", async () => {
+    const { data } = setup(reply({ error: "unauthorized" }, 401));
+    expect(await data.listWords("UTC", 0)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns network when the fetch rejects", async () => {
+    const { data } = setup(new TypeError("network down"));
+    expect(await data.listWords("UTC", 0)).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for a body of the wrong shape", async () => {
+    const { data } = setup(reply({ items: [{ word: 1 }], nextOffset: null }));
+    expect(await data.listWords("UTC", 0)).toEqual({ ok: false, failure: "bad_response" });
   });
 });

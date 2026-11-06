@@ -1,7 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Message } from "@fluency-lab/shared";
 import {
+  toHistoryRow,
   toMessage,
+  toMistakeRow,
+  toMonthProgressRow,
   toOpenSession,
   toProfile,
   toProfilePatch,
@@ -9,6 +12,7 @@ import {
   toSession,
   toSessionCost,
   toSessionStart,
+  toWordRow,
 } from "./rows";
 import type { Caller, Store, StoreOutcome, UserStore } from "./store";
 
@@ -59,6 +63,14 @@ function mapRow<T>(result: QueryResult, map: (row: unknown) => T | null): StoreO
   if (result.data === null) return { ok: true, value: null };
   const value = map(result.data);
   return value === null ? unavailable : { ok: true, value };
+}
+
+function readPage<T>(result: QueryResult, map: (row: unknown) => T | null): StoreOutcome<T[]> {
+  const failed = failureOf(result);
+  if (failed !== null) return failed;
+  if (!Array.isArray(result.data)) return unavailable;
+  const rows = result.data.map(map);
+  return rows.every((row) => row !== null) ? { ok: true, value: rows } : unavailable;
 }
 
 export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_TIMEOUT_MS): Store {
@@ -271,6 +283,37 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           if (!mapped.ok) return mapped;
           // INFO: the function always returns one row, so no row is a bad answer.
           return mapped.value === null ? unavailable : { ok: true, value: mapped.value };
+        },
+
+        async getMonthProgress(timeZone, monthStart) {
+          const result = await client
+            .rpc("progress_month", { time_zone: timeZone, month_start: monthStart })
+            .maybeSingle();
+          const mapped = mapRow(result, toMonthProgressRow);
+          if (!mapped.ok) return mapped;
+          // INFO: the function always returns one row, so no row is a bad answer.
+          return mapped.value === null ? unavailable : { ok: true, value: mapped.value };
+        },
+
+        async listEndedSessions(offset, limit) {
+          return readPage(
+            await client.rpc("progress_history", { page_offset: offset, page_size: limit }),
+            toHistoryRow,
+          );
+        },
+
+        async listMistakeGroups(offset, limit) {
+          return readPage(
+            await client.rpc("progress_mistakes", { page_offset: offset, page_size: limit }),
+            toMistakeRow,
+          );
+        },
+
+        async listNewWords(offset, limit) {
+          return readPage(
+            await client.rpc("progress_words", { page_offset: offset, page_size: limit }),
+            toWordRow,
+          );
         },
 
         async deleteAccount() {

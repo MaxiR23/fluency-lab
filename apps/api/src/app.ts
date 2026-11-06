@@ -1,6 +1,8 @@
 import {
   messageCreateSchema,
+  mistakesQuerySchema,
   profileUpdateSchema,
+  progressPageQuerySchema,
   sessionCreateSchema,
   sessionIdParamSchema,
   sessionTitle,
@@ -18,6 +20,7 @@ import type {} from "hono/jwt";
 import { requireAuth, readBearerToken, readTokenUser, type AuthConfig } from "./auth";
 import { MONTH_LOOKBACK_MS, currentMonthStart, monthSpend } from "./month";
 import type { Caller, Store, StoreFailure } from "./store";
+import { PAGE_SIZE, historyItem, mistakeGroup, pageOf, wordItem } from "./progress";
 import { dayStreak } from "./streak";
 import { sessionSummary } from "./summary";
 import { WEEK_LOOKBACK_MS, currentWeek, isTimeZone, sessionDays } from "./week";
@@ -101,6 +104,105 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
         const { sessionCount, sessionDays, newWords } = outcome.value;
         return c.json(
           { sessions: sessionCount, dayStreak: dayStreak(sessionDays, today), newWords },
+          200,
+        );
+      },
+    )
+    .get(
+      "/progress/month",
+      auth,
+      caller,
+      zValidator(
+        "query",
+        weekQuerySchema.refine((query) => isTimeZone(query.tz)),
+        invalidInput,
+      ),
+      async (c) => {
+        const { tz } = c.req.valid("query");
+        const monthStart = currentMonthStart(now(), tz);
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .getMonthProgress(tz, monthStart);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        const { sessionCount, correctionCount, newWordCount } = outcome.value;
+        return c.json(
+          {
+            monthStart,
+            sessions: sessionCount,
+            corrections: correctionCount,
+            newWords: newWordCount,
+          },
+          200,
+        );
+      },
+    )
+    .get(
+      "/progress/history",
+      auth,
+      caller,
+      zValidator(
+        "query",
+        progressPageQuerySchema.refine((query) => isTimeZone(query.tz)),
+        invalidInput,
+      ),
+      async (c) => {
+        const { tz, offset = 0 } = c.req.valid("query");
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .listEndedSessions(offset, PAGE_SIZE + 1);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        const page = pageOf(outcome.value, offset);
+        return c.json(
+          { items: page.items.map((row) => historyItem(row, tz)), nextOffset: page.nextOffset },
+          200,
+        );
+      },
+    )
+    .get(
+      "/progress/mistakes",
+      auth,
+      caller,
+      zValidator("query", mistakesQuerySchema, invalidInput),
+      async (c) => {
+        const { offset = 0 } = c.req.valid("query");
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .listMistakeGroups(offset, PAGE_SIZE + 1);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        const page = pageOf(outcome.value, offset);
+        return c.json({ items: page.items.map(mistakeGroup), nextOffset: page.nextOffset }, 200);
+      },
+    )
+    .get(
+      "/progress/words",
+      auth,
+      caller,
+      zValidator(
+        "query",
+        progressPageQuerySchema.refine((query) => isTimeZone(query.tz)),
+        invalidInput,
+      ),
+      async (c) => {
+        const { tz, offset = 0 } = c.req.valid("query");
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .listNewWords(offset, PAGE_SIZE + 1);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        const page = pageOf(outcome.value, offset);
+        return c.json(
+          { items: page.items.map((row) => wordItem(row, tz)), nextOffset: page.nextOffset },
           200,
         );
       },

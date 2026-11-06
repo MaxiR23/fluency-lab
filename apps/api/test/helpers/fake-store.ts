@@ -20,6 +20,10 @@ export function createFakeStore() {
     listSessionStarts: vi.fn<UserStore["listSessionStarts"]>(),
     listSessionCostsSince: vi.fn<UserStore["listSessionCostsSince"]>(),
     getStats: vi.fn<UserStore["getStats"]>(),
+    getMonthProgress: vi.fn<UserStore["getMonthProgress"]>(),
+    listEndedSessions: vi.fn<UserStore["listEndedSessions"]>(),
+    listMistakeGroups: vi.fn<UserStore["listMistakeGroups"]>(),
+    listNewWords: vi.fn<UserStore["listNewWords"]>(),
     deleteAccount: vi.fn<UserStore["deleteAccount"]>(),
   };
   const store: Store = {

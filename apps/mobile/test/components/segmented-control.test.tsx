@@ -4,6 +4,7 @@
 //
 // Tested:
 // - One radio per option, the selected value and the change
+// - The tabs look draws a tablist of tabs with the selected state
 //
 // What is covered:
 // - Normal case, edges
@@ -53,5 +54,25 @@ describe("SegmentedControl", () => {
     );
     await fireEvent.press(screen.getByRole("radio", { name: "Claude" }));
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("draws tabs with the tab role and the selected state", async () => {
+    const onChange = jest.fn();
+    await render(
+      <SegmentedControl
+        look="tabs"
+        label="Provider"
+        options={options}
+        value="claude"
+        onChange={onChange}
+      />,
+    );
+    expect(screen.getByLabelText("Provider").props.accessibilityRole).toBe("tablist");
+    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    expect(screen.getByRole("tab", { name: "Claude" }).props.accessibilityState).toMatchObject({
+      selected: true,
+    });
+    await fireEvent.press(screen.getByRole("tab", { name: "OpenAI" }));
+    expect(onChange).toHaveBeenCalledWith("openai");
   });
 });

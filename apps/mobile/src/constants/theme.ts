@@ -142,6 +142,7 @@ export const lineHeight = {
   cardTitle: 19.5,
   small: 21,
   explanation: 18.2,
+  quote: 19.5,
 } as const;
 export const letterSpacing = {
   brand: -0.17,
