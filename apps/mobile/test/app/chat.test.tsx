@@ -4,14 +4,15 @@
 //
 // Tested:
 // - Loading, no key, ready (the opener or greeting) and the key, profile and spend read errors
-// - The header: the starter's title or Free chat, the provider line, Back and End
+// - The header: the starter's title or Free chat, the provider line, Back and the X (End session)
 // - A message gets a tutor reply with corrections and new words, with the typing indicator
 // - A saved session from Continue draws its messages and corrections
 // - Each AI failure draws its message and action; the cause line shows in development only
 // - The 80% warning, the 100% block and the provider OpenAI notice
-// - End saves and goes Home, where Continue no longer shows the session
+// - The X asks to confirm; End saves and goes Home, where Continue no longer shows the session
+// - Cancel keeps the chat open; Back keeps the session open and Home offers Continue
 // - The no key state: card, locked input and Send, Add API key opens the key step
-// - The ready state: Send follows the draft, the composer sits in a KeyboardAvoidingView
+// - The ready state: Send follows the draft, the composer sits in the keyboard footer
 // - The state updates when the key step goes back to Chat
 // - Signed out users cannot reach Chat
 //
@@ -25,11 +26,18 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { STARTERS, type Message, type Session } from "@fluency-lab/shared";
 import { act, fireEvent, screen, within } from "@testing-library/react-native";
+import { Alert, type AlertButton } from "react-native";
 
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { fakeAi, resetFakeAi, tutorReplyWith } from "../helpers/fake-ai";
-import { completedProfile, fakeData, profileWith, resetFakeData } from "../helpers/fake-data";
+import {
+  activeSessionWith,
+  completedProfile,
+  fakeData,
+  profileWith,
+  resetFakeData,
+} from "../helpers/fake-data";
 import { fakeKeys, resetFakeKeys } from "../helpers/fake-keys";
 import { renderApp, renderAppAt } from "../helpers/render-app";
 import { generatedSecret } from "../helpers/generated-secret";
@@ -54,14 +62,14 @@ jest.mock("@/auth", () => {
   return { auth: fake.fakeAuth, apple: fake.fakeApple };
 });
 
-// INFO: jest renders no keyboard, so the wiring is proved through the props this spy records.
-const keyboardAvoidingProps: { behavior?: string }[] = [];
+// INFO: jest renders no keyboard; this spy proves the chat no longer draws React Native's view.
+const keyboardAvoidingRenders: number[] = [];
 jest.mock("react-native/Libraries/Components/Keyboard/KeyboardAvoidingView", () => {
   const { View } = jest.requireActual<typeof import("react-native")>("react-native");
   return {
     __esModule: true,
-    default: ({ behavior, children, ...rest }: { behavior?: string; children?: unknown }) => {
-      keyboardAvoidingProps.push({ behavior });
+    default: ({ children, ...rest }: { children?: unknown }) => {
+      keyboardAvoidingRenders.push(1);
       return <View {...rest}>{children as never}</View>;
     },
   };
@@ -119,16 +127,32 @@ describe("Chat", () => {
     resetFakeData();
     resetFakeKeys();
     resetFakeAi();
-    keyboardAvoidingProps.length = 0;
+    keyboardAvoidingRenders.length = 0;
+    jest.spyOn(Alert, "alert").mockImplementation(() => {});
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
     setDev(savedDev);
   });
 
   async function sendMessage(text: string) {
     await fireEvent.changeText(screen.getByPlaceholderText("Write in English\u2026"), text);
     await fireEvent.press(screen.getByRole("button", { name: "Send", disabled: false }));
+  }
+
+  function alertButtons(): AlertButton[] {
+    const call = jest.mocked(Alert.alert).mock.calls.at(-1);
+    return call?.[2] ?? [];
+  }
+
+  async function confirmEnd() {
+    await fireEvent.press(screen.getByRole("button", { name: "End session" }));
+    await act(async () =>
+      alertButtons()
+        .find((button) => button.text === "End")
+        ?.onPress?.(),
+    );
   }
 
   function withKey(
@@ -192,12 +216,13 @@ describe("Chat", () => {
     expect(screen.queryByText("Connect your AI to start")).toBeNull();
   });
 
-  it("draws the composer inside a keyboard avoiding view with padding", async () => {
+  it("draws the composer in the keyboard footer and no React Native keyboard avoiding view", async () => {
     withKey();
     await renderAppAt("/chat", fakeSession());
-    expect(keyboardAvoidingProps).toEqual([{ behavior: "padding" }]);
-    const view = screen.getByTestId("chat-keyboard-view");
-    expect(within(view).getByPlaceholderText("Write in English\u2026")).toBeTruthy();
+    expect(keyboardAvoidingRenders).toEqual([]);
+    const footer = screen.getByTestId("chat-footer");
+    expect(within(footer).getByPlaceholderText("Write in English\u2026")).toBeTruthy();
+    expect(typeof footer.props.offset.opened).toBe("number");
   });
 
   it("enables Send after typing and disables it again when cleared", async () => {
@@ -220,7 +245,7 @@ describe("Chat", () => {
   it("draws the starter's title in the no-key state", async () => {
     await renderAppAt({ pathname: "/chat", params: { starter: starter.id } }, fakeSession());
     expect(screen.getByRole("header", { name: starter.title })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "End" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "End session" })).toBeNull();
   });
 
   it("a message gets a tutor reply with corrections and new words", async () => {
@@ -430,18 +455,67 @@ describe("Chat", () => {
     await renderAppAt("/chat", fakeSession());
     await sendMessage("Hello");
 
-    await fireEvent.press(screen.getByRole("button", { name: "End" }));
+    await confirmEnd();
 
     expect(fakeData.endSession).toHaveBeenCalledWith("session-1");
     expect(screen).toHavePathname("/");
     expect(screen.queryByText("Continue")).toBeNull();
   });
 
+  it("asks to confirm before ending", async () => {
+    withKey();
+    await renderAppAt("/chat", fakeSession());
+    await sendMessage("Hello");
+
+    await fireEvent.press(screen.getByRole("button", { name: "End session" }));
+
+    expect(Alert.alert).toHaveBeenCalledWith("End this session?", undefined, expect.any(Array));
+    expect(alertButtons().map((button) => [button.text, button.style])).toEqual([
+      ["Cancel", "cancel"],
+      ["End", "destructive"],
+    ]);
+    expect(fakeData.endSession).not.toHaveBeenCalled();
+    expect(screen).toHavePathname("/chat");
+  });
+
+  it("Cancel keeps the chat open and ends nothing", async () => {
+    withKey();
+    await renderAppAt("/chat", fakeSession());
+    await sendMessage("Hello");
+
+    await fireEvent.press(screen.getByRole("button", { name: "End session" }));
+    await act(async () =>
+      alertButtons()
+        .find((button) => button.text === "Cancel")
+        ?.onPress?.(),
+    );
+
+    expect(fakeData.endSession).not.toHaveBeenCalled();
+    expect(screen).toHavePathname("/chat");
+    expect(screen.getByPlaceholderText("Write in English\u2026")).toBeTruthy();
+  });
+
+  it("Back after a turn keeps the session open and Home offers Continue", async () => {
+    withKey();
+    fakeData.getActiveSession.mockResolvedValue({
+      ok: true,
+      value: activeSessionWith({ id: "session-1", title: "Free chat" }),
+    });
+    await renderAppAt("/chat", fakeSession());
+    await sendMessage("Hello");
+
+    await fireEvent.press(screen.getByRole("button", { name: "Back to Home" }));
+
+    expect(fakeData.endSession).not.toHaveBeenCalled();
+    expect(screen).toHavePathname("/");
+    expect(await screen.findByText("Continue")).toBeTruthy();
+  });
+
   it("End before any message goes Home and writes nothing", async () => {
     withKey();
     await renderAppAt("/chat", fakeSession());
 
-    await fireEvent.press(screen.getByRole("button", { name: "End" }));
+    await confirmEnd();
 
     expect(screen).toHavePathname("/");
     expect(fakeData.endSession).not.toHaveBeenCalled();
@@ -454,7 +528,7 @@ describe("Chat", () => {
     await renderAppAt("/chat", fakeSession());
     await sendMessage("Hello");
 
-    await fireEvent.press(screen.getByRole("button", { name: "End" }));
+    await confirmEnd();
 
     expect(screen).toHavePathname("/chat");
     expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();

@@ -1,8 +1,9 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { ActivityIndicator, KeyboardAvoidingView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, View } from "react-native";
 
 import { Button } from "@/components/button";
 import { ChatComposer } from "@/components/chat-composer";
+import { ChatFooter } from "@/components/chat-footer";
 import { ChatHeader } from "@/components/chat-header";
 import { ConnectAiCard } from "@/components/connect-ai-card";
 import { FailureMessage } from "@/components/failure-message";
@@ -11,10 +12,18 @@ import { Screen } from "@/components/screen";
 import { Text } from "@/components/text";
 import { colors, spacing } from "@/constants/theme";
 import { useChat } from "@/hooks/use-chat";
+import { useChatMotion } from "@/hooks/use-chat-motion";
 import { busy, sendState } from "@/utils/chat-conversation";
 import { chatItems } from "@/utils/chat-items";
 import { chatOrigin } from "@/utils/chat-opening";
-import { chatNotice, noKeyProviderLine, originTitle, providerLine } from "@/utils/chat-state";
+import {
+  chatNotice,
+  endPromptButtons,
+  endPromptTitle,
+  noKeyProviderLine,
+  originTitle,
+  providerLine,
+} from "@/utils/chat-state";
 
 export default function Chat() {
   const params = useLocalSearchParams<{
@@ -23,6 +32,7 @@ export default function Chat() {
   }>();
   const origin = chatOrigin(params);
   const { view, setDraft, send, retry, end, updateKey } = useChat(origin);
+  const motion = useChatMotion();
 
   if (view.kind === "loading") {
     return (
@@ -50,12 +60,21 @@ export default function Chat() {
   // INFO: edges left and right only: the design's top and bottom already clear the safe area.
   return (
     <Screen edges={["left", "right"]}>
-      <KeyboardAvoidingView behavior="padding" style={styles.fill} testID="chat-keyboard-view">
+      <View style={styles.fill}>
         <ChatHeader
           title={conversation === null ? originTitle(origin) : conversation.title}
           subtitle={conversation === null ? noKeyProviderLine : providerLine(conversation.provider)}
           onBack={() => router.back()}
-          onEnd={conversation === null ? undefined : () => void end()}
+          onEnd={
+            conversation === null
+              ? undefined
+              : () =>
+                  Alert.alert(
+                    endPromptTitle,
+                    undefined,
+                    endPromptButtons(() => void end()),
+                  )
+          }
           endDisabled={waiting}
         />
         {conversation === null ? (
@@ -63,46 +82,51 @@ export default function Chat() {
             <ConnectAiCard onAddKey={() => router.push("/api-key")} />
           </View>
         ) : (
-          <MessageList items={chatItems(conversation)} />
+          <MessageList items={chatItems(conversation)} motion={motion} />
         )}
-        {notice === null ? null : (
-          <View style={styles.notices}>
-            {notice.kind === "failure" ? (
-              <>
+        <ChatFooter>
+          {notice === null ? null : (
+            <View style={styles.notices}>
+              {notice.kind === "failure" ? (
+                <>
+                  <FailureMessage message={notice.view.message} cause={notice.view.cause} />
+                  {notice.view.action === null ? null : (
+                    <Button
+                      variant="deep"
+                      compact
+                      label={notice.view.action === "update_key" ? "Update key" : "Try again"}
+                      onPress={() =>
+                        notice.view.action === "update_key" ? updateKey() : void retry()
+                      }
+                    />
+                  )}
+                </>
+              ) : null}
+              {notice.kind === "unsupported" ? (
+                <>
+                  <Text variant="muted">{notice.message}</Text>
+                  <Button variant="deep" compact label="Update key" onPress={updateKey} />
+                </>
+              ) : null}
+              {notice.kind === "limit" ? (
                 <FailureMessage message={notice.view.message} cause={notice.view.cause} />
-                {notice.view.action === null ? null : (
-                  <Button
-                    variant="deep"
-                    compact
-                    label={notice.view.action === "update_key" ? "Update key" : "Try again"}
-                    onPress={() =>
-                      notice.view.action === "update_key" ? updateKey() : void retry()
-                    }
-                  />
-                )}
-              </>
-            ) : null}
-            {notice.kind === "unsupported" ? (
-              <>
-                <Text variant="muted">{notice.message}</Text>
-                <Button variant="deep" compact label="Update key" onPress={updateKey} />
-              </>
-            ) : null}
-            {notice.kind === "limit" ? (
-              <FailureMessage message={notice.view.message} cause={notice.view.cause} />
-            ) : null}
-            {notice.kind === "warning" ? <Text variant="caption">{notice.message}</Text> : null}
-          </View>
-        )}
-        <ChatComposer
-          value={conversation === null ? "" : conversation.draft}
-          onChangeText={setDraft}
-          onSend={() => void send()}
-          placeholder={conversation === null ? "Add a key to start chatting" : "Write in English…"}
-          locked={locked}
-          busy={waiting}
-        />
-      </KeyboardAvoidingView>
+              ) : null}
+              {notice.kind === "warning" ? <Text variant="caption">{notice.message}</Text> : null}
+            </View>
+          )}
+          <ChatComposer
+            value={conversation === null ? "" : conversation.draft}
+            onChangeText={setDraft}
+            onSend={() => void send()}
+            placeholder={
+              conversation === null ? "Add a key to start chatting" : "Write in English…"
+            }
+            locked={locked}
+            busy={waiting}
+            press={motion.press}
+          />
+        </ChatFooter>
+      </View>
     </Screen>
   );
 }

@@ -26,6 +26,18 @@ with **pgTAP** through `pnpm supabase test db`, which needs the local stack.
   `vitest` in `packages/shared` and `apps/api`.
 - `render`, `fireEvent` and `act` from Testing Library are async and
   are awaited.
+- `apps/mobile` runs jest through the repo resolver `apps/mobile/jest.resolver.js`,
+  not Reanimated's documented one. pnpm names store folders with their peers
+  (`.pnpm/expo-modules-core@..._react-native-worklets@...`), so the upstream
+  Reanimated and Worklets resolvers send unrelated packages to the web build. The
+  repo resolver matches the package folder itself and chains to the preset's.
+- `react-native-keyboard-controller` is mocked for every test in
+  `apps/mobile/jest.setup.js` with the library's own Jest mock: the provider and the
+  views are plain host components, so their props are readable.
+- Reanimated styles do not advance under jest, not even with fake timers. A test
+  checks only the starting or still style of an animation (for example a scale of 1,
+  or `null` with reduce motion), or the target a `withTiming` is called with. Live
+  frames go to the manual device check of the plan.
 - Tests never contain literal values that look like secrets (passwords,
   keys, tokens, ids next to jwt or auth settings); they are generated at
   run time.

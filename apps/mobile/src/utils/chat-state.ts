@@ -125,3 +125,19 @@ export function chatNotice(c: Conversation): ChatNotice {
   if (notice === "warning") return { kind: "warning", message: spendWarningText };
   return null;
 }
+
+export const endPromptTitle = "End this session?";
+
+// INFO: structurally an AlertButton[], so this file imports nothing from react-native.
+export type PromptButton = {
+  text: string;
+  style: "cancel" | "destructive";
+  onPress?: () => void;
+};
+
+export function endPromptButtons(onEnd: () => void): PromptButton[] {
+  return [
+    { text: "Cancel", style: "cancel" },
+    { text: "End", style: "destructive", onPress: onEnd },
+  ];
+}

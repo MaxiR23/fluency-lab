@@ -15,8 +15,9 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { STARTERS, type Profile } from "@fluency-lab/shared";
+import { STARTERS, TUTOR_MODEL, type Profile } from "@fluency-lab/shared";
 
+import type { TutorReply } from "@/ai/ai-port";
 import {
   conversationReducer,
   startConversation,
@@ -136,9 +137,35 @@ describe("chatItems", () => {
     const items = chatItems(asking);
 
     expect(items.slice(-2)).toEqual([
-      { kind: "user", id: "pending", text: "Hello", corrections: [], explanation: null },
+      { kind: "user", id: "message-1", text: "Hello", corrections: [], explanation: null },
       { kind: "typing", id: "typing" },
     ]);
+  });
+
+  it("gives the pending message the id its saved message takes when the reply arrives", () => {
+    const base = conversation({ messages: [designUser] });
+    const sent = conversationReducer(base, { type: "draft_changed", text: "Hello" });
+    const asking = conversationReducer(sent, { type: "send_started" });
+    const reply: TutorReply = {
+      reply: "Nice!",
+      corrections: [],
+      explanation: null,
+      newWords: [],
+      model: TUTOR_MODEL,
+      usage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+      },
+    };
+
+    const before = chatItems(asking).find((item) => item.kind === "user" && item.text === "Hello");
+    const answered = conversationReducer(asking, { type: "reply_received", reply });
+    const after = chatItems(answered).find((item) => item.kind === "user" && item.text === "Hello");
+
+    expect(before?.id).toBe("message-1");
+    expect(after?.id).toBe(before?.id);
   });
 
   it("draws no typing indicator when idle", () => {

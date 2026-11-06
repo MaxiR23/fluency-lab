@@ -46,6 +46,8 @@ export const spacing = {
   screenTop: 72,
   tight: 2,
   composerBottom: 36,
+  composerKeyboard: 18,
+  typingDot: 5,
   panel: 28,
 } as const;
 export const radius = {
@@ -89,6 +91,7 @@ export const size = {
   badgeLarge: 52,
   iconBadgeLarge: 24,
   tag: 28,
+  typingDot: 7,
   messageMaxWidth: "82%",
 } as const;
 export const strokeWidth = { icon: 1.8, action: 2, check: 2.4, send: 1.9 } as const;
@@ -149,6 +152,24 @@ export const shadow = {
     shadowOpacity: 1,
     shadowRadius: 8,
   },
+} as const;
+// INFO: the durations follow the issue (200 to 250 ms); the offset, scale and dot keyframes
+// follow chat-typing.html; the beziers are CSS ease-out and ease-in-out. Times are in ms,
+// the dot peak and settle points are shares of one dot cycle.
+export const motion = {
+  enterDuration: 240,
+  enterOffset: 12,
+  fadeDuration: 200,
+  pressDuration: 200,
+  pressScale: 0.9,
+  dotCycle: 1200,
+  dotStagger: 150,
+  dotPeakAt: 0.3,
+  dotSettleAt: 0.6,
+  dotLift: 4,
+  dotRestOpacity: 0.3,
+  easeOut: [0, 0, 0.58, 1],
+  easeInOut: [0.42, 0, 0.58, 1],
 } as const;
 export const fontFamily = {
   regular: "PlusJakartaSans_400Regular",
