@@ -7,6 +7,8 @@
 // - The typed text and the send press are reported
 // - Busy keeps the open input and disables Send
 // - The input takes several lines, grows to five, then scrolls; Send stays at the bottom of the row
+// - The label prop names the input
+// - The row's top padding is 4 below the chips
 // - Send scales while pressed, and not with reduce motion on (press null)
 //
 // What is covered:
@@ -37,6 +39,40 @@ jest.mock("react-native-reanimated", () => {
     default: actual.default,
     withTiming: jest.fn(actual.withTiming),
   };
+});
+
+describe("ChatComposer label and padding", () => {
+  it("labels the input Message by default and with the label it is given", async () => {
+    await render(
+      <ChatComposer
+        value=""
+        onChangeText={() => {}}
+        onSend={() => {}}
+        placeholder="Type here"
+        locked={false}
+        press={null}
+        label="Ask about this correction"
+      />,
+    );
+    expect(screen.getByLabelText("Ask about this correction")).toBeTruthy();
+    expect(screen.queryByLabelText("Message")).toBeNull();
+  });
+
+  it("gives 4 on top below the chips", async () => {
+    await render(
+      <ChatComposer
+        value=""
+        onChangeText={() => {}}
+        onSend={() => {}}
+        placeholder="Type here"
+        locked={false}
+        press={null}
+        belowChips
+      />,
+    );
+    const row = screen.getByLabelText("Message").parent;
+    expect(StyleSheet.flatten(row?.props.style).paddingTop).toBe(spacing.xs);
+  });
 });
 
 function composer(props: Partial<React.ComponentProps<typeof ChatComposer>> = {}) {

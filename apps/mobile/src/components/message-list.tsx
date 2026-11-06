@@ -8,6 +8,7 @@ import Animated, { LayoutAnimationConfig } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CorrectionsCard } from "@/components/corrections-card";
+import { messageListContentStyle, type MessageListLayout } from "@/components/message-list-style";
 import { MessageBubble } from "@/components/message-bubble";
 import { messageBubbleStyle } from "@/components/message-bubble-style";
 import { NewWord } from "@/components/new-word";
@@ -25,12 +26,17 @@ export function MessageList({
   motion,
   onReply,
   onArm,
+  onAsk,
+  layout = "chat",
 }: {
   items: ChatItem[];
   motion: ChatMotion;
   // INFO: without onReply no row can be swiped; with it, only the tutor's rows can.
   onReply?: (id: string) => void;
   onArm?: () => void;
+  // INFO: without onAsk no learner row asks about its corrections.
+  onAsk?: (messageId: string) => void;
+  layout?: MessageListLayout;
 }) {
   const list = useRef<KeyboardChatScrollViewRef>(null);
   // INFO: each message row's y inside the content, read from its layout, so a tapped quote can
@@ -48,7 +54,7 @@ export function MessageList({
       ref={list}
       testID="message-list"
       style={styles.list}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={messageListContentStyle(layout)}
       keyboardShouldPersistTaps="handled"
       onContentSizeChange={scrollToNewest}
       onLayout={scrollToNewest}
@@ -82,7 +88,7 @@ export function MessageList({
               </Animated.View>
             );
           }
-          const { quote } = item;
+          const { quote, thread } = item;
           return (
             <Animated.View
               key={item.id}
@@ -108,6 +114,11 @@ export function MessageList({
                 corrections={item.corrections}
                 explanation={item.explanation}
                 entering={enterTransition(motion.enter)}
+                ask={
+                  thread === null || onAsk === undefined
+                    ? undefined
+                    : { replies: thread.replies, onPress: () => onAsk(thread.messageId) }
+                }
               />
             </Animated.View>
           );
@@ -122,9 +133,4 @@ function noop(): void {}
 const styles = StyleSheet.create({
   list: { flex: 1 },
   swipeRow: { alignSelf: "stretch" },
-  content: {
-    gap: spacing.card,
-    paddingVertical: spacing.screenSide,
-    paddingHorizontal: spacing.md,
-  },
 });

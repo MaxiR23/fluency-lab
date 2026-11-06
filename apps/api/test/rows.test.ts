@@ -9,6 +9,8 @@
 // - toProfileStatsRow reads the session count, the session days and the new words count
 // - toSessionCost reads the start time and the cost of a session row
 // - toMonthProgressRow, toHistoryRow, toMistakeRow and toWordRow read the Progress rows
+// - toMessage reads a message whose correction is withdrawn
+// - toThreadMessage and toThreadCount read a thread row and a reply count
 // - toProfilePatch renames an update to columns
 //
 // What is covered:
@@ -31,6 +33,8 @@ import {
   toSession,
   toSessionCost,
   toSessionStart,
+  toThreadCount,
+  toThreadMessage,
   toWordRow,
 } from "../src/rows";
 
@@ -201,6 +205,58 @@ describe("toMessage", () => {
 
   it("returns null for a role outside the list", () => {
     expect(toMessage({ ...messageRow, role: "system" })).toBeNull();
+  });
+
+  it("maps a message whose correction is withdrawn", () => {
+    const corrections = {
+      items: [{ original: "a", corrected: "b", withdrawn: true }],
+      explanation: null,
+    };
+    expect(toMessage({ ...messageRow, corrections })?.corrections).toEqual(corrections);
+  });
+});
+
+describe("toThreadMessage", () => {
+  const threadRow = {
+    id,
+    message_id: id,
+    role: "user",
+    text: "Why?",
+    new_words: ["word"],
+    created_at: stamp,
+  };
+
+  it("maps a thread row to the contract", () => {
+    expect(toThreadMessage(threadRow)).toEqual({
+      id,
+      messageId: id,
+      role: "user",
+      text: "Why?",
+      newWords: ["word"],
+      createdAt: stamp,
+    });
+  });
+
+  it("maps null new words to null", () => {
+    expect(toThreadMessage({ ...threadRow, new_words: null })?.newWords).toBeNull();
+  });
+
+  it("rejects a thread row with an unknown role", () => {
+    expect(toThreadMessage({ ...threadRow, role: "system" })).toBeNull();
+  });
+
+  it("rejects a thread row without message_id", () => {
+    expect(toThreadMessage(without(threadRow, "message_id"))).toBeNull();
+  });
+});
+
+describe("toThreadCount", () => {
+  it("maps a count row", () => {
+    expect(toThreadCount({ message_id: id, reply_count: 3 })).toEqual({ messageId: id, count: 3 });
+  });
+
+  it("rejects a count that is a string", () => {
+    expect(toThreadCount({ message_id: id, reply_count: "3" })).toBeNull();
   });
 });
 

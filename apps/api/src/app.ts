@@ -1,5 +1,6 @@
 import {
   messageCreateSchema,
+  messageIdParamSchema,
   mistakesQuerySchema,
   profileUpdateSchema,
   progressPageQuerySchema,
@@ -8,8 +9,10 @@ import {
   sessionTitle,
   sessionUsageSchema,
   starterById,
+  threadMessageCreateSchema,
   usageCostUsd,
   weekQuerySchema,
+  withdrawSchema,
 } from "@fluency-lab/shared";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
@@ -314,7 +317,14 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
           return c.json(body, status);
         }
         if (outcome.value === null) return c.json({ error: "not_found" }, 404);
-        return c.json(outcome.value, 200);
+        const counts = await config.store
+          .forUser(c.get("caller"))
+          .listThreadCounts(c.req.valid("param").id);
+        if (!counts.ok) {
+          const { status, body } = failureResponse(counts.failure);
+          return c.json(body, status);
+        }
+        return c.json({ ...outcome.value, threadReplies: counts.value }, 200);
       },
     )
     .get(
@@ -353,6 +363,59 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
         }
         if (outcome.value === null) return c.json({ error: "not_found" }, 404);
         return c.json(outcome.value, 201);
+      },
+    )
+    .get(
+      "/messages/:id/thread",
+      auth,
+      caller,
+      zValidator("param", messageIdParamSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .getThread(c.req.valid("param").id);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
+      },
+    )
+    .post(
+      "/messages/:id/thread",
+      auth,
+      caller,
+      zValidator("param", messageIdParamSchema, invalidInput),
+      zValidator("json", threadMessageCreateSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .addThreadMessage(c.req.valid("param").id, c.req.valid("json"));
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 201);
+      },
+    )
+    .post(
+      "/messages/:id/withdraw",
+      auth,
+      caller,
+      zValidator("param", messageIdParamSchema, invalidInput),
+      zValidator("json", withdrawSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .withdrawCorrections(c.req.valid("param").id, c.req.valid("json").items);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
       },
     )
     .post(

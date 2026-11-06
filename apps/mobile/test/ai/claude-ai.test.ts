@@ -8,6 +8,7 @@
 // - Success, the expected empty reply, and each failure the screen branches on
 // - Transport failures: rejected fetch, deadline, bad bodies, bad usage
 // - The key never reaches an outcome or a log
+// - replyInThread: the same request with the thread schema, its payload, and the same failures
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -19,7 +20,7 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { TUTOR_MODEL } from "@fluency-lab/shared";
 
-import { TUTOR_REPLY_JSON_SCHEMA, createClaudeAi } from "@/ai/claude-ai";
+import { THREAD_REPLY_JSON_SCHEMA, TUTOR_REPLY_JSON_SCHEMA, createClaudeAi } from "@/ai/claude-ai";
 import type { KeyReadOutcome } from "@/keys/key-port";
 import { generatedSecret } from "../helpers/generated-secret";
 
@@ -576,5 +577,170 @@ describe("transport failures", () => {
 
     expect(outcome).toMatchObject({ ok: false, failure: "bad_response" });
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+});
+
+describe("replyInThread", () => {
+  const threadPayload = {
+    reply: "Because of the article.",
+    newWords: ["laid-back"],
+    withdrawn: [2],
+  };
+  const threadRequest = {
+    system: "You are a tutor.",
+    turns: [{ role: "user" as const, text: "Why is it wrong?" }],
+  };
+
+  it("parses the reply, the new words, the withdrawn numbers, the model and the usage", async () => {
+    const { ai } = setup(success(threadPayload));
+
+    const outcome = await ai.replyInThread(threadRequest);
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: {
+        reply: "Because of the article.",
+        newWords: ["laid-back"],
+        withdrawn: [2],
+        model: TUTOR_MODEL,
+        usage: {
+          inputTokens: 700,
+          outputTokens: 150,
+          cacheCreationInputTokens: 0,
+          cacheReadInputTokens: 0,
+        },
+      },
+    });
+  });
+
+  it("is a success with no new words and no withdrawals", async () => {
+    const { ai } = setup(success({ reply: "Ok.", newWords: [], withdrawn: [] }));
+    const outcome = await ai.replyInThread(threadRequest);
+    expect(outcome).toMatchObject({ ok: true, value: { newWords: [], withdrawn: [] } });
+  });
+
+  it("sends the same endpoint and headers with the thread schema, the key only in x-api-key", async () => {
+    const { ai, seen } = setup(success(threadPayload));
+
+    await ai.replyInThread(threadRequest);
+
+    expect(seen[0].url).toBe(ENDPOINT);
+    expect(seen[0].headers.get("x-api-key")).toBe(key);
+    expect(seen[0].headers.get("anthropic-version")).toBe("2026-10-21");
+    const sent = JSON.parse(seen[0].body);
+    expect(sent.output_config.format).toEqual({
+      type: "json_schema",
+      schema: THREAD_REPLY_JSON_SCHEMA,
+    });
+    expect(sent.system).toBe("You are a tutor.");
+    expect(sent.thinking).toEqual({ type: "disabled" });
+    expect(seen[0].body).not.toContain(key);
+  });
+
+  it("maps a 401 to invalid_key and a 429 to rate_limited", async () => {
+    const invalid = setup(errorResponse(401, "authentication_error"));
+    expect(await invalid.ai.replyInThread(threadRequest)).toMatchObject({
+      ok: false,
+      failure: "invalid_key",
+    });
+    const limited = setup(errorResponse(429, "rate_limit_error"));
+    expect(await limited.ai.replyInThread(threadRequest)).toMatchObject({
+      ok: false,
+      failure: "rate_limited",
+    });
+  });
+
+  it("is missing_key without a saved key and makes no request", async () => {
+    const { ai, fetchFn } = setup(success(threadPayload), { read: { ok: true, value: null } });
+    expect(await ai.replyInThread(threadRequest)).toEqual({ ok: false, failure: "missing_key" });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("is key_unreadable when the key cannot be read", async () => {
+    const { ai } = setup(success(threadPayload), {
+      read: { ok: false, failure: "not_read", cause: { name: "Error", detail: null } },
+    });
+    expect(await ai.replyInThread(threadRequest)).toMatchObject({
+      ok: false,
+      failure: "key_unreadable",
+    });
+  });
+
+  it("is network when fetch rejects", async () => {
+    const { ai } = setup(new TypeError("network down"));
+    expect(await ai.replyInThread(threadRequest)).toMatchObject({ ok: false, failure: "network" });
+  });
+
+  it("is network at the deadline", async () => {
+    jest.useFakeTimers();
+    const fetchFn = jest.fn(() => new Promise<Response>(() => {}));
+    const ai = createClaudeAi({
+      fetchFn: fetchFn as unknown as typeof fetch,
+      readKey: async () => ({ ok: true, value: key }),
+      timeoutMs: 1000,
+    });
+    const pending = ai.replyInThread(threadRequest);
+    await jest.advanceTimersByTimeAsync(1001);
+    expect(await pending).toMatchObject({
+      ok: false,
+      failure: "network",
+      cause: { name: "Timeout" },
+    });
+  });
+
+  it("is bad_response with the billed usage for a wrong shape", async () => {
+    const { ai } = setup(success({ reply: "Ok.", newWords: [] }));
+    expect(await ai.replyInThread(threadRequest)).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: { inputTokens: 700, outputTokens: 150 },
+    });
+  });
+
+  it("is bad_response for an empty reply", async () => {
+    const { ai } = setup(success({ reply: "  ", newWords: [], withdrawn: [] }));
+    expect(await ai.replyInThread(threadRequest)).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+    });
+  });
+});
+
+describe("THREAD_REPLY_JSON_SCHEMA", () => {
+  const unsupported = ["minLength", "maxLength", "minimum", "maximum", "minItems", "$ref"];
+
+  function walk(node: unknown, visit: (node: Record<string, unknown>) => void) {
+    if (typeof node !== "object" || node === null) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, visit);
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    visit(record);
+    for (const value of Object.values(record)) walk(value, visit);
+  }
+
+  it("closes every object and requires all of its properties", () => {
+    let objects = 0;
+    walk(THREAD_REPLY_JSON_SCHEMA, (node) => {
+      if (node.type !== "object") return;
+      objects += 1;
+      expect(node.additionalProperties).toBe(false);
+      expect(node.required).toEqual(Object.keys(node.properties as object));
+    });
+    expect(objects).toBe(1);
+  });
+
+  it("uses no unsupported keyword", () => {
+    walk(THREAD_REPLY_JSON_SCHEMA, (node) => {
+      for (const keyword of unsupported) expect(node).not.toHaveProperty(keyword);
+    });
+  });
+
+  it("lists the withdrawn numbers as integers", () => {
+    expect(THREAD_REPLY_JSON_SCHEMA.properties.withdrawn).toEqual({
+      type: "array",
+      items: { type: "integer" },
+    });
   });
 });

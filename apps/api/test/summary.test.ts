@@ -4,6 +4,7 @@
 //
 // Tested:
 // - sessionSummary counts the messages and collects the corrections and the new words
+// - A withdrawn correction was not a mistake and is left out, without its flag
 // - The new words are deduplicated the way profile_stats counts them
 //
 // What is covered:
@@ -14,7 +15,7 @@
 // SEE: apps/api/src/summary.ts
 
 import { describe, expect, it } from "vitest";
-import type { Message } from "@fluency-lab/shared";
+import { correctionSchema, type Message } from "@fluency-lab/shared";
 import { sessionSummary } from "../src/summary";
 
 const stamp = "2026-01-01 10:00:00+00";
@@ -79,6 +80,27 @@ describe("sessionSummary", () => {
       corrections: [],
       newWords: [],
     });
+  });
+
+  it("leaves out withdrawn corrections", () => {
+    const kept = { original: "a", corrected: "b", rule: "Rule A" };
+    const dropped = { original: "c", corrected: "d", withdrawn: true as const };
+    const messages = [message({ corrections: { items: [kept, dropped], explanation: null } })];
+    expect(sessionSummary(messages).corrections).toEqual([kept]);
+  });
+
+  it("returns no corrections when every one is withdrawn", () => {
+    const only = { original: "c", corrected: "d", withdrawn: true as const };
+    const messages = [message({ corrections: { items: [only], explanation: null } })];
+    expect(sessionSummary(messages).corrections).toEqual([]);
+  });
+
+  it("returns the corrections without the withdrawn key", () => {
+    const item = { original: "a", corrected: "b" };
+    const messages = [message({ corrections: { items: [item], explanation: null } })];
+    const [result] = sessionSummary(messages).corrections;
+    expect(correctionSchema.safeParse(result).success).toBe(true);
+    expect(result).not.toHaveProperty("withdrawn");
   });
 
   it("treats a corrections object with no items as no corrections", () => {

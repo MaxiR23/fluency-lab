@@ -14,13 +14,14 @@ export const RULE_NO_KEY = "Never ask for or mention an API key.";
 export const OUTPUT_GUIDE =
   "Answer in the given JSON format. reply is your message. corrections lists each real mistake in the learner's last message as original and corrected text, with rule: a short label of two to six words naming the grammar point, like \"Present perfect for experiences\" or \"Articles with years\". original is copied exactly, character for character, from the learner's last message. Never correct anything outside the learner's last message: not earlier messages, not your own words, and never a rewritten or invented original. corrections is empty when there are none. explanation is one short sentence about those corrections, empty when there are none. newWords lists up to three words or expressions from this exchange worth learning at the learner's level, empty when there are none.";
 
-const LEVEL_LINES: Record<Level, string> = {
+export const LEVEL_LINES: Record<Level, string> = {
   beginner: "The learner is a beginner: use short sentences and common words.",
   intermediate:
     "The learner is intermediate: use natural everyday English and a few new expressions.",
   advanced: "The learner is advanced: use rich, natural English, idioms included.",
 };
-const LEVEL_UNSET = "The learner's level is not set: start simple and adjust to how they write.";
+export const LEVEL_UNSET =
+  "The learner's level is not set: start simple and adjust to how they write.";
 
 export type TutorPromptInput = {
   displayName: string | null;

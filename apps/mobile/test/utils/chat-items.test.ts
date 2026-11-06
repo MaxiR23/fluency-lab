@@ -3,8 +3,9 @@
 // Tests for the chat item helpers.
 //
 // Tested:
-// - correctionsLabel
+// - correctionsLabel, threadRepliesLabel, correctionRows and pinnedRule
 // - chatItems builds the list of the conversation: bubbles, corrections, new words, typing
+// - chatItems opens a thread only on a saved message with corrections, with its reply count
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -24,7 +25,14 @@ import {
   type Conversation,
   type ChatMessage,
 } from "@/utils/chat-conversation";
-import { chatItems, correctionsLabel } from "@/utils/chat-items";
+import {
+  chatItems,
+  correctionRows,
+  correctionsLabel,
+  pinnedRule,
+  threadAskLabel,
+  threadRepliesLabel,
+} from "@/utils/chat-items";
 
 const profile: Profile = {
   id: "user-1",
@@ -62,6 +70,7 @@ const designUser: ChatMessage = {
   newWords: ["definitely"],
   replyTo: null,
   savedId: null,
+  threadReplies: 0,
 };
 
 describe("correctionsLabel", () => {
@@ -75,6 +84,95 @@ describe("correctionsLabel", () => {
 
   it("is plural for two corrections", () => {
     expect(correctionsLabel(2)).toBe("2 corrections");
+  });
+});
+
+describe("threadRepliesLabel", () => {
+  it("is null for no replies", () => {
+    expect(threadRepliesLabel(0)).toBeNull();
+  });
+
+  it("is singular for one reply", () => {
+    expect(threadRepliesLabel(1)).toBe("1 reply");
+  });
+
+  it("is plural for two replies", () => {
+    expect(threadRepliesLabel(2)).toBe("2 replies");
+  });
+
+  it("is null for a negative count", () => {
+    expect(threadRepliesLabel(-1)).toBeNull();
+  });
+});
+
+describe("threadAskLabel", () => {
+  it("names the row with its reply count", () => {
+    expect(threadAskLabel("2 replies")).toBe("Ask about this, 2 replies");
+  });
+
+  it("names the row alone without replies", () => {
+    expect(threadAskLabel(null)).toBe("Ask about this");
+  });
+});
+
+describe("correctionRows", () => {
+  it("marks a withdrawn item and keeps an active one", () => {
+    const rows = correctionRows([
+      { original: "a", corrected: "b" },
+      { original: "c", corrected: "d", withdrawn: true },
+    ]);
+    expect(
+      rows.map(({ original, corrected, withdrawn }) => ({ original, corrected, withdrawn })),
+    ).toEqual([
+      { original: "a", corrected: "b", withdrawn: false },
+      { original: "c", corrected: "d", withdrawn: true },
+    ]);
+  });
+
+  it("gives two identical items distinct keys", () => {
+    const rows = correctionRows([
+      { original: "a", corrected: "b" },
+      { original: "a", corrected: "b" },
+    ]);
+    expect(new Set(rows.map((row) => row.key)).size).toBe(2);
+  });
+
+  it("is empty for no corrections", () => {
+    expect(correctionRows([])).toEqual([]);
+  });
+});
+
+describe("pinnedRule", () => {
+  it("joins the distinct rules in order", () => {
+    expect(
+      pinnedRule([
+        { original: "a", corrected: "b", rule: "Spelling" },
+        { original: "c", corrected: "d", rule: "Articles" },
+      ]),
+    ).toBe("Spelling · Articles");
+  });
+
+  it("treats rules that differ only in case and spaces as one", () => {
+    expect(
+      pinnedRule([
+        { original: "a", corrected: "b", rule: "Spelling" },
+        { original: "c", corrected: "d", rule: " spelling " },
+      ]),
+    ).toBe("Spelling");
+  });
+
+  it("is null when no correction has a rule", () => {
+    expect(pinnedRule([{ original: "a", corrected: "b" }])).toBeNull();
+    expect(pinnedRule([])).toBeNull();
+  });
+
+  it("is the rule alone when only one has one", () => {
+    expect(
+      pinnedRule([
+        { original: "a", corrected: "b" },
+        { original: "c", corrected: "d", rule: "Tense" },
+      ]),
+    ).toBe("Tense");
   });
 });
 
@@ -99,6 +197,7 @@ describe("chatItems", () => {
       newWords: [],
       replyTo: null,
       savedId: null,
+      threadReplies: 0,
     };
     const items = chatItems(conversation({ messages: [designUser, tutor] }));
 
@@ -110,6 +209,7 @@ describe("chatItems", () => {
         corrections: designUser.corrections,
         explanation: designUser.explanation,
         quote: null,
+        thread: null,
       },
       { kind: "new_word", id: "u1:word:0", word: "definitely" },
       { kind: "tutor", id: "t2", text: tutor.text },
@@ -124,7 +224,15 @@ describe("chatItems", () => {
       newWords: [],
     };
     expect(chatItems(conversation({ messages: [plain] }))).toEqual([
-      { kind: "user", id: "u1", text: plain.text, corrections: [], explanation: null, quote: null },
+      {
+        kind: "user",
+        id: "u1",
+        text: plain.text,
+        corrections: [],
+        explanation: null,
+        quote: null,
+        thread: null,
+      },
     ]);
   });
 
@@ -149,6 +257,7 @@ describe("chatItems", () => {
         corrections: [],
         explanation: null,
         quote: null,
+        thread: null,
       },
       { kind: "typing", id: "typing" },
     ]);
@@ -196,6 +305,45 @@ describe("chatItems", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  describe("threads", () => {
+    const saved: ChatMessage = { ...designUser, savedId: "db-1", threadReplies: 2 };
+
+    it("a saved message with corrections can be asked about, with its reply count", () => {
+      const item = chatItems(conversation({ messages: [saved] }))[0];
+      expect(item).toMatchObject({ thread: { messageId: "db-1", replies: "2 replies" } });
+    });
+
+    it("a saved message with no replies has no count", () => {
+      const item = chatItems(conversation({ messages: [{ ...saved, threadReplies: 0 }] }))[0];
+      expect(item).toMatchObject({ thread: { messageId: "db-1", replies: null } });
+    });
+
+    it("a message without corrections cannot be asked about", () => {
+      const plain: ChatMessage = { ...saved, corrections: [], explanation: null };
+      expect(chatItems(conversation({ messages: [plain] }))[0]).toMatchObject({ thread: null });
+    });
+
+    it("a message not saved yet cannot be asked about", () => {
+      const local: ChatMessage = { ...saved, savedId: null };
+      expect(chatItems(conversation({ messages: [local] }))[0]).toMatchObject({ thread: null });
+    });
+
+    it("the pending row cannot be asked about", () => {
+      const items = chatItems(conversation({ pending: "Hi", phase: "asking" }));
+      expect(items.find((i) => i.kind === "user")).toMatchObject({ thread: null });
+    });
+
+    it("a message whose corrections are all withdrawn can still be asked about", () => {
+      const withdrawn: ChatMessage = {
+        ...saved,
+        corrections: [{ original: "a", corrected: "b", withdrawn: true }],
+      };
+      expect(chatItems(conversation({ messages: [withdrawn] }))[0]).toMatchObject({
+        thread: { messageId: "db-1" },
+      });
+    });
+  });
+
   describe("quotes", () => {
     const tutor: ChatMessage = {
       id: "t1",
@@ -206,6 +354,7 @@ describe("chatItems", () => {
       newWords: [],
       replyTo: null,
       savedId: null,
+      threadReplies: 0,
     };
 
     it("a learner reply carries the quote with the tutor's name and text", () => {

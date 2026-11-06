@@ -1,11 +1,15 @@
 import type {
   ActiveSession,
+  CorrectionThread,
   Message,
   MessageCreate,
   SessionWithMessages,
   Profile,
   ProfileUpdate,
   Session,
+  ThreadMessage,
+  ThreadMessageCreate,
+  ThreadReplies,
   TopicId,
 } from "@fluency-lab/shared";
 
@@ -24,8 +28,23 @@ export type UserStore = {
   deleteSession(sessionId: string): Promise<StoreOutcome<Session | null>>;
   createSession(input: { topicId: TopicId | null; title: string }): Promise<StoreOutcome<Session>>;
   // INFO: null means the session is not visible to the caller (missing or another user's).
-  getSessionWithMessages(sessionId: string): Promise<StoreOutcome<SessionWithMessages | null>>;
+  // The thread counts travel apart (listThreadCounts), so the main chat read never touches the thread table.
+  getSessionWithMessages(
+    sessionId: string,
+  ): Promise<StoreOutcome<Omit<SessionWithMessages, "threadReplies"> | null>>;
   addMessage(sessionId: string, input: MessageCreate): Promise<StoreOutcome<Message | null>>;
+  // INFO: null means the message is not visible to the caller (missing or another user's);
+  // a message with no thread is the expected empty: messages is [].
+  getThread(messageId: string): Promise<StoreOutcome<CorrectionThread | null>>;
+  // INFO: null means the message is not visible to the caller (missing or another user's).
+  addThreadMessage(
+    messageId: string,
+    input: ThreadMessageCreate,
+  ): Promise<StoreOutcome<ThreadMessage | null>>;
+  // INFO: item indexes are 0-based; null means the message is not the caller's.
+  withdrawCorrections(messageId: string, items: number[]): Promise<StoreOutcome<Message | null>>;
+  // INFO: the reply count of each message of the session that has a thread; [] is the expected empty.
+  listThreadCounts(sessionId: string): Promise<StoreOutcome<ThreadReplies>>;
   addSessionCost(sessionId: string, amountUsd: number): Promise<StoreOutcome<Session | null>>;
   endSession(sessionId: string): Promise<StoreOutcome<Session | null>>;
   listSessionStarts(since: string): Promise<StoreOutcome<string[]>>;

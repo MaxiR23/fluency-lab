@@ -5,6 +5,7 @@
 // Tested:
 // - The key is sent only to the provider endpoint, in x-api-key
 // - The key never reaches the data port or any request to our API
+// - The same holds for a question asked in a correction thread
 // - A 401 or a network error that echoes the key draws no key, cause line included
 // - Nothing is logged
 //   (that only the AI wiring reads the key is checked in scripts/test/key-reader.test.mjs)
@@ -22,7 +23,14 @@ import { act, fireEvent, screen } from "@testing-library/react-native";
 import { resetFakeAuth, fakeSession } from "./helpers/fake-auth";
 import { resetFakeAi } from "./helpers/fake-ai";
 import { fakeKeys, resetFakeKeys } from "./helpers/fake-keys";
-import { apiKey, data, provider, providerSuccess, recorded } from "./helpers/isolation-wiring";
+import {
+  apiKey,
+  data,
+  provider,
+  providerSuccess,
+  providerThreadSuccess,
+  recorded,
+} from "./helpers/isolation-wiring";
 import { renderAppAt } from "./helpers/render-app";
 import { setDev } from "./helpers/set-dev";
 
@@ -142,6 +150,29 @@ describe("the user's key", () => {
       screen.getByText("Could not reach the AI. Check your connection and try again."),
     ).toBeTruthy();
     expect(JSON.stringify(screen.toJSON())).not.toContain(apiKey);
+  });
+
+  it("is sent only to the provider endpoint when a question is asked in a thread", async () => {
+    provider.answer = providerThreadSuccess;
+    await renderAppAt({ pathname: "/thread", params: { message: "message-1" } }, fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Why is it wrong?" }));
+    await act(async () => {});
+
+    const toProvider = recorded.filter((entry) => entry.url.startsWith(PROVIDER_ORIGIN));
+    const toApi = recorded.filter((entry) => entry.url.startsWith("http://api.test"));
+    expect(toProvider).toHaveLength(1);
+    expect(toProvider[0].headers["x-api-key"]).toBe(apiKey);
+    expect(toProvider[0].body).not.toContain(apiKey);
+    expect(toApi.some((entry) => entry.url.endsWith("/thread") && entry.method === "POST")).toBe(
+      true,
+    );
+    expect(recorded).toHaveLength(toProvider.length + toApi.length);
+    for (const entry of toApi) {
+      expect(entry.url).not.toContain(apiKey);
+      expect(entry.body).not.toContain(apiKey);
+      expect(Object.values(entry.headers).join("\n")).not.toContain(apiKey);
+    }
+    expect(JSON.stringify(dataSpies.flatMap((spy) => spy.mock.calls))).not.toContain(apiKey);
   });
 
   it("logs nothing", async () => {

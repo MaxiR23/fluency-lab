@@ -9,6 +9,7 @@
 // - The Settings and Profile tokens: the spend bar, the switch, the large avatar and its glow
 // - The Summary tokens: the done badge, its check and glow, and the word chip
 // - The reply tokens of chat-reply.html and chat-reply-sent.html
+// - The medium face and the withdrawn badge height of the correction thread
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -135,6 +136,7 @@ describe("theme", () => {
       doneBadge: 64,
       iconDone: 30,
       wordChip: 34,
+      tagSmall: 22,
     });
     expect(strokeWidth).toEqual({ icon: 1.8, action: 2, check: 2.4, send: 1.9, done: 2.2 });
   });
@@ -326,12 +328,17 @@ describe("theme", () => {
     });
   });
 
-  it("names the three Plus Jakarta Sans faces the app loads", () => {
+  it("names the four Plus Jakarta Sans faces the app loads", () => {
     expect(fontFamily).toEqual({
       regular: "PlusJakartaSans_400Regular",
+      medium: "PlusJakartaSans_500Medium",
       semibold: "PlusJakartaSans_600SemiBold",
       bold: "PlusJakartaSans_700Bold",
     });
+  });
+
+  it("holds the withdrawn badge height of correction-thread-entry.html", () => {
+    expect(size.tagSmall).toBe(22);
   });
 
   it("holds the floating tab bar tokens: side inset, translucent surface, shadow and pill glow", () => {

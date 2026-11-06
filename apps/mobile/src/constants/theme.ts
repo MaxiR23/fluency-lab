@@ -115,6 +115,7 @@ export const size = {
   doneBadge: 64,
   iconDone: 30,
   wordChip: 34,
+  tagSmall: 22,
 } as const;
 export const strokeWidth = { icon: 1.8, action: 2, check: 2.4, send: 1.9, done: 2.2 } as const;
 export const borderWidth = { thin: 1 } as const;
@@ -236,6 +237,7 @@ export const motion = {
 } as const;
 export const fontFamily = {
   regular: "PlusJakartaSans_400Regular",
+  medium: "PlusJakartaSans_500Medium",
   semibold: "PlusJakartaSans_600SemiBold",
   bold: "PlusJakartaSans_700Bold",
 } as const;

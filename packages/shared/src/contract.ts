@@ -41,6 +41,19 @@ export const messageCorrectionsSchema = z.strictObject({
   explanation: z.string().trim().min(1).max(300).nullable(),
 });
 
+// INFO: the read side of a correction. A tutor that agrees the learner was right
+// withdraws it: the item is kept and flagged. The create side stays strict, so a
+// client cannot send a correction already withdrawn.
+export const storedCorrectionSchema = z.strictObject({
+  ...correctionSchema.shape,
+  withdrawn: z.literal(true).optional(),
+});
+
+export const storedMessageCorrectionsSchema = z.strictObject({
+  items: z.array(storedCorrectionSchema).max(10),
+  explanation: z.string().trim().min(1).max(300).nullable(),
+});
+
 export const newWordsSchema = z.array(z.string().trim().min(1).max(60)).max(10);
 
 // INFO: the shape of the structured output of the tutor. It is parsed loosely
@@ -63,6 +76,25 @@ export const messageCreateSchema = z.strictObject({
   replyToId: z.uuid().optional(),
 });
 
+export const threadMessageCreateSchema = z.strictObject({
+  role: z.enum(MESSAGE_ROLES),
+  text: z.string().trim().min(1).max(4000),
+  newWords: newWordsSchema.optional(),
+});
+
+// INFO: the shape of the structured output of the tutor in a thread. It is
+// parsed loosely here and normalized by the app before it is saved. withdrawn
+// holds the numbers (from 1) of the corrections the tutor takes back.
+export const threadReplySchema = z.object({
+  reply: z.string(),
+  newWords: z.array(z.string()),
+  withdrawn: z.array(z.number()),
+});
+
+export const withdrawSchema = z.strictObject({
+  items: z.array(z.int().min(0).max(9)).min(1).max(10).refine(isUnique),
+});
+
 const tokenCount = z.int().min(0).max(10_000_000);
 
 export const sessionUsageSchema = z.strictObject({
@@ -74,6 +106,8 @@ export const sessionUsageSchema = z.strictObject({
 });
 
 export const sessionIdParamSchema = z.object({ id: z.uuid() });
+
+export const messageIdParamSchema = z.object({ id: z.uuid() });
 
 export const profileSchema = z.object({
   id: z.string(),
@@ -107,7 +141,7 @@ export const messageSchema = z.object({
   sessionId: z.string(),
   role: z.enum(MESSAGE_ROLES),
   text: z.string(),
-  corrections: messageCorrectionsSchema.nullable(),
+  corrections: storedMessageCorrectionsSchema.nullable(),
   newWords: newWordsSchema.nullable(),
   replyToId: z.string().nullable(),
   createdAt: z.string(),
@@ -134,9 +168,30 @@ export const sessionWeekSchema = z.object({
 
 export const weekQuerySchema = z.object({ tz: z.string().min(1).max(100) });
 
+export const threadMessageSchema = z.object({
+  id: z.string(),
+  messageId: z.string(),
+  role: z.enum(MESSAGE_ROLES),
+  text: z.string(),
+  newWords: newWordsSchema.nullable(),
+  createdAt: z.string(),
+});
+
+export const correctionThreadSchema = z.object({
+  session: sessionSchema,
+  message: messageSchema,
+  messages: z.array(threadMessageSchema),
+});
+
+// INFO: only messages with at least one thread row are listed.
+export const threadRepliesSchema = z.array(
+  z.object({ messageId: z.string(), count: z.int().min(1) }),
+);
+
 export const sessionMessagesResponseSchema = z.object({
   session: sessionSchema,
   messages: z.array(messageSchema),
+  threadReplies: threadRepliesSchema,
 });
 
 export const sessionSummarySchema = z.object({
@@ -236,3 +291,10 @@ export type MistakeGroup = z.infer<typeof mistakeGroupSchema>;
 export type MistakePage = z.infer<typeof mistakePageSchema>;
 export type NewWordItem = z.infer<typeof newWordItemSchema>;
 export type WordPage = z.infer<typeof wordPageSchema>;
+export type StoredCorrection = z.infer<typeof storedCorrectionSchema>;
+export type ThreadMessage = z.infer<typeof threadMessageSchema>;
+export type ThreadMessageCreate = z.infer<typeof threadMessageCreateSchema>;
+export type CorrectionThread = z.infer<typeof correctionThreadSchema>;
+export type Withdraw = z.infer<typeof withdrawSchema>;
+export type ThreadReplies = z.infer<typeof threadRepliesSchema>;
+export type ThreadReplyPayload = z.infer<typeof threadReplySchema>;

@@ -8,6 +8,8 @@
 // - A reply's corrections are grounded in the learner's message before they are shown or saved
 // - Failures: an AI failure restores the draft, a save failure resumes at the failed write
 // - retryKind, sendState and busy
+// - A resumed session carries the withdrawn flag and the thread reply count of its messages
+// - threads_refreshed updates those two on the saved messages and touches nothing else
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -167,6 +169,7 @@ describe("startConversation", () => {
         newWords: [],
         replyTo: null,
         savedId: null,
+        threadReplies: 0,
       },
     ]);
     expect(c.session).toBeNull();
@@ -233,7 +236,11 @@ describe("startConversation", () => {
       origin: { kind: "resume", sessionId: "s1" },
       profile,
       spentUsd: 1,
-      opened: { session: { ...session, title: "Travel", topicId: "travel" }, messages: saved },
+      opened: {
+        session: { ...session, title: "Travel", topicId: "travel" },
+        messages: saved,
+        threadReplies: [],
+      },
     });
     expect(c.title).toBe("Travel");
     expect(c.topicTitle).toBe("Travel");
@@ -248,6 +255,7 @@ describe("startConversation", () => {
       newWords: ["word"],
       replyTo: null,
       savedId: "m-I never been",
+      threadReplies: 0,
     });
     expect(c.spentUsd).toBe(1);
   });
@@ -257,7 +265,7 @@ describe("startConversation", () => {
       origin: { kind: "resume", sessionId: "s1" },
       profile,
       spentUsd: 0,
-      opened: { session, messages: [] },
+      opened: { session, messages: [], threadReplies: [] },
     });
     expect(c.topicTitle).toBeNull();
   });
@@ -267,10 +275,97 @@ describe("startConversation", () => {
       origin: { kind: "resume", sessionId: "s1" },
       profile,
       spentUsd: 0,
-      opened: { session, messages: [] },
+      opened: { session, messages: [], threadReplies: [] },
     });
     expect(c.opening).toBeNull();
     expect(c.messages).toEqual([]);
+  });
+});
+
+describe("threads in a resumed session", () => {
+  const withdrawnItem = {
+    original: "I never been",
+    corrected: "I've never been",
+    withdrawn: true as const,
+  };
+  const saved = message("user", "I never been", {
+    corrections: { items: [withdrawnItem], explanation: "Because." },
+  });
+
+  function resumed(threadReplies: { messageId: string; count: number }[]): Conversation {
+    return startConversation({
+      origin: { kind: "resume", sessionId: "s1" },
+      profile,
+      spentUsd: 0,
+      opened: { session, messages: [message("tutor", "Opening"), saved], threadReplies },
+    });
+  }
+
+  it("carries a withdrawn correction and the thread count of the message", () => {
+    const c = resumed([{ messageId: saved.id, count: 3 }]);
+    expect(c.messages[1]).toMatchObject({ corrections: [withdrawnItem], threadReplies: 3 });
+    expect(c.messages[0].threadReplies).toBe(0);
+  });
+
+  it("has a count of 0 for a message with no thread", () => {
+    expect(resumed([]).messages[1].threadReplies).toBe(0);
+  });
+
+  it("threads_refreshed updates the corrections and the count of a saved message", () => {
+    const before = resumed([]);
+    const fresh = message("user", "I never been", {
+      corrections: {
+        items: [{ ...withdrawnItem }, { original: "x", corrected: "y" }],
+        explanation: "New.",
+      },
+    });
+    const after = conversationReducer(before, {
+      type: "threads_refreshed",
+      opened: { session, messages: [fresh], threadReplies: [{ messageId: fresh.id, count: 2 }] },
+    });
+    expect(after.messages[1]).toMatchObject({
+      corrections: fresh.corrections?.items,
+      explanation: "New.",
+      threadReplies: 2,
+    });
+    expect(after.messages[1].text).toBe("I never been");
+  });
+
+  it("threads_refreshed leaves local messages, the draft, pending, writes and phase untouched", () => {
+    const sent = typed(fromStarter(), "Hello");
+    const after = conversationReducer(sent, {
+      type: "threads_refreshed",
+      opened: { session, messages: [saved], threadReplies: [{ messageId: saved.id, count: 4 }] },
+    });
+    expect(after).toEqual(sent);
+  });
+
+  it("threads_refreshed keeps a saved message that is missing from the refresh", () => {
+    const before = resumed([{ messageId: saved.id, count: 3 }]);
+    const after = conversationReducer(before, {
+      type: "threads_refreshed",
+      opened: { session, messages: [], threadReplies: [] },
+    });
+    expect(after.messages).toEqual(before.messages);
+  });
+
+  it("threads_refreshed resets the count of a message whose thread is gone from the counts", () => {
+    const before = resumed([{ messageId: saved.id, count: 3 }]);
+    const after = conversationReducer(before, {
+      type: "threads_refreshed",
+      opened: { session, messages: [saved], threadReplies: [] },
+    });
+    expect(after.messages[1].threadReplies).toBe(0);
+  });
+
+  it("threads_refreshed never adds a message", () => {
+    const before = resumed([]);
+    const extra = message("user", "New one");
+    const after = conversationReducer(before, {
+      type: "threads_refreshed",
+      opened: { session, messages: [saved, extra], threadReplies: [] },
+    });
+    expect(after.messages).toHaveLength(before.messages.length);
   });
 });
 
@@ -417,6 +512,7 @@ describe("a first turn", () => {
         newWords: ["definitely"],
         replyTo: null,
         savedId: null,
+        threadReplies: 0,
       },
       {
         id: "message-2",
@@ -427,6 +523,7 @@ describe("a first turn", () => {
         newWords: [],
         replyTo: null,
         savedId: null,
+        threadReplies: 0,
       },
     ]);
   });
@@ -736,6 +833,15 @@ describe("sendState and busy", () => {
     expect(sendState(free({}, 1))).toEqual({ locked: false, notice: null });
   });
 
+  it("works on any state with the provider, the limit and the spend", () => {
+    expect(sendState({ provider: "claude", limitUsd: 10, spentUsd: 10 })).toEqual({
+      locked: true,
+      notice: "limit",
+    });
+    expect(sendState({ provider: "claude", limitUsd: 10, spentUsd: 8 }).notice).toBe("warning");
+    expect(sendState({ provider: "claude", limitUsd: null, spentUsd: 99 }).locked).toBe(false);
+  });
+
   it("treats a null provider as the supported one", () => {
     expect(sendState(free({ provider: null }))).toEqual({ locked: false, notice: null });
   });
@@ -927,6 +1033,7 @@ describe("replying to a tutor message", () => {
       opened: {
         session,
         messages: [message("tutor", "Where?"), message("user", "Park", { replyToId: "m-Where?" })],
+        threadReplies: [],
       },
     });
     expect(c.messages[1]).toMatchObject({ replyTo: "m-Where?", savedId: "m-Park" });

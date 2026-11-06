@@ -7,11 +7,13 @@
 // getMonthSpend with 0 spent (Chat reads it), getProfileStats with zeros (Profile reads it)
 // deleteAccount with success, so a signed in user lands on Home, and getSessionSummary with an
 // empty ended session (Summary reads it). Progress reads all four of getMonthProgress, listHistory,
-// listMistakes and listWords: zeros and empty pages.
+// listMistakes and listWords: zeros and empty pages. Thread reads openThread: a thread with no
+// messages on a learner message with two corrections.
 
 import { jest } from "@jest/globals";
 import type {
   ActiveSession,
+  CorrectionThread,
   HistoryItem,
   Message,
   MistakeGroup,
@@ -20,6 +22,7 @@ import type {
   Session,
   SessionSummary,
   SessionWeek,
+  ThreadMessage,
 } from "@fluency-lab/shared";
 
 import type { DataPort } from "@/data/data-port";
@@ -35,6 +38,9 @@ export const fakeData = {
   addMessage: jest.fn<DataPort["addMessage"]>(),
   addUsage: jest.fn<DataPort["addUsage"]>(),
   endSession: jest.fn<DataPort["endSession"]>(),
+  openThread: jest.fn<DataPort["openThread"]>(),
+  addThreadMessage: jest.fn<DataPort["addThreadMessage"]>(),
+  withdrawCorrections: jest.fn<DataPort["withdrawCorrections"]>(),
   getMonthSpend: jest.fn<DataPort["getMonthSpend"]>(),
   getSessionWeek: jest.fn<DataPort["getSessionWeek"]>(),
   getProfileStats: jest.fn<DataPort["getProfileStats"]>(),
@@ -159,6 +165,58 @@ export function newWordWith(overrides: Partial<NewWordItem> = {}): NewWordItem {
   return { word: "catchy", sentence: "That song is catchy.", day: "2026-11-05", ...overrides };
 }
 
+export const THREAD_SENTENCE = "I never been to Japan, but I want to go the next year.";
+
+// INFO: a learner message with two corrections, each with a rule, and a thread with no messages.
+export function threadWith(
+  overrides: Partial<CorrectionThread> = {},
+  message: Partial<Message> = {},
+): CorrectionThread {
+  return {
+    session: {
+      id: "session-1",
+      topicId: null,
+      title: "Travel",
+      status: "active",
+      summary: null,
+      costUsd: 0,
+      createdAt: "2026-11-05T09:00:00Z",
+      updatedAt: "2026-11-05T09:30:00Z",
+    },
+    message: {
+      id: "message-1",
+      sessionId: "session-1",
+      role: "user",
+      text: THREAD_SENTENCE,
+      corrections: {
+        items: [
+          { original: "the next year", corrected: "next year", rule: "Articles with years" },
+          { original: "I never been", corrected: "I've never been", rule: "Present perfect" },
+        ],
+        explanation: "No article before next year; use the present perfect.",
+      },
+      newWords: null,
+      replyToId: null,
+      createdAt: "2026-11-05T09:10:00Z",
+      ...message,
+    },
+    messages: [],
+    ...overrides,
+  };
+}
+
+export function threadMessageWith(overrides: Partial<ThreadMessage> = {}): ThreadMessage {
+  return {
+    id: "thread-row-1",
+    messageId: "message-1",
+    role: "user",
+    text: "Why is it wrong?",
+    newWords: null,
+    createdAt: "2026-11-05T09:20:00Z",
+    ...overrides,
+  };
+}
+
 export function weekWith(days: string[], overrides: Partial<SessionWeek> = {}): SessionWeek {
   return { weekStart: "2026-11-02", today: "2026-11-05", days, ...overrides };
 }
@@ -188,4 +246,5 @@ export function resetFakeData(): void {
   fakeData.listWords.mockResolvedValue({ ok: true, value: { items: [], nextOffset: null } });
   fakeData.deleteAccount.mockResolvedValue({ ok: true, value: null });
   fakeData.getSessionSummary.mockResolvedValue({ ok: true, value: summaryWith() });
+  fakeData.openThread.mockResolvedValue({ ok: true, value: threadWith() });
 }

@@ -10,7 +10,7 @@ plan is optional; free practice is the default.
 Expo project in a pnpm monorepo. The design layer exists (tokens and
 base components); email sign-in, sign-up, password reset, onboarding, Home
 with the tab bar, Settings, Profile, Progress (history, mistakes and words) and the Chat
-screen (chat with the tutor, replying to a tutor message, saved sessions, corrections and new words, the
+screen (chat with the tutor, replying to a tutor message, asking about a correction in its own thread, saved sessions, corrections and new words, the
 monthly limit, and the no-key state) are built, the other screens are not. The screen
 map, the palette and the Home design are decided.
 
@@ -136,6 +136,7 @@ client (RPC). Run it with `pnpm --filter api dev`.
     Home            free chat, continue last session, suggested topics
     Suggestions     the full list of suggested topics, opened from Home
     Chat            the session, corrections inline, reply to a tutor message, end session
+    Thread          a correction's own thread: ask the tutor, withdrawn corrections
     Open chats      the active chats, open or delete one, from Home
     Summary         after a session: mistakes, new words, topic; also
                     opened from a Progress History row

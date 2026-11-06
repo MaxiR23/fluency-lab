@@ -5,13 +5,14 @@ import {
   PROVIDERS,
   SESSION_STATUSES,
   TOPIC_IDS,
-  messageCorrectionsSchema,
   newWordsSchema,
+  storedMessageCorrectionsSchema,
   type ActiveSession,
   type Message,
   type Profile,
   type ProfileUpdate,
   type Session,
+  type ThreadMessage,
 } from "@fluency-lab/shared";
 import { z } from "zod";
 
@@ -81,11 +82,22 @@ const messageRowSchema = z.object({
   session_id: z.string(),
   role: z.enum(MESSAGE_ROLES),
   text: z.string(),
-  corrections: messageCorrectionsSchema.nullable(),
+  corrections: storedMessageCorrectionsSchema.nullable(),
   new_words: newWordsSchema.nullable(),
   reply_to_id: z.string().nullable(),
   created_at: z.string(),
 });
+
+const threadMessageRowSchema = z.object({
+  id: z.string(),
+  message_id: z.string(),
+  role: z.enum(MESSAGE_ROLES),
+  text: z.string(),
+  new_words: newWordsSchema.nullable(),
+  created_at: z.string(),
+});
+
+const threadCountRowSchema = z.object({ message_id: z.string(), reply_count: z.number() });
 
 export function toProfile(row: unknown): Profile | null {
   const parsed = profileRowSchema.safeParse(row);
@@ -216,6 +228,27 @@ export function toMessage(row: unknown): Message | null {
     replyToId: r.reply_to_id,
     createdAt: r.created_at,
   };
+}
+
+export function toThreadMessage(row: unknown): ThreadMessage | null {
+  const parsed = threadMessageRowSchema.safeParse(row);
+  if (!parsed.success) return null;
+  const r = parsed.data;
+  return {
+    id: r.id,
+    messageId: r.message_id,
+    role: r.role,
+    text: r.text,
+    newWords: r.new_words,
+    createdAt: r.created_at,
+  };
+}
+
+export function toThreadCount(row: unknown): { messageId: string; count: number } | null {
+  const parsed = threadCountRowSchema.safeParse(row);
+  return parsed.success
+    ? { messageId: parsed.data.message_id, count: parsed.data.reply_count }
+    : null;
 }
 
 export type ProfilePatch = {

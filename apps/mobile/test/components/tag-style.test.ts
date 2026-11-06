@@ -3,7 +3,7 @@
 // Tests for tagStyle.
 //
 // Tested:
-// - The box and label variant of the tint, the outline, the word and the count tag
+// - The box and label variant of the tint, the outline, the word, the count and the withdrawn tag
 //
 // What is covered:
 // - Normal case, edges
@@ -58,6 +58,21 @@ describe("tagStyle", () => {
         justifyContent: "center",
       },
       label: "footerLink",
+    });
+  });
+
+  it("draws the withdrawn badge on surface with a border, 22 high, 8 on the sides, a tab label", () => {
+    expect(tagStyle("withdrawn")).toEqual({
+      box: {
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderWidth: borderWidth.thin,
+        borderRadius: radius.badgeSmall,
+        minHeight: size.tagSmall,
+        paddingHorizontal: spacing.sm,
+        justifyContent: "center",
+      },
+      label: "tab",
     });
   });
 

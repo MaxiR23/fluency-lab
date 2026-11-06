@@ -15,6 +15,15 @@ export type TutorReply = {
   usage: TokenUsage;
 };
 
+// INFO: withdrawn holds the numbers (from 1) of the corrections the tutor takes back, as it read them.
+export type ThreadReply = {
+  reply: string;
+  newWords: string[];
+  withdrawn: number[];
+  model: ModelId;
+  usage: TokenUsage;
+};
+
 export type AiFailure =
   | "invalid_key"
   | "missing_key"
@@ -33,7 +42,13 @@ export type AiOutcome =
   | { ok: true; value: TutorReply }
   | { ok: false; failure: AiFailure; cause?: FailureCause; usage?: TokenUsage };
 
+export type ThreadAiOutcome =
+  | { ok: true; value: ThreadReply }
+  | { ok: false; failure: AiFailure; cause?: FailureCause; usage?: TokenUsage };
+
 // INFO: a reply with no corrections and no new words is the expected empty, a success.
 export type AiPort = {
   reply(request: TutorRequest): Promise<AiOutcome>;
+  // INFO: a thread reply with no new words and no withdrawals is the expected empty, a success.
+  replyInThread(request: TutorRequest): Promise<ThreadAiOutcome>;
 };

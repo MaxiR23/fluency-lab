@@ -5,12 +5,12 @@ import { Button } from "@/components/button";
 import { ChatComposer } from "@/components/chat-composer";
 import { ChatFooter } from "@/components/chat-footer";
 import { ChatHeader } from "@/components/chat-header";
+import { ChatNotices } from "@/components/chat-notices";
 import { ConnectAiCard } from "@/components/connect-ai-card";
 import { FailureMessage } from "@/components/failure-message";
 import { MessageList } from "@/components/message-list";
 import { ReplyPreview } from "@/components/reply-preview";
 import { Screen } from "@/components/screen";
-import { Text } from "@/components/text";
 import { colors, spacing } from "@/constants/theme";
 import { useChat } from "@/hooks/use-chat";
 import { useChatMotion } from "@/hooks/use-chat-motion";
@@ -28,6 +28,7 @@ import {
   providerLine,
 } from "@/utils/chat-state";
 import { enterTransition } from "@/utils/chat-transitions";
+import { threadHref } from "@/utils/thread-state";
 
 export default function Chat() {
   const params = useLocalSearchParams<{
@@ -94,38 +95,11 @@ export default function Chat() {
             motion={motion}
             onReply={locked ? undefined : startReply}
             onArm={() => play("reply")}
+            onAsk={(messageId) => router.push(threadHref(messageId))}
           />
         )}
         <ChatFooter>
-          {notice === null ? null : (
-            <View style={styles.notices}>
-              {notice.kind === "failure" ? (
-                <>
-                  <FailureMessage message={notice.view.message} cause={notice.view.cause} />
-                  {notice.view.action === null ? null : (
-                    <Button
-                      variant="deep"
-                      compact
-                      label={notice.view.action === "update_key" ? "Update key" : "Try again"}
-                      onPress={() =>
-                        notice.view.action === "update_key" ? updateKey() : void retry()
-                      }
-                    />
-                  )}
-                </>
-              ) : null}
-              {notice.kind === "unsupported" ? (
-                <>
-                  <Text variant="muted">{notice.message}</Text>
-                  <Button variant="deep" compact label="Update key" onPress={updateKey} />
-                </>
-              ) : null}
-              {notice.kind === "limit" ? (
-                <FailureMessage message={notice.view.message} cause={notice.view.cause} />
-              ) : null}
-              {notice.kind === "warning" ? <Text variant="caption">{notice.message}</Text> : null}
-            </View>
-          )}
+          <ChatNotices notice={notice} onRetry={() => void retry()} onUpdateKey={updateKey} />
           {preview === null ? null : (
             <ReplyPreview
               label={preview.label}
@@ -166,5 +140,4 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.screenSide,
   },
-  notices: { gap: spacing.sm, paddingHorizontal: spacing.md },
 });

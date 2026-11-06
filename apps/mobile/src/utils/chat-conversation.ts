@@ -2,7 +2,6 @@ import {
   TUTOR_MODEL,
   topicLabel,
   usageCostUsd,
-  type Correction,
   type Goal,
   type Level,
   type Message,
@@ -13,6 +12,7 @@ import {
   type SessionCreate,
   type SessionUsage,
   type SessionWithMessages,
+  type StoredCorrection,
   type TokenUsage,
   type TopicId,
 } from "@fluency-lab/shared";
@@ -41,9 +41,11 @@ export type ChatMessage = {
   id: string;
   role: "user" | "tutor";
   text: string;
-  corrections: Correction[];
+  corrections: StoredCorrection[];
   explanation: string | null;
   newWords: string[];
+  // INFO: how many thread rows the message has; 0 draws no count.
+  threadReplies: number;
   // INFO: the list id of the tutor message this one replies to.
   replyTo: string | null;
   // INFO: the id the database gave the message; null for a local one until its write returns.
@@ -108,6 +110,8 @@ export type ConversationEvent =
       spentUsd: number;
     }
   | { type: "context_failed"; failure: ChatFailure }
+  // INFO: the corrections and thread counts of the messages already in the chat, read again on return from a thread.
+  | { type: "threads_refreshed"; opened: SessionWithMessages }
   | { type: "end_started" }
   | { type: "end_failed"; failure: ChatFailure };
 
@@ -122,7 +126,7 @@ export type SendState = {
   notice: "unsupported" | "limit" | "warning" | null;
 };
 
-export function fromMessage(message: Message): ChatMessage {
+export function fromMessage(message: Message, threadReplies: number): ChatMessage {
   return {
     id: message.id,
     role: message.role,
@@ -130,6 +134,7 @@ export function fromMessage(message: Message): ChatMessage {
     corrections: message.corrections?.items ?? [],
     explanation: message.corrections?.explanation ?? null,
     newWords: message.newWords ?? [],
+    threadReplies,
     replyTo: message.replyToId,
     savedId: message.id,
   };
@@ -143,6 +148,7 @@ function localMessage(id: string, role: "user" | "tutor", text: string): ChatMes
     corrections: [],
     explanation: null,
     newWords: [],
+    threadReplies: 0,
     replyTo: null,
     savedId: null,
   };
@@ -176,14 +182,14 @@ export function startConversation(input: {
     spentUsd: input.spentUsd,
   };
   if (origin.kind === "resume" && input.opened !== undefined) {
-    const { session, messages } = input.opened;
+    const { session, messages, threadReplies } = input.opened;
     return {
       ...base,
       session,
       title: session.title,
       topicTitle: promptTopic(session),
       opening: openingOf(messages),
-      messages: messages.map(fromMessage),
+      messages: messages.map((m) => fromMessage(m, countOf(threadReplies, m.id))),
     };
   }
   if (origin.kind === "topic") {
@@ -210,8 +216,23 @@ export function startConversation(input: {
   };
 }
 
-function round8(value: number): number {
+export function round8(value: number): number {
   return Math.round(value * 1e8) / 1e8;
+}
+
+// INFO: the usage the API prices and adds to the session cost.
+export function usageWrite(model: SessionUsage["model"], usage: TokenUsage): SessionUsage {
+  return {
+    model,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    cacheCreationInputTokens: usage.cacheCreationInputTokens,
+    cacheReadInputTokens: usage.cacheReadInputTokens,
+  };
+}
+
+function countOf(threadReplies: SessionWithMessages["threadReplies"], messageId: string): number {
+  return threadReplies.find((entry) => entry.messageId === messageId)?.count ?? 0;
 }
 
 function messageWrite(input: MessageCreate, localId: string): Write {
@@ -233,16 +254,7 @@ function replyWrites(
   return [
     messageWrite(user, ids.user),
     messageWrite({ role: "tutor", text: reply.reply }, ids.tutor),
-    {
-      kind: "usage",
-      usage: {
-        model: reply.model,
-        inputTokens: reply.usage.inputTokens,
-        outputTokens: reply.usage.outputTokens,
-        cacheCreationInputTokens: reply.usage.cacheCreationInputTokens,
-        cacheReadInputTokens: reply.usage.cacheReadInputTokens,
-      },
-    },
+    { kind: "usage", usage: usageWrite(reply.model, reply.usage) },
   ];
 }
 
@@ -251,6 +263,31 @@ function replyWrites(
 function resumePhase(c: Conversation): Phase {
   if (c.pending !== null) return c.session === null ? "creating" : "asking";
   return c.writes.length > 0 ? "saving" : "idle";
+}
+
+// INFO: the two events that re-read the context: the chat's and a thread's reducers both take them.
+export type ContextEvent = Extract<
+  ConversationEvent,
+  { type: "context_refreshed" | "context_failed" }
+>;
+
+export type ContextFields = Pick<Conversation, "failure" | "provider" | "limitUsd" | "spentUsd">;
+
+// INFO: the two events that re-read the context (provider, limit, spend) apply the same way
+// to any conversation that has these fields, the chat's and a thread's.
+export function withContext<T extends ContextFields>(c: T, event: ContextEvent): T {
+  if (event.type === "context_failed")
+    return c.failure === null ? { ...c, failure: event.failure } : c;
+  const keyFailure =
+    c.failure?.source === "ai" &&
+    (c.failure.failure === "invalid_key" || c.failure.failure === "missing_key");
+  return {
+    ...c,
+    provider: event.provider,
+    limitUsd: event.limitUsd,
+    spentUsd: event.spentUsd,
+    failure: keyFailure ? null : c.failure,
+  };
 }
 
 export function conversationReducer(c: Conversation, event: ConversationEvent): Conversation {
@@ -304,6 +341,7 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
         corrections: reply.corrections,
         explanation: reply.explanation,
         newWords: reply.newWords,
+        threadReplies: 0,
         replyTo: c.pendingReplyTo,
         savedId: null,
       };
@@ -337,7 +375,7 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
       // INFO: the billed call still counts: its usage is saved and its cost added to the spend.
       return {
         ...base,
-        writes: [...c.writes, { kind: "usage", usage: { model: TUTOR_MODEL, ...event.usage } }],
+        writes: [...c.writes, { kind: "usage", usage: usageWrite(TUTOR_MODEL, event.usage) }],
         spentUsd: round8(c.spentUsd + usageCostUsd(TUTOR_MODEL, event.usage)),
         phase: "saving",
       };
@@ -371,20 +409,25 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
         endFailed: false,
         phase: c.writes.length > 0 ? "saving" : c.phase,
       };
-    case "context_refreshed": {
-      const keyFailure =
-        c.failure?.source === "ai" &&
-        (c.failure.failure === "invalid_key" || c.failure.failure === "missing_key");
+    case "context_refreshed":
+    case "context_failed":
+      return withContext(c, event);
+    case "threads_refreshed": {
+      const fresh = new Map(event.opened.messages.map((m) => [m.id, m]));
       return {
         ...c,
-        provider: event.provider,
-        limitUsd: event.limitUsd,
-        spentUsd: event.spentUsd,
-        failure: keyFailure ? null : c.failure,
+        messages: c.messages.map((m) => {
+          const message = m.savedId === null ? undefined : fresh.get(m.savedId);
+          if (message === undefined) return m;
+          return {
+            ...m,
+            corrections: message.corrections?.items ?? [],
+            explanation: message.corrections?.explanation ?? null,
+            threadReplies: countOf(event.opened.threadReplies, message.id),
+          };
+        }),
       };
     }
-    case "context_failed":
-      return c.failure === null ? { ...c, failure: event.failure } : c;
     case "end_started":
       return { ...c, phase: "ending" };
   }
@@ -423,7 +466,7 @@ export function retryKind(c: Conversation): "resend" | "resume" | "end" {
   return c.endFailed ? "end" : "resume";
 }
 
-export function sendState(c: Conversation): SendState {
+export function sendState(c: Pick<Conversation, "provider" | "limitUsd" | "spentUsd">): SendState {
   if (c.provider === "openai") return { locked: true, notice: "unsupported" };
   const level = spendLevel(c.spentUsd, c.limitUsd);
   if (level === "blocked") return { locked: true, notice: "limit" };

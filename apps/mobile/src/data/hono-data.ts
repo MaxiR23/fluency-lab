@@ -3,6 +3,7 @@ import {
   type ProfileUpdate,
   accountDeletedSchema,
   activeSessionResponseSchema,
+  correctionThreadSchema,
   historyPageSchema,
   mistakePageSchema,
   monthProgressSchema,
@@ -15,6 +16,7 @@ import {
   sessionSchema,
   sessionSummarySchema,
   sessionWeekSchema,
+  threadMessageSchema,
   wordPageSchema,
 } from "@fluency-lab/shared";
 // INFO: type-only, so Metro never bundles the server.
@@ -122,6 +124,22 @@ export function createHonoData(config: HonoDataConfig): DataPort {
       call(
         (client) => client.sessions[":id"].end.$post({ param: { id: sessionId } }),
         sessionSchema,
+      ),
+    openThread: (messageId) =>
+      call(
+        (client) => client.messages[":id"].thread.$get({ param: { id: messageId } }),
+        correctionThreadSchema,
+      ),
+    addThreadMessage: (messageId, input) =>
+      call(
+        (client) => client.messages[":id"].thread.$post({ param: { id: messageId }, json: input }),
+        threadMessageSchema,
+      ),
+    withdrawCorrections: (messageId, items) =>
+      call(
+        (client) =>
+          client.messages[":id"].withdraw.$post({ param: { id: messageId }, json: { items } }),
+        messageSchema,
       ),
     getProfileStats: (timeZone) =>
       call((client) => client.profile.stats.$get({ query: { tz: timeZone } }), profileStatsSchema),

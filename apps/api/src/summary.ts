@@ -21,7 +21,21 @@ export function sessionSummary(messages: readonly Message[]): {
   }
   return {
     messageCount: messages.length,
-    corrections: messages.flatMap((message) => message.corrections?.items ?? []),
+    // INFO: a withdrawn correction was not a mistake, so it is left out and the
+    // flag does not travel in the summary.
+    corrections: messages.flatMap((message) =>
+      (message.corrections?.items ?? []).flatMap((item) =>
+        item.withdrawn === true
+          ? []
+          : [
+              {
+                original: item.original,
+                corrected: item.corrected,
+                ...(item.rule === undefined ? {} : { rule: item.rule }),
+              },
+            ],
+      ),
+    ),
     newWords,
   };
 }

@@ -11,6 +11,7 @@
 // - A reopened session sends its saved messages as history
 // - A reply to a tutor message: its saved id on the write, the quote in the turn, cancel and failures
 // - End, Update key, the refocus refresh, and a reply that ends after unmount
+// - A chat with a session re-reads it on refocus, to show the thread counts and withdrawn corrections
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -150,7 +151,11 @@ describe("useChat", () => {
       withKey();
       fakeData.openSession.mockResolvedValue({
         ok: true,
-        value: { session, messages: [saved("tutor", "Opening"), saved("user", "Hi")] },
+        value: {
+          session,
+          messages: [saved("tutor", "Opening"), saved("user", "Hi")],
+          threadReplies: [],
+        },
       });
       const { result } = await ready({ kind: "resume", sessionId: "session-1" });
       expect(fakeData.openSession).toHaveBeenCalledWith("session-1");
@@ -220,7 +225,7 @@ describe("useChat", () => {
       withKey();
       fakeData.openSession.mockResolvedValue({
         ok: true,
-        value: { session: { ...session, status: "ended" }, messages: [] },
+        value: { session: { ...session, status: "ended" }, messages: [], threadReplies: [] },
       });
       const { result } = await renderHook(() => useChat({ kind: "resume", sessionId: "x" }));
       await waitFor(() =>
@@ -410,6 +415,7 @@ describe("useChat", () => {
         value: {
           session,
           messages: [saved("tutor", "Opening"), saved("user", "One"), saved("tutor", "Two")],
+          threadReplies: [],
         },
       });
       const hook = await ready({ kind: "resume", sessionId: "session-1" });
@@ -624,6 +630,86 @@ describe("useChat", () => {
       jest.mocked(useIsFocused).mockReturnValue(true);
       await hook.rerender({});
       await waitFor(() => expect(hook.result.current.view.kind).toBe("ready"));
+    });
+  });
+
+  describe("refocus with a session", () => {
+    const corrected = (withdrawn: boolean): Message => ({
+      ...saved("user", "I goed"),
+      corrections: {
+        items: [
+          {
+            original: "goed",
+            corrected: "went",
+            ...(withdrawn ? { withdrawn: true as const } : {}),
+          },
+        ],
+        explanation: null,
+      },
+    });
+    const resume: ChatOrigin = { kind: "resume", sessionId: "session-1" };
+
+    async function refocus(hook: Awaited<ReturnType<typeof ready>>) {
+      jest.mocked(useIsFocused).mockReturnValue(false);
+      await hook.rerender({});
+      jest.mocked(useIsFocused).mockReturnValue(true);
+      await hook.rerender({});
+    }
+
+    it("reads the session again and shows the new count and the withdrawn flag", async () => {
+      withKey();
+      fakeData.openSession.mockResolvedValue({
+        ok: true,
+        value: { session, messages: [corrected(false)], threadReplies: [] },
+      });
+      const hook = await ready(resume);
+      expect(conversationOf(hook.result.current.view).messages[0].threadReplies).toBe(0);
+      fakeData.openSession.mockResolvedValue({
+        ok: true,
+        value: {
+          session,
+          messages: [corrected(true)],
+          threadReplies: [{ messageId: "m-I goed", count: 2 }],
+        },
+      });
+
+      await refocus(hook);
+
+      await waitFor(() =>
+        expect(conversationOf(hook.result.current.view).messages[0].threadReplies).toBe(2),
+      );
+      expect(conversationOf(hook.result.current.view).messages[0].corrections).toEqual([
+        { original: "goed", corrected: "went", withdrawn: true },
+      ]);
+      expect(fakeData.openSession).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not read a session for a chat that has none", async () => {
+      withKey();
+      const hook = await ready();
+      await refocus(hook);
+      await waitFor(() => expect(fakeData.getMonthSpend).toHaveBeenCalledTimes(2));
+      expect(fakeData.openSession).not.toHaveBeenCalled();
+    });
+
+    it("draws a failed refresh as a data failure and keeps the messages", async () => {
+      withKey();
+      fakeData.openSession.mockResolvedValue({
+        ok: true,
+        value: { session, messages: [corrected(false)], threadReplies: [] },
+      });
+      const hook = await ready(resume);
+      fakeData.openSession.mockResolvedValue({ ok: false, failure: "network" });
+
+      await refocus(hook);
+
+      await waitFor(() =>
+        expect(conversationOf(hook.result.current.view).failure).toEqual({
+          source: "data",
+          failure: "network",
+        }),
+      );
+      expect(conversationOf(hook.result.current.view).messages).toHaveLength(1);
     });
   });
 

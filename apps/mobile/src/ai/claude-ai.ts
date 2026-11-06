@@ -1,12 +1,19 @@
 // The key goes only in the x-api-key header of ENDPOINT. No outcome, cause or
 // log carries it.
-import { TUTOR_MODEL, tutorReplySchema, type TokenUsage } from "@fluency-lab/shared";
+import {
+  TUTOR_MODEL,
+  threadReplySchema,
+  tutorReplySchema,
+  type ModelId,
+  type TokenUsage,
+} from "@fluency-lab/shared";
 
-import type { AiFailure, AiOutcome, AiPort } from "@/ai/ai-port";
+import type { AiFailure, AiPort, TutorRequest } from "@/ai/ai-port";
 import type { FailureCause } from "@/auth/auth-port";
 import type { KeyReadOutcome } from "@/keys/key-port";
 import { DEADLINE, withinDeadline } from "@/utils/deadline";
 import { providerMessages } from "@/utils/provider-messages";
+import { toThreadReply } from "@/utils/thread-reply";
 import { toTutorReply } from "@/utils/tutor-reply";
 
 const ENDPOINT = "https://api.anthropic.com/v1/messages";
@@ -40,18 +47,34 @@ export const TUTOR_REPLY_JSON_SCHEMA = {
   },
 } as const;
 
+// INFO: the same limits as above. withdrawn holds integers: whole numbers are applied by toThreadReply.
+export const THREAD_REPLY_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["reply", "newWords", "withdrawn"],
+  properties: {
+    reply: { type: "string" },
+    newWords: { type: "array", items: { type: "string" } },
+    withdrawn: { type: "array", items: { type: "integer" } },
+  },
+} as const;
+
 export type ClaudeAiConfig = {
   fetchFn: typeof fetch;
   readKey: () => Promise<KeyReadOutcome>;
   timeoutMs?: number;
 };
 
+// INFO: what ask returns: the parsed payload with the model and the billed usage, or a failure.
+type Failed = { ok: false; failure: AiFailure; cause?: FailureCause; usage?: TokenUsage };
+type Asked<P> = { ok: true; value: P & { model: ModelId; usage: TokenUsage } } | Failed;
+
 type Fetched = { status: number; text: string | null };
 
 const plainIdentifier = /^[A-Za-z_$][\w$]{0,63}$/;
 const plainErrorType = /^[a-z_]{1,64}$/;
 
-function fail(failure: AiFailure, cause: FailureCause, usage?: TokenUsage): AiOutcome {
+function fail(failure: AiFailure, cause: FailureCause, usage?: TokenUsage): Failed {
   return usage === undefined ? { ok: false, failure, cause } : { ok: false, failure, cause, usage };
 }
 
@@ -126,10 +149,13 @@ function textOf(content: unknown): string | null {
   return null;
 }
 
-const badResponse = (usage?: TokenUsage): AiOutcome =>
+const badResponse = (usage?: TokenUsage): Failed =>
   fail("bad_response", { name: "BadResponse", detail: null }, usage);
 
-function readSuccess(text: string | null): AiOutcome {
+function readSuccess<P extends object>(
+  text: string | null,
+  parse: (value: unknown) => P | null,
+): Asked<P> {
   if (text === null) return badResponse();
   const body = parseJson(text);
   if (!body.ok || !isRecord(body.value)) return badResponse();
@@ -143,60 +169,75 @@ function readSuccess(text: string | null): AiOutcome {
   if (replyText === null) return badResponse(usage);
   const reply = parseJson(replyText);
   if (!reply.ok) return badResponse(usage);
-  const payload = tutorReplySchema.safeParse(reply.value);
-  if (!payload.success) return badResponse(usage);
-  const normalized = toTutorReply(payload.data);
+  const normalized = parse(reply.value);
   if (normalized === null || usage === undefined) return badResponse(usage);
   return { ok: true, value: { ...normalized, model: TUTOR_MODEL, usage } };
 }
 
 export function createClaudeAi(config: ClaudeAiConfig): AiPort {
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  return {
-    async reply(request) {
-      const key = await config.readKey();
-      if (!key.ok) return fail("key_unreadable", { name: "KeyRead", detail: null });
-      const apiKey = key.value;
-      if (apiKey === null) return { ok: false, failure: "missing_key" };
-      const messages = providerMessages(request.turns);
-      if (messages.length === 0) return badResponse();
-      const body = JSON.stringify({
-        model: TUTOR_MODEL,
-        max_tokens: MAX_TOKENS,
-        system: request.system,
-        messages,
-        thinking: { type: "disabled" },
-        output_config: { format: { type: "json_schema", schema: TUTOR_REPLY_JSON_SCHEMA } },
+
+  // INFO: one request and one reading for both calls; only the schema sent and the parsing differ.
+  async function ask<P extends object>(
+    request: TutorRequest,
+    schema: object,
+    parse: (value: unknown) => P | null,
+  ): Promise<Asked<P>> {
+    const key = await config.readKey();
+    if (!key.ok) return fail("key_unreadable", { name: "KeyRead", detail: null });
+    const apiKey = key.value;
+    if (apiKey === null) return { ok: false, failure: "missing_key" };
+    const messages = providerMessages(request.turns);
+    if (messages.length === 0) return badResponse();
+    const body = JSON.stringify({
+      model: TUTOR_MODEL,
+      max_tokens: MAX_TOKENS,
+      system: request.system,
+      messages,
+      thinking: { type: "disabled" },
+      output_config: { format: { type: "json_schema", schema } },
+    });
+    let fetched: Fetched | typeof DEADLINE;
+    try {
+      fetched = await withinDeadline<Fetched>(timeoutMs, async (signal) => {
+        const res = await config.fetchFn(ENDPOINT, {
+          method: "POST",
+          headers: {
+            "x-api-key": apiKey,
+            "anthropic-version": API_VERSION,
+            "content-type": "application/json",
+          },
+          body,
+          signal,
+        });
+        return { status: res.status, text: await readText(res) };
       });
-      let fetched: Fetched | typeof DEADLINE;
-      try {
-        fetched = await withinDeadline<Fetched>(timeoutMs, async (signal) => {
-          const res = await config.fetchFn(ENDPOINT, {
-            method: "POST",
-            headers: {
-              "x-api-key": apiKey,
-              "anthropic-version": API_VERSION,
-              "content-type": "application/json",
-            },
-            body,
-            signal,
-          });
-          return { status: res.status, text: await readText(res) };
-        });
-      } catch (thrown) {
-        return fail("network", thrownCause(thrown));
-      }
-      if (fetched === DEADLINE) return fail("network", { name: "Timeout", detail: null });
-      if (fetched.status < 200 || fetched.status >= 300) {
-        const type = errorType(fetched.text);
-        return fail(statusFailure(fetched.status, type), {
-          name: "HttpError",
-          code: type ?? `http_${fetched.status}`,
-          detail: null,
-        });
-      }
-      return readSuccess(fetched.text);
-    },
+    } catch (thrown) {
+      return fail("network", thrownCause(thrown));
+    }
+    if (fetched === DEADLINE) return fail("network", { name: "Timeout", detail: null });
+    if (fetched.status < 200 || fetched.status >= 300) {
+      const type = errorType(fetched.text);
+      return fail(statusFailure(fetched.status, type), {
+        name: "HttpError",
+        code: type ?? `http_${fetched.status}`,
+        detail: null,
+      });
+    }
+    return readSuccess(fetched.text, parse);
+  }
+
+  return {
+    reply: (request) =>
+      ask(request, TUTOR_REPLY_JSON_SCHEMA, (value) => {
+        const payload = tutorReplySchema.safeParse(value);
+        return payload.success ? toTutorReply(payload.data) : null;
+      }),
+    replyInThread: (request) =>
+      ask(request, THREAD_REPLY_JSON_SCHEMA, (value) => {
+        const payload = threadReplySchema.safeParse(value);
+        return payload.success ? toThreadReply(payload.data) : null;
+      }),
   };
 }
 
