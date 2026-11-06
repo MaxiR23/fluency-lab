@@ -6,6 +6,8 @@
 // - profileUpdateSchema, sessionCreateSchema and sessionIdParamSchema
 // - The chat schemas: corrections, new words, the message to save, the usage and the tutor reply
 // - The response schemas of the profile, the active session and the messages
+// - The correction rule: optional, 1 to 80 characters, absent on old corrections
+// - The session summary response
 // - The open sessions response
 // - The session week response and its query
 // - The profile stats response and the account deleted response
@@ -34,6 +36,7 @@ import {
   sessionCreateSchema,
   sessionIdParamSchema,
   sessionMessagesResponseSchema,
+  sessionSummarySchema,
   sessionUsageSchema,
   sessionWeekSchema,
   tutorReplySchema,
@@ -343,6 +346,23 @@ describe("correction schemas", () => {
     expect(correctionSchema.safeParse({ ...item, apiKey: "x" }).success).toBe(false);
   });
 
+  it("accepts a correction with a rule and one without (saved before rules)", () => {
+    const withRule = { ...item, rule: "Present perfect for experiences" };
+    expect(correctionSchema.parse(withRule)).toEqual(withRule);
+    expect(correctionSchema.parse(item)).toEqual(item);
+  });
+
+  it("rejects an empty rule and accepts a rule of 80 characters but not 81", () => {
+    expect(correctionSchema.safeParse({ ...item, rule: " " }).success).toBe(false);
+    expect(correctionSchema.safeParse({ ...item, rule: "a".repeat(80) }).success).toBe(true);
+    expect(correctionSchema.safeParse({ ...item, rule: "a".repeat(81) }).success).toBe(false);
+  });
+
+  it("accepts a message's corrections where only some items carry a rule", () => {
+    const body = { items: [{ ...item, rule: "Articles" }, item], explanation: null };
+    expect(messageCorrectionsSchema.safeParse(body).success).toBe(true);
+  });
+
   it("accepts a side of 300 characters and rejects 301", () => {
     expect(correctionSchema.safeParse({ ...item, corrected: "a".repeat(300) }).success).toBe(true);
     expect(correctionSchema.safeParse({ ...item, corrected: "a".repeat(301) }).success).toBe(false);
@@ -450,6 +470,26 @@ describe("tutorReplySchema", () => {
     expect(tutorReplySchema.parse(empty)).toEqual(empty);
   });
 
+  it("parses a tutor correction with a rule", () => {
+    const body = {
+      reply: "Nice!",
+      corrections: [{ original: "a", corrected: "b", rule: "Articles" }],
+      explanation: "Because.",
+      newWords: [],
+    };
+    expect(tutorReplySchema.parse(body)).toEqual(body);
+  });
+
+  it("parses a tutor correction without a rule", () => {
+    const body = {
+      reply: "Nice!",
+      corrections: [{ original: "a", corrected: "b" }],
+      explanation: "",
+      newWords: [],
+    };
+    expect(tutorReplySchema.parse(body)).toEqual(body);
+  });
+
   it("rejects a missing field and a wrong type", () => {
     expect(tutorReplySchema.safeParse({ reply: "x", corrections: [], newWords: [] }).success).toBe(
       false,
@@ -458,6 +498,34 @@ describe("tutorReplySchema", () => {
       tutorReplySchema.safeParse({ reply: 1, corrections: [], explanation: "", newWords: [] })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("sessionSummarySchema", () => {
+  const body = {
+    session,
+    messageCount: 4,
+    corrections: [{ original: "a", corrected: "b", rule: "Articles" }],
+    newWords: ["definitely"],
+  };
+
+  it("parses a session with its count, corrections and words", () => {
+    expect(sessionSummarySchema.parse(body)).toEqual(body);
+  });
+
+  it("parses an empty summary: zero messages, no corrections, no words", () => {
+    const empty = { session, messageCount: 0, corrections: [], newWords: [] };
+    expect(sessionSummarySchema.parse(empty)).toEqual(empty);
+  });
+
+  it("rejects a negative or fractional message count", () => {
+    expect(sessionSummarySchema.safeParse({ ...body, messageCount: -1 }).success).toBe(false);
+    expect(sessionSummarySchema.safeParse({ ...body, messageCount: 1.5 }).success).toBe(false);
+  });
+
+  it("parses an old correction without a rule inside a summary", () => {
+    const old = { ...body, corrections: [{ original: "a", corrected: "b" }] };
+    expect(sessionSummarySchema.parse(old)).toEqual(old);
   });
 });
 

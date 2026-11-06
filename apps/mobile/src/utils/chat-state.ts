@@ -1,4 +1,10 @@
-import type { MonthSpend, Profile, Provider, SessionWithMessages } from "@fluency-lab/shared";
+import {
+  topicLabel,
+  type MonthSpend,
+  type Profile,
+  type Provider,
+  type SessionWithMessages,
+} from "@fluency-lab/shared";
 
 import type { FailureCause } from "@/auth/auth-port";
 import type { DataOutcome } from "@/data/data-port";
@@ -65,6 +71,7 @@ export function chatView(input: {
 // INFO: a resumed session's title is known only once it is opened, which needs a key.
 export function originTitle(origin: ChatOrigin): string {
   if (origin.kind === "starter") return origin.starter.title;
+  if (origin.kind === "topic") return topicLabel(origin.topicId);
   return origin.kind === "free" ? "Free chat" : "Chat";
 }
 

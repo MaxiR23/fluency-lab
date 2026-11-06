@@ -55,6 +55,7 @@ function RootNavigator({ fontsSettled }: { fontsSettled: boolean }) {
         <Stack.Screen name="api-key" />
         <Stack.Screen name="suggestions" />
         <Stack.Screen name="chats" />
+        <Stack.Screen name="summary" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="edit-profile" />
       </Stack.Protected>

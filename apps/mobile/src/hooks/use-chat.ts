@@ -161,7 +161,10 @@ export function useChat(chatOrigin: ChatOrigin): {
       dispatch({ type: "end_failed", failure: { source: "data", failure: ended.failure } });
       return;
     }
-    router.dismissTo("/");
+    // INFO: dismissAll clears whatever opened the chat (Suggestions, Open chats), so Summary
+    // sits directly on Home and its back gesture lands there.
+    router.dismissAll();
+    router.push({ pathname: "/summary", params: { session: conversation.session.id } });
   }
 
   async function retry(): Promise<void> {

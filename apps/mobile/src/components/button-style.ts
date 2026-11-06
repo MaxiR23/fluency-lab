@@ -10,14 +10,14 @@ import {
   spacing,
 } from "@/constants/theme";
 
-export type ButtonVariant = "primary" | "secondary" | "deep";
+export type ButtonVariant = "primary" | "secondary" | "deep" | "strong";
 
 type ButtonState = { pressed?: boolean; disabled?: boolean };
 
 type Palette = { background: string; border: string; label: string };
 
 function palette(variant: ButtonVariant, state: ButtonState): Palette {
-  if (variant === "primary" || variant === "deep") {
+  if (variant === "primary" || variant === "deep" || variant === "strong") {
     if (state.disabled) {
       return {
         background: colors.surface,
@@ -28,6 +28,13 @@ function palette(variant: ButtonVariant, state: ButtonState): Palette {
     if (state.pressed) {
       return {
         background: colors.accentPressed,
+        border: colors.accentPressed,
+        label: colors.text,
+      };
+    }
+    if (variant === "strong") {
+      return {
+        background: colors.accentLine,
         border: colors.accentPressed,
         label: colors.text,
       };
@@ -82,7 +89,7 @@ export function buttonStyle(
       backgroundColor: background,
       borderColor: border,
       borderWidth: borderWidth.thin,
-      borderRadius: radius.control,
+      borderRadius: variant === "strong" ? radius.pill : radius.control,
       minHeight: minHeight(options),
       paddingHorizontal: options.small === true ? spacing.md : spacing.lg,
       alignItems: "center",

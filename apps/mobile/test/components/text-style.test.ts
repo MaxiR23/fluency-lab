@@ -421,4 +421,12 @@ describe("textStyle", () => {
   it("draws bodyDanger as the body in the error color", () => {
     expect(textStyle("bodyDanger")).toEqual({ ...textStyle("body"), color: colors.error });
   });
+
+  it("draws the small stat value bold at 20 in text color", () => {
+    expect(textStyle("statSmall")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.name,
+      color: colors.text,
+    });
+  });
 });

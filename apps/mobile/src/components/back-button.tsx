@@ -3,11 +3,17 @@ import { Pressable, StyleSheet } from "react-native";
 import { Icon } from "@/components/icon";
 import { colors, size } from "@/constants/theme";
 
-export function BackButton({ onPress }: { onPress: () => void }) {
+export function BackButton({
+  onPress,
+  label = "Back to Home",
+}: {
+  onPress: () => void;
+  label?: string;
+}) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Back to Home"
+      accessibilityLabel={label}
       onPress={onPress}
       style={styles.back}
     >

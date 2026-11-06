@@ -19,6 +19,7 @@ import { requireAuth, readBearerToken, readTokenUser, type AuthConfig } from "./
 import { MONTH_LOOKBACK_MS, currentMonthStart, monthSpend } from "./month";
 import type { Caller, Store, StoreFailure } from "./store";
 import { dayStreak } from "./streak";
+import { sessionSummary } from "./summary";
 import { WEEK_LOOKBACK_MS, currentWeek, isTimeZone, sessionDays } from "./week";
 
 // INFO: no zod issue text leaves the API.
@@ -212,6 +213,26 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
         }
         if (outcome.value === null) return c.json({ error: "not_found" }, 404);
         return c.json(outcome.value, 200);
+      },
+    )
+    .get(
+      "/sessions/:id/summary",
+      auth,
+      caller,
+      zValidator("param", sessionIdParamSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .getSessionWithMessages(c.req.valid("param").id);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(
+          { session: outcome.value.session, ...sessionSummary(outcome.value.messages) },
+          200,
+        );
       },
     )
     .post(

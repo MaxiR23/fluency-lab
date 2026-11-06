@@ -28,6 +28,8 @@ export const colors = {
   accentGlow: "rgba(109,165,192,0.22)",
   progressTrack: "rgba(255,255,255,0.08)",
   accentHalo: "rgba(109,165,192,0.15)",
+  accentRing: "rgba(109,165,192,0.25)",
+  accentChipLine: "rgba(109,165,192,0.3)",
 } as const;
 
 export const spacing = {
@@ -108,8 +110,11 @@ export const size = {
   switchWidth: 46,
   switchHeight: 28,
   switchKnob: 20,
+  doneBadge: 64,
+  iconDone: 30,
+  wordChip: 34,
 } as const;
-export const strokeWidth = { icon: 1.8, action: 2, check: 2.4, send: 1.9 } as const;
+export const strokeWidth = { icon: 1.8, action: 2, check: 2.4, send: 1.9, done: 2.2 } as const;
 export const borderWidth = { thin: 1 } as const;
 export const fontSize = {
   micro: 11,
@@ -150,7 +155,7 @@ export const letterSpacing = {
 // blur of 20 is shadowRadius 10. The glow is iOS only, because Android elevation draws one
 // black shadow. The tab bar's blur of 28 is shadowRadius 14; the pill glow of 14 is
 // shadowRadius 7 and iOS only. The large avatar's glow (blur 24) is shadowRadius 12, iOS only
-// like the others.
+// like the others. The done badge's glow (blur 24) is shadowRadius 12, iOS only.
 export const shadow = {
   raised: {
     shadowColor: colors.shadow,
@@ -187,6 +192,12 @@ export const shadow = {
   },
   avatarGlow: {
     shadowColor: colors.accentHalo,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 12,
+  },
+  doneGlow: {
+    shadowColor: colors.accentRing,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
     shadowRadius: 12,

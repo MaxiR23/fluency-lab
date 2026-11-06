@@ -7,6 +7,7 @@
 // - Radius, spacing scale, sizes, tints, the raised shadow and font faces
 // - The floating tab bar tokens and the tab pill spring
 // - The Settings and Profile tokens: the spend bar, the switch, the large avatar and its glow
+// - The Summary tokens: the done badge, its check and glow, and the word chip
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -129,8 +130,11 @@ describe("theme", () => {
       switchWidth: 46,
       switchHeight: 28,
       switchKnob: 20,
+      doneBadge: 64,
+      iconDone: 30,
+      wordChip: 34,
     });
-    expect(strokeWidth).toEqual({ icon: 1.8, action: 2, check: 2.4, send: 1.9 });
+    expect(strokeWidth).toEqual({ icon: 1.8, action: 2, check: 2.4, send: 1.9, done: 2.2 });
   });
 
   it("holds the design's font sizes", () => {
@@ -364,6 +368,21 @@ describe("theme", () => {
   it("holds the avatar glow as a radius 12 shadow of accentHalo", () => {
     expect(shadow.avatarGlow).toEqual({
       shadowColor: colors.accentHalo,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 12,
+    });
+  });
+
+  it("holds the Summary tokens: the done badge, its check and glow, and the word chip", () => {
+    expect(size.doneBadge).toBe(64);
+    expect(size.iconDone).toBe(30);
+    expect(size.wordChip).toBe(34);
+    expect(strokeWidth.done).toBe(2.2);
+    expect(colors.accentRing).toBe("rgba(109,165,192,0.25)");
+    expect(colors.accentChipLine).toBe("rgba(109,165,192,0.3)");
+    expect(shadow.doneGlow).toEqual({
+      shadowColor: colors.accentRing,
       shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 1,
       shadowRadius: 12,

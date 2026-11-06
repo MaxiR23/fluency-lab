@@ -8,6 +8,7 @@ import type {
   ProfileUpdate,
   Session,
   SessionCreate,
+  SessionSummary,
   SessionUsage,
   SessionWeek,
   SessionWithMessages,
@@ -37,6 +38,8 @@ export type DataPort = {
   getSessionWeek(timeZone: string): Promise<DataOutcome<SessionWeek>>;
   // INFO: zeros are the expected empty: no sessions yet.
   getProfileStats(timeZone: string): Promise<DataOutcome<ProfileStats>>;
+  // INFO: no corrections and no words are the expected empty.
+  getSessionSummary(sessionId: string): Promise<DataOutcome<SessionSummary>>;
   // INFO: deletes the signed in user's account and data on the server; nothing is returned.
   deleteAccount(): Promise<DataOutcome<null>>;
 };

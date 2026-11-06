@@ -10,8 +10,9 @@
 //   when the signing keys cannot be loaded
 // - GET/PUT /profile, GET/POST /sessions, GET /sessions/open, DELETE /sessions/:id, GET /sessions/week, GET /sessions/spend,
 //   GET /profile/stats, DELETE /account,
-//   GET/POST /sessions/:id/messages, POST /sessions/:id/usage and POST /sessions/:id/end:
+//   GET/POST /sessions/:id/messages, GET /sessions/:id/summary, POST /sessions/:id/usage and POST /sessions/:id/end:
 //   401 without a valid token, 400 on invalid input, 404, 503, and the typed client
+// - GET /sessions/:id/summary counts the messages and collects the corrections and new words
 // - GET /sessions/spend still counts the cost of a deleted session
 // - the usage route prices the tokens, and the routes reject an apiKey field
 //
@@ -279,6 +280,7 @@ const routes: { name: string; path: string; method: string; body?: unknown }[] =
   { name: "POST /sessions", path: "/sessions", method: "POST", body: { topicId: null } },
   { name: "GET /sessions/spend", path: "/sessions/spend?tz=UTC", method: "GET" },
   { name: "GET /sessions/:id/messages", path: `/sessions/${sessionId}/messages`, method: "GET" },
+  { name: "GET /sessions/:id/summary", path: `/sessions/${sessionId}/summary`, method: "GET" },
   {
     name: "POST /sessions/:id/messages",
     path: `/sessions/${sessionId}/messages`,
@@ -946,6 +948,91 @@ describe("GET /sessions/:id/messages", () => {
   });
 });
 
+describe("GET /sessions/:id/summary", () => {
+  async function summary(id: string) {
+    return app.request(`/sessions/${id}/summary`, { headers: await authed() });
+  }
+
+  it("responds 200 with the session, its message count, corrections and new words", async () => {
+    const corrected: Message = {
+      ...message,
+      corrections: {
+        items: [
+          { original: "I never been", corrected: "I've never been", rule: "Present perfect" },
+        ],
+        explanation: "Use the present perfect.",
+      },
+      newWords: ["definitely"],
+    };
+    const reply: Message = { ...message, role: "tutor", text: "Nice!" };
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [corrected, reply] },
+    });
+
+    const res = await summary(sessionId);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      session,
+      messageCount: 2,
+      corrections: [
+        { original: "I never been", corrected: "I've never been", rule: "Present perfect" },
+      ],
+      newWords: ["definitely"],
+    });
+    expect(fake.user.getSessionWithMessages).toHaveBeenCalledWith(sessionId);
+  });
+
+  it("responds 200 with zero counts and empty lists for a session with no messages", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [] },
+    });
+
+    const res = await summary(sessionId);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ session, messageCount: 0, corrections: [], newWords: [] });
+  });
+
+  it("responds 404 for another user's session", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({ ok: true, value: null });
+
+    const res = await summary(sessionId);
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
+
+  it("responds 400 for an id that is not a uuid", async () => {
+    expect((await summary("abc")).status).toBe(400);
+    expect(fake.user.getSessionWithMessages).not.toHaveBeenCalled();
+  });
+
+  it("responds 401 without a token", async () => {
+    const res = await app.request(`/sessions/${sessionId}/summary`);
+
+    expect(res.status).toBe(401);
+    expect(fake.user.getSessionWithMessages).not.toHaveBeenCalled();
+  });
+
+  it("responds 401 when the store is unauthorized", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({ ok: false, failure: "unauthorized" });
+
+    const res = await summary(sessionId);
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    expect((await summary(sessionId)).status).toBe(503);
+  });
+});
+
 describe("POST /sessions/:id/messages", () => {
   async function add(id: string, body: string, headers?: Record<string, string>) {
     return app.request(`/sessions/${id}/messages`, {
@@ -1120,6 +1207,18 @@ describe("typed client (data routes)", () => {
     expect(profileRes.status).toBe(200);
     expect(await activeRes.json()).toEqual({ activeSession: null });
     expect(weekRes.status).toBe(200);
+  });
+
+  it("exposes the summary route through AppType", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [] },
+    });
+    const client = testClient(app, undefined, undefined, { headers: await authed() });
+
+    const res = await client.sessions[":id"].summary.$get({ param: { id: sessionId } });
+
+    expect(res.status).toBe(200);
   });
 
   it("exposes the chat routes through AppType", async () => {

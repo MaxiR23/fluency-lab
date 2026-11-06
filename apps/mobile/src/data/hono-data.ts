@@ -10,6 +10,7 @@ import {
   profileStatsSchema,
   sessionMessagesResponseSchema,
   sessionSchema,
+  sessionSummarySchema,
   sessionWeekSchema,
 } from "@fluency-lab/shared";
 // INFO: type-only, so Metro never bundles the server.
@@ -120,6 +121,11 @@ export function createHonoData(config: HonoDataConfig): DataPort {
       ),
     getProfileStats: (timeZone) =>
       call((client) => client.profile.stats.$get({ query: { tz: timeZone } }), profileStatsSchema),
+    getSessionSummary: (sessionId) =>
+      call(
+        (client) => client.sessions[":id"].summary.$get({ param: { id: sessionId } }),
+        sessionSummarySchema,
+      ),
     async deleteAccount() {
       const outcome = await call((client) => client.account.$delete(), accountDeletedSchema);
       return outcome.ok ? { ok: true, value: null } : outcome;

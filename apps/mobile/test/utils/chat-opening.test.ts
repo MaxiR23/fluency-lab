@@ -5,6 +5,7 @@
 // Tested:
 // - chatOrigin reads the route params
 // - freeChatGreeting greets with or without a name
+// - chatOrigin reads a topic, and topicGreeting greets by topic
 // - promptTopic gives the topic title for the prompt, null for a free chat
 // - openingOf reads the opening line of a saved conversation
 //
@@ -18,7 +19,13 @@
 import { describe, expect, it } from "@jest/globals";
 import { STARTERS, starterById, type Message, type Session } from "@fluency-lab/shared";
 
-import { chatOrigin, freeChatGreeting, openingOf, promptTopic } from "@/utils/chat-opening";
+import {
+  chatOrigin,
+  freeChatGreeting,
+  openingOf,
+  promptTopic,
+  topicGreeting,
+} from "@/utils/chat-opening";
 
 const starter = STARTERS[0];
 
@@ -79,6 +86,31 @@ describe("chatOrigin", () => {
     expect(chatOrigin({ session: [] })).toEqual({ kind: "free" });
   });
 
+  it("reads a known topic as a topic chat", () => {
+    expect(chatOrigin({ topic: "job_interviews" })).toEqual({
+      kind: "topic",
+      topicId: "job_interviews",
+    });
+    expect(chatOrigin({ topic: ["travel", "food"] })).toEqual({ kind: "topic", topicId: "travel" });
+  });
+
+  it("reads an unknown or empty topic as a free chat", () => {
+    expect(chatOrigin({ topic: "nope" })).toEqual({ kind: "free" });
+    expect(chatOrigin({ topic: "" })).toEqual({ kind: "free" });
+    expect(chatOrigin({ topic: [] })).toEqual({ kind: "free" });
+  });
+
+  it("lets a session or a starter win over a topic", () => {
+    expect(chatOrigin({ session: "s1", topic: "travel" })).toEqual({
+      kind: "resume",
+      sessionId: "s1",
+    });
+    expect(chatOrigin({ starter: starter.id, topic: "travel" })).toEqual({
+      kind: "starter",
+      starter,
+    });
+  });
+
   it("finds the starter with starterById", () => {
     expect(starterById(starter.id)).toBe(starter);
   });
@@ -96,6 +128,21 @@ describe("freeChatGreeting", () => {
   it("greets without a blank name and trims a name", () => {
     expect(freeChatGreeting("   ")).toBe("Hi! What would you like to talk about today?");
     expect(freeChatGreeting(" Ada ")).toBe("Hi Ada! What would you like to talk about today?");
+  });
+});
+
+describe("topicGreeting", () => {
+  it("greets a topic chat by name and topic", () => {
+    expect(topicGreeting(" Ada ", "job_interviews")).toBe(
+      "Hi Ada! Today's topic: Job interviews. What would you like to talk about?",
+    );
+  });
+
+  it("greets a topic chat without a name", () => {
+    expect(topicGreeting(null, "travel")).toBe(
+      "Hi! Today's topic: Travel. What would you like to talk about?",
+    );
+    expect(topicGreeting("  ", "travel")).toBe(topicGreeting(null, "travel"));
   });
 });
 

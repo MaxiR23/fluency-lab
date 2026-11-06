@@ -4,6 +4,7 @@
 //
 // Tested:
 // - toTutorReply trims, filters and caps the reply so it passes messageCreateSchema
+// - toTutorReply keeps a correction's rule trimmed and capped, and drops a blank one
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -33,6 +34,39 @@ describe("toTutorReply", () => {
       explanation: "Use the present perfect.",
       newWords: ["definitely"],
     });
+  });
+
+  it("keeps each correction's rule, trimmed", () => {
+    const result = toTutorReply({
+      ...base,
+      corrections: [{ original: "a", corrected: "b", rule: "  Articles with years " }],
+    });
+    expect(result?.corrections).toEqual([
+      { original: "a", corrected: "b", rule: "Articles with years" },
+    ]);
+  });
+
+  it("drops a blank rule and keeps the correction", () => {
+    const result = toTutorReply({
+      ...base,
+      corrections: [{ original: "a", corrected: "b", rule: "   " }],
+    });
+    expect(result?.corrections).toEqual([{ original: "a", corrected: "b" }]);
+  });
+
+  it("keeps a correction that comes without a rule", () => {
+    const result = toTutorReply({ ...base, corrections: [{ original: "a", corrected: "b" }] });
+    expect(result?.corrections).toEqual([{ original: "a", corrected: "b" }]);
+  });
+
+  it("caps a rule at 80 characters", () => {
+    const rule = (n: number) => ({ original: "a", corrected: "b", rule: "r".repeat(n) });
+    expect(toTutorReply({ ...base, corrections: [rule(80)] })?.corrections[0].rule).toHaveLength(
+      80,
+    );
+    expect(toTutorReply({ ...base, corrections: [rule(81)] })?.corrections[0].rule).toHaveLength(
+      80,
+    );
   });
 
   it("caps the reply at 4000 characters", () => {

@@ -1,28 +1,53 @@
 import {
+  TOPIC_IDS,
   sessionTitle,
   starterById,
+  topicLabel,
   type Message,
   type Session,
   type Starter,
+  type TopicId,
 } from "@fluency-lab/shared";
 
 export type ChatOrigin =
-  { kind: "free" } | { kind: "starter"; starter: Starter } | { kind: "resume"; sessionId: string };
+  | { kind: "free" }
+  | { kind: "starter"; starter: Starter }
+  | { kind: "topic"; topicId: TopicId }
+  | { kind: "resume"; sessionId: string };
 
-type Param = string | string[] | undefined;
+export type Param = string | string[] | undefined;
 
-function firstOf(param: Param): string | undefined {
+export function firstOf(param: Param): string | undefined {
   const value = Array.isArray(param) ? param[0] : param;
   return value === undefined || value === "" ? undefined : value;
 }
 
-// INFO: a session id wins over a starter; an unknown starter id is a free chat.
-export function chatOrigin(params: { starter?: Param; session?: Param }): ChatOrigin {
+function isTopicId(value: string): value is TopicId {
+  return TOPIC_IDS.some((id) => id === value);
+}
+
+// INFO: a session id wins over a starter, a starter over a topic; an unknown starter or topic
+// is a free chat.
+export function chatOrigin(params: {
+  starter?: Param;
+  session?: Param;
+  topic?: Param;
+}): ChatOrigin {
   const sessionId = firstOf(params.session);
   if (sessionId !== undefined) return { kind: "resume", sessionId };
   const starterId = firstOf(params.starter);
   const starter = starterId === undefined ? undefined : starterById(starterId);
-  return starter === undefined ? { kind: "free" } : { kind: "starter", starter };
+  if (starter !== undefined) return { kind: "starter", starter };
+  const topicId = firstOf(params.topic);
+  return topicId !== undefined && isTopicId(topicId)
+    ? { kind: "topic", topicId }
+    : { kind: "free" };
+}
+
+export function topicGreeting(displayName: string | null, topicId: TopicId): string {
+  const name = displayName?.trim() ?? "";
+  const hi = name === "" ? "Hi!" : `Hi ${name}!`;
+  return `${hi} Today's topic: ${topicLabel(topicId)}. What would you like to talk about?`;
 }
 
 export function freeChatGreeting(displayName: string | null): string {

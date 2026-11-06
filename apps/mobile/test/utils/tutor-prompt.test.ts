@@ -4,6 +4,7 @@
 //
 // Tested:
 // - tutorPrompt includes each rule, the level, the learner, the topic and the opening line
+// - tutorPrompt asks for a rule label on each correction
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -35,6 +36,12 @@ const input: TutorPromptInput = {
 };
 
 describe("tutorPrompt", () => {
+  it("asks for a short rule label naming the grammar point on each correction", () => {
+    expect(OUTPUT_GUIDE).toContain("rule");
+    expect(OUTPUT_GUIDE).toContain("Present perfect for experiences");
+    expect(tutorPrompt(input)).toContain(OUTPUT_GUIDE);
+  });
+
   it("includes the English-only rule", () => {
     expect(tutorPrompt(input)).toContain(RULE_ENGLISH_ONLY);
   });

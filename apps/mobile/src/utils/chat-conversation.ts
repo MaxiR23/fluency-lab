@@ -1,5 +1,6 @@
 import {
   TUTOR_MODEL,
+  topicLabel,
   usageCostUsd,
   type Correction,
   type Goal,
@@ -18,7 +19,13 @@ import {
 
 import type { TutorReply, TutorRequest } from "@/ai/ai-port";
 import type { ChatFailure } from "@/utils/chat-failure";
-import { freeChatGreeting, openingOf, promptTopic, type ChatOrigin } from "@/utils/chat-opening";
+import {
+  freeChatGreeting,
+  openingOf,
+  promptTopic,
+  topicGreeting,
+  type ChatOrigin,
+} from "@/utils/chat-opening";
 import { spendLevel } from "@/utils/spend-limit";
 import { tutorPrompt } from "@/utils/tutor-prompt";
 
@@ -149,6 +156,18 @@ export function startConversation(input: {
       topicTitle: promptTopic(session),
       opening: openingOf(messages),
       messages: messages.map(fromMessage),
+    };
+  }
+  if (origin.kind === "topic") {
+    const label = topicLabel(origin.topicId);
+    const opening = topicGreeting(profile.displayName, origin.topicId);
+    return {
+      ...base,
+      session: null,
+      title: label,
+      topicTitle: label,
+      opening,
+      messages: [localMessage("opening", "tutor", opening)],
     };
   }
   const starter = origin.kind === "starter" ? origin.starter : null;
@@ -309,10 +328,15 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
   }
 }
 
+function createBody(origin: ChatOrigin): SessionCreate {
+  if (origin.kind === "starter") return { starterId: origin.starter.id };
+  if (origin.kind === "topic") return { topicId: origin.topicId };
+  return { topicId: null };
+}
+
 export function nextStep(c: Conversation): Step {
   if (c.phase === "creating" && c.session === null) {
-    const body: SessionCreate =
-      c.origin.kind === "starter" ? { starterId: c.origin.starter.id } : { topicId: null };
+    const body: SessionCreate = createBody(c.origin);
     return { kind: "create", body };
   }
   if ((c.phase === "asking" || c.phase === "saving") && c.writes.length > 0) {

@@ -329,6 +329,10 @@ describe("originTitle", () => {
     expect(originTitle({ kind: "starter", starter: STARTERS[0] })).toBe(STARTERS[0].title);
   });
 
+  it("is the topic's label for a topic chat before it opens", () => {
+    expect(originTitle({ kind: "topic", topicId: "job_interviews" })).toBe("Job interviews");
+  });
+
   it("is Free chat for a free chat", () => {
     expect(originTitle(free)).toBe("Free chat");
   });
