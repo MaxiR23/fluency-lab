@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The items in order, the typing indicator and the newest kept in view
+// - The newest message stays in view when the list shrinks for a taller input
 // - The keyboard lift offset, the still dots with reduce motion on and items added after mount
 //
 // What is covered:
@@ -92,6 +93,17 @@ describe("MessageList", () => {
     await fireEvent(screen.getByTestId("message-list"), "layout", {
       nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 200 } },
     });
+    expect(ScrollView.prototype.scrollToEnd).toHaveBeenCalledWith({ animated: false });
+  });
+
+  it("keeps the newest message in view when the list shrinks for a taller input", async () => {
+    await render(list(items));
+    const frame = (height: number) => ({
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height } },
+    });
+    await fireEvent(screen.getByTestId("message-list"), "layout", frame(200));
+    jest.mocked(ScrollView.prototype.scrollToEnd).mockClear();
+    await fireEvent(screen.getByTestId("message-list"), "layout", frame(150));
     expect(ScrollView.prototype.scrollToEnd).toHaveBeenCalledWith({ animated: false });
   });
 

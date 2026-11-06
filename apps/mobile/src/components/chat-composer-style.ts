@@ -5,25 +5,38 @@ import {
   colors,
   fontFamily,
   fontSize,
+  lineHeight,
   radius,
   shadow,
   size,
   spacing,
 } from "@/constants/theme";
 
-export function composerInputStyle({ locked }: { locked: boolean }): {
+export const MAX_COMPOSER_LINES = 5;
+// INFO: the padding centres one body line in a control, so one line keeps the pill's height.
+const composerPaddingVertical = (size.control - lineHeight.body) / 2;
+export const composerMaxHeight = MAX_COMPOSER_LINES * lineHeight.body + 2 * composerPaddingVertical;
+
+export function composerLines(height: number): number {
+  const lines = Math.round((height - 2 * composerPaddingVertical) / lineHeight.body);
+  return Math.min(Math.max(lines, 1), MAX_COMPOSER_LINES);
+}
+
+export function composerInputStyle({ locked, lines }: { locked: boolean; lines: number }): {
   input: TextStyle;
   placeholderColor: string;
 } {
   const common: TextStyle = {
     flex: 1,
     minHeight: size.control,
-    paddingVertical: 0,
+    paddingVertical: composerPaddingVertical,
     paddingHorizontal: spacing.screenSide,
-    borderRadius: radius.pill,
+    borderRadius: lines > 1 ? radius.control : radius.pill,
     borderWidth: borderWidth.thin,
     fontFamily: fontFamily.regular,
     fontSize: fontSize.body,
+    lineHeight: lineHeight.body,
+    maxHeight: composerMaxHeight,
   };
   if (locked) {
     return {

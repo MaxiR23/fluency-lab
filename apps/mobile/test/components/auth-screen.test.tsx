@@ -5,6 +5,7 @@
 // Tested:
 // - Logo, title block, children and the footer link
 // - The page padding comes from the tokens
+// - The page scrolls the focused field into view, keeps its layout under the keyboard and closes it on a tap outside
 //
 // What is covered:
 // - Normal case, edges
@@ -19,6 +20,20 @@ import { StyleSheet, Text } from "react-native";
 
 import { AuthScreen } from "@/components/auth-screen";
 import { spacing } from "@/constants/theme";
+import { formKeyboardOffset } from "@/utils/form-keyboard";
+
+// INFO: jest renders no keyboard; this spy proves the screen no longer draws React Native's view.
+const keyboardAvoidingRenders: number[] = [];
+jest.mock("react-native/Libraries/Components/Keyboard/KeyboardAvoidingView", () => {
+  const { View } = jest.requireActual<typeof import("react-native")>("react-native");
+  return {
+    __esModule: true,
+    default: ({ children, ...rest }: { children?: unknown }) => {
+      keyboardAvoidingRenders.push(1);
+      return <View {...rest}>{children as never}</View>;
+    },
+  };
+});
 
 function footer(overrides: { onPress?: () => void; disabled?: boolean } = {}) {
   return { prompt: "New here?", linkLabel: "Create an account", onPress: jest.fn(), ...overrides };
@@ -76,5 +91,25 @@ describe("AuthScreen", () => {
       paddingHorizontal: spacing.screenSide,
       paddingBottom: spacing.screenBottom,
     });
+  });
+
+  it("draws no React Native KeyboardAvoidingView", async () => {
+    await render(<AuthScreen title="T" subtitle="S" footer={footer()} />);
+    expect(keyboardAvoidingRenders).toHaveLength(0);
+  });
+
+  it("scrolls the focused field into view with the form keyboard offset", async () => {
+    await render(<AuthScreen title="T" subtitle="S" footer={footer()} testID="page" />);
+    expect(screen.getByTestId("page").props.bottomOffset).toBe(formKeyboardOffset);
+  });
+
+  it("keeps the page layout when the keyboard opens, so the footer stays under it", async () => {
+    await render(<AuthScreen title="T" subtitle="S" footer={footer()} testID="page" />);
+    expect(screen.getByTestId("page").props.mode).toBe("insets");
+  });
+
+  it("closes the keyboard on a tap outside a field", async () => {
+    await render(<AuthScreen title="T" subtitle="S" footer={footer()} testID="page" />);
+    expect(screen.getByTestId("page").props.keyboardShouldPersistTaps).toBe("handled");
   });
 });

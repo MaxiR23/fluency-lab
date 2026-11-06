@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
-import { KeyboardAvoidingView, ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 import { Logo } from "@/components/logo";
 import { Screen } from "@/components/screen";
 import { Text } from "@/components/text";
 import { TextLink } from "@/components/text-link";
 import { spacing } from "@/constants/theme";
+import { formKeyboardOffset } from "@/utils/form-keyboard";
 
 type Footer = { prompt: string; linkLabel: string; onPress: () => void; disabled?: boolean };
 
@@ -27,33 +29,36 @@ export function AuthScreen({
 }) {
   return (
     <Screen edges={["left", "right"]}>
-      <KeyboardAvoidingView behavior="padding" style={styles.fill}>
-        <ScrollView
-          contentContainerStyle={styles.page}
-          keyboardShouldPersistTaps="handled"
-          testID={testID}
-        >
-          <View style={styles.content}>
-            <Logo />
-            <View style={styles.titleBlock}>
-              <Text variant="title">{title}</Text>
-              <Text variant="subtitle">{subtitle}</Text>
-            </View>
-            {children}
+      {/* INFO: insets keep the page's layout while the keyboard is open, so the footer
+          stays at the bottom under the keyboard instead of riding above it. */}
+      <KeyboardAwareScrollView
+        style={styles.fill}
+        contentContainerStyle={styles.page}
+        keyboardShouldPersistTaps="handled"
+        mode="insets"
+        bottomOffset={formKeyboardOffset}
+        testID={testID}
+      >
+        <View style={styles.content}>
+          <Logo />
+          <View style={styles.titleBlock}>
+            <Text variant="title">{title}</Text>
+            <Text variant="subtitle">{subtitle}</Text>
           </View>
-          {footer === undefined ? null : (
-            <Text variant="footer" style={styles.footer}>
-              {footer.prompt}{" "}
-              <TextLink
-                variant="footerLink"
-                label={footer.linkLabel}
-                onPress={footer.onPress}
-                disabled={footer.disabled}
-              />
-            </Text>
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+          {children}
+        </View>
+        {footer === undefined ? null : (
+          <Text variant="footer" style={styles.footer}>
+            {footer.prompt}{" "}
+            <TextLink
+              variant="footerLink"
+              label={footer.linkLabel}
+              onPress={footer.onPress}
+              disabled={footer.disabled}
+            />
+          </Text>
+        )}
+      </KeyboardAwareScrollView>
     </Screen>
   );
 }

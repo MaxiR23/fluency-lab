@@ -6,6 +6,7 @@
 // - The composer: input and the Send icon button, enabled, disabled or locked
 // - The typed text and the send press are reported
 // - Busy keeps the open input and disables Send
+// - The input takes several lines, grows to five, then scrolls; Send stays at the bottom of the row
 // - Send scales while pressed, and not with reduce motion on (press null)
 //
 // What is covered:
@@ -22,7 +23,8 @@ import { StyleSheet } from "react-native";
 import * as Reanimated from "react-native-reanimated";
 
 import { ChatComposer } from "@/components/chat-composer";
-import { colors, motion } from "@/constants/theme";
+import { composerMaxHeight } from "@/components/chat-composer-style";
+import { colors, motion, radius, size } from "@/constants/theme";
 import { chatMotion } from "@/utils/chat-motion";
 
 // INFO: Reanimated styles do not advance under jest, so the press is proven by the target
@@ -142,5 +144,50 @@ describe("ChatComposer", () => {
     await render(composer());
     const row = screen.getByLabelText("Message").parent;
     expect(StyleSheet.flatten(row?.props.style).paddingBottom).toBeUndefined();
+  });
+
+  it("takes several lines and inserts a new line on return", async () => {
+    await render(composer());
+    const props = screen.getByLabelText("Message").props;
+    expect(props.multiline).toBe(true);
+    expect(props.submitBehavior).toBe("newline");
+    expect(props.onSubmitEditing).toBeUndefined();
+  });
+
+  it("rounds the input to the control radius once it grows past one line, and back", async () => {
+    await render(composer());
+    const input = screen.getByLabelText("Message");
+    await fireEvent(input, "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: composerMaxHeight } },
+    });
+    expect(StyleSheet.flatten(screen.getByLabelText("Message").props.style).borderRadius).toBe(
+      radius.control,
+    );
+    await fireEvent(input, "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: size.control } },
+    });
+    expect(StyleSheet.flatten(screen.getByLabelText("Message").props.style).borderRadius).toBe(
+      radius.pill,
+    );
+  });
+
+  it("starts as a pill before it is laid out", async () => {
+    await render(composer());
+    expect(StyleSheet.flatten(screen.getByLabelText("Message").props.style).borderRadius).toBe(
+      radius.pill,
+    );
+  });
+
+  it("caps the input at five lines and scrolls inside", async () => {
+    await render(composer());
+    const input = screen.getByLabelText("Message");
+    expect(StyleSheet.flatten(input.props.style).maxHeight).toBe(composerMaxHeight);
+    expect(input.props.scrollEnabled).not.toBe(false);
+  });
+
+  it("keeps Send at the bottom of the row as the input grows", async () => {
+    await render(composer());
+    const row = screen.getByLabelText("Message").parent;
+    expect(StyleSheet.flatten(row?.props.style).alignItems).toBe("flex-end");
   });
 });
