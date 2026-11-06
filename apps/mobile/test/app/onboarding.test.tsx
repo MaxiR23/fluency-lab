@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The profile check states: loading, failure with Try again, unauthorized
+// - Sign out from the check failure: success, failure message, busy state
 // - Who lands on onboarding and who goes to Home
 // - Each of the four steps, their rules and the Back link
 // - Finish: validation, the key in secure storage, the profile update, failures
@@ -20,6 +21,7 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { ProfileUpdate } from "@fluency-lab/shared";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 
+import { authFailureMessage } from "@/utils/auth-message";
 import { apiKeyNote, monthlyLimitNote } from "@/utils/onboarding-options";
 import {
   dataFailureMessage,
@@ -135,6 +137,41 @@ describe("Onboarding profile check", () => {
     fakeData.getProfile.mockResolvedValue({ ok: false, failure: "unauthorized" });
     await renderApp("/onboarding", fakeSession());
     expect(screen.getByText(dataFailureMessage("unauthorized"))).toBeTruthy();
+  });
+
+  it("signs out from the check failure and lands on Login", async () => {
+    fakeData.getProfile.mockResolvedValue({ ok: false, failure: "unauthorized" });
+    fakeAuth.signOut.mockImplementation(async () => {
+      emitSession(null);
+      return { ok: true, value: null };
+    });
+    await renderApp("/onboarding", fakeSession());
+    await press("Sign out");
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(screen).toHavePathname("/sign-in");
+  });
+
+  it("shows the sign out failure and keeps Try again and Sign out", async () => {
+    fakeData.getProfile.mockResolvedValue({ ok: false, failure: "network" });
+    fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "unknown" });
+    await renderApp("/onboarding", fakeSession());
+    await press("Sign out");
+    expect(screen.getByText(authFailureMessage("unknown"))).toBeTruthy();
+    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+  });
+
+  it("shows Sign out busy and disabled while the request runs", async () => {
+    fakeData.getProfile.mockResolvedValue({ ok: false, failure: "network" });
+    const pending = deferred<{ ok: false; failure: "network" }>();
+    fakeAuth.signOut.mockReturnValue(pending.promise);
+    await renderApp("/onboarding", fakeSession());
+    await press("Sign out");
+    const busy = screen.getByRole("button", { name: "Sign out", busy: true, disabled: true });
+    await fireEvent.press(busy);
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    await act(async () => pending.resolve({ ok: false, failure: "network" }));
   });
 });
 

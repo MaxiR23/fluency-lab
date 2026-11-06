@@ -8,6 +8,7 @@ import { FailureMessage } from "@/components/failure-message";
 import { OptionCard } from "@/components/option-card";
 import { Screen } from "@/components/screen";
 import { SegmentedControl } from "@/components/segmented-control";
+import { SignOutButton } from "@/components/sign-out-button";
 import { StepScreen } from "@/components/step-screen";
 import { Text } from "@/components/text";
 import { TextField } from "@/components/text-field";
@@ -64,6 +65,7 @@ export default function Onboarding() {
         <View style={styles.content}>
           <FailureMessage message={dataFailureMessage(view.failure)} />
           <Button variant="deep" label="Try again" onPress={() => void retry()} />
+          <SignOutButton />
         </View>
       </Screen>
     );
