@@ -4,6 +4,7 @@
 //
 // Tested:
 // - tutorPrompt includes each rule, the level, the learner, the topic and the opening line
+// - tutorPrompt explains a quoted reply and tells the tutor not to correct the quote
 // - tutorPrompt asks for a rule label on each correction
 // - tutorPrompt requires originals copied exactly from the learner's last message
 //
@@ -23,6 +24,7 @@ import {
   RULE_ENGLISH_ONLY,
   RULE_NO_KEY,
   RULE_OTHER_LANGUAGE,
+  RULE_REPLY_QUOTE,
   tutorPrompt,
   type TutorPromptInput,
 } from "@/utils/tutor-prompt";
@@ -65,6 +67,22 @@ describe("tutorPrompt", () => {
 
   it("includes the correct-briefly-and-ask rule", () => {
     expect(tutorPrompt(input)).toContain(RULE_CORRECT_AND_ASK);
+  });
+
+  it("tells the tutor what a quoted reply is and not to correct the quote", () => {
+    expect(tutorPrompt(input)).toContain(RULE_REPLY_QUOTE);
+    expect(
+      tutorPrompt({
+        displayName: null,
+        level: null,
+        goals: [],
+        topics: [],
+        topicTitle: null,
+        openingLine: null,
+      }),
+    ).toContain(RULE_REPLY_QUOTE);
+    expect(RULE_REPLY_QUOTE).toContain('"> "');
+    expect(RULE_REPLY_QUOTE).toContain("never correct them");
   });
 
   it("includes the never-mention-the-key rule", () => {

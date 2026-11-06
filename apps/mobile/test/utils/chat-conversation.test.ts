@@ -89,6 +89,7 @@ function message(role: Message["role"], text: string, extra: Partial<Message> = 
     text,
     corrections: null,
     newWords: null,
+    replyToId: null,
     createdAt: "2026-11-05T09:00:00Z",
     ...extra,
   };
@@ -164,6 +165,8 @@ describe("startConversation", () => {
         corrections: [],
         explanation: null,
         newWords: [],
+        replyTo: null,
+        savedId: null,
       },
     ]);
     expect(c.session).toBeNull();
@@ -243,6 +246,8 @@ describe("startConversation", () => {
       corrections: [{ original: "I never been", corrected: "I've never been" }],
       explanation: "Because.",
       newWords: ["word"],
+      replyTo: null,
+      savedId: "m-I never been",
     });
     expect(c.spentUsd).toBe(1);
   });
@@ -303,6 +308,7 @@ describe("a first turn", () => {
     expect(afterReply.writes).toEqual([
       {
         kind: "message",
+        localId: "message-1",
         input: {
           role: "user",
           text: "I never been",
@@ -313,7 +319,11 @@ describe("a first turn", () => {
           newWords: ["definitely"],
         },
       },
-      { kind: "message", input: { role: "tutor", text: "Nice! Where did you go?" } },
+      {
+        kind: "message",
+        localId: "message-2",
+        input: { role: "tutor", text: "Nice! Where did you go?" },
+      },
       {
         kind: "usage",
         usage: {
@@ -353,6 +363,7 @@ describe("a first turn", () => {
     ).writes[0];
     expect(userWrite).toEqual({
       kind: "message",
+      localId: "message-1",
       input: {
         role: "user",
         text: "I never been to Rome",
@@ -372,6 +383,7 @@ describe("a first turn", () => {
     expect(c.messages[1]).toMatchObject({ role: "user", corrections: [], explanation: null });
     expect(c.writes[0]).toEqual({
       kind: "message",
+      localId: "message-1",
       input: { role: "user", text: "Hello", newWords: ["definitely"] },
     });
   });
@@ -386,7 +398,11 @@ describe("a first turn", () => {
         reply: { ...reply, corrections: [], explanation: null, newWords: [] },
       },
     );
-    expect(c.writes[0]).toEqual({ kind: "message", input: { role: "user", text: "Hello" } });
+    expect(c.writes[0]).toEqual({
+      kind: "message",
+      localId: "message-1",
+      input: { role: "user", text: "Hello" },
+    });
   });
 
   it("shows the user message, the corrections and the tutor reply after the reply", () => {
@@ -399,6 +415,8 @@ describe("a first turn", () => {
         corrections: [{ original: "I never been", corrected: "I've never been" }],
         explanation: "Use the present perfect.",
         newWords: ["definitely"],
+        replyTo: null,
+        savedId: null,
       },
       {
         id: "message-2",
@@ -407,6 +425,8 @@ describe("a first turn", () => {
         corrections: [],
         explanation: null,
         newWords: [],
+        replyTo: null,
+        savedId: null,
       },
     ]);
   });
@@ -734,5 +754,181 @@ describe("sendState and busy", () => {
   it("is busy unless idle", () => {
     expect(busy(free())).toBe(false);
     expect(busy(typed(free(), "Hi"))).toBe(true);
+  });
+});
+
+describe("replying to a tutor message", () => {
+  // A chat with a session whose opening was saved under the server id "db-open".
+  function saved(): Conversation {
+    return apply(
+      typed(free(), "One"),
+      { type: "session_created", session },
+      { type: "write_done", savedId: "db-open" },
+      { type: "reply_received", reply: { ...reply, corrections: [], explanation: null } },
+      { type: "write_done", savedId: "db-one" },
+      { type: "write_done", savedId: "db-tutor" },
+      { type: "write_done" },
+    );
+  }
+
+  it("starts a reply to a tutor message", () => {
+    const c = apply(free(), { type: "reply_started", messageId: "opening" });
+    expect(c.replyTo).toBe("opening");
+  });
+
+  it("ignores a reply to a learner message", () => {
+    const start = saved();
+    expect(conversationReducer(start, { type: "reply_started", messageId: "message-1" })).toBe(
+      start,
+    );
+  });
+
+  it("ignores a reply to an id that is not in the chat", () => {
+    const start = free();
+    expect(conversationReducer(start, { type: "reply_started", messageId: "gone" })).toBe(start);
+  });
+
+  it("cancelling clears the reply", () => {
+    const c = apply(
+      free(),
+      { type: "reply_started", messageId: "opening" },
+      { type: "reply_cancelled" },
+    );
+    expect(c.replyTo).toBeNull();
+  });
+
+  it("sending moves the reply with the draft and clears it from the composer", () => {
+    const c = typed(apply(free(), { type: "reply_started", messageId: "opening" }), "Hi");
+    expect(c.pendingReplyTo).toBe("opening");
+    expect(c.replyTo).toBeNull();
+  });
+
+  it("a text still pending keeps its reply and the new draft keeps its own", () => {
+    const failed = play(
+      typed(apply(free(), { type: "reply_started", messageId: "opening" }), "First"),
+      {
+        failAt: {
+          step: "create",
+          event: { type: "create_failed", failure: { source: "data", failure: "network" } },
+        },
+      },
+    ).c;
+    const again = apply(
+      failed,
+      { type: "reply_started", messageId: "opening" },
+      { type: "draft_changed", text: "Second" },
+      { type: "send_started" },
+    );
+    expect(again.pending).toBe("First");
+    expect(again.pendingReplyTo).toBe("opening");
+    expect(again.replyTo).toBe("opening");
+  });
+
+  it("an AI failure puts the reply back with the text", () => {
+    const c = apply(
+      typed(apply(free(), { type: "reply_started", messageId: "opening" }), "Hello"),
+      { type: "reply_failed", failure: { source: "ai", failure: "network" } },
+    );
+    expect(c.draft).toBe("Hello");
+    expect(c.replyTo).toBe("opening");
+    expect(c.pendingReplyTo).toBeNull();
+  });
+
+  it("an AI failure keeps the draft's reply when the sent text had none", () => {
+    const c = apply(
+      typed(free(), "Hello"),
+      { type: "reply_started", messageId: "opening" },
+      { type: "reply_failed", failure: { source: "ai", failure: "network" } },
+    );
+    expect(c.replyTo).toBe("opening");
+    expect(c.pendingReplyTo).toBeNull();
+  });
+
+  it("the reply's message write carries the saved id of the quoted message", () => {
+    const start = saved();
+    const tutorId = start.messages.at(-1)?.id ?? "";
+    const c = apply(
+      start,
+      { type: "reply_started", messageId: tutorId },
+      { type: "draft_changed", text: "Japan" },
+      { type: "send_started" },
+      { type: "reply_received", reply: { ...reply, corrections: [], explanation: null } },
+    );
+    const write = c.writes[0];
+    if (write.kind !== "message") throw new Error("expected a message write");
+    expect(write.input.replyToId).toBe("db-tutor");
+  });
+
+  it("a message without a reply sends no replyToId", () => {
+    const c = apply(typed(saved(), "More"), {
+      type: "reply_received",
+      reply: { ...reply, corrections: [], explanation: null },
+    });
+    const write = c.writes[0];
+    if (write.kind !== "message") throw new Error("expected a message write");
+    expect("replyToId" in write.input).toBe(false);
+  });
+
+  it("a write's saved id is stored on its message", () => {
+    const c = saved();
+    expect(c.messages.map((m) => m.savedId)).toEqual(["db-open", "db-one", "db-tutor"]);
+  });
+
+  it("a write with no saved id leaves the messages as they are", () => {
+    const before = apply(typed(free(), "One"), { type: "session_created", session });
+    const after = conversationReducer(before, { type: "write_done" });
+    expect(after.messages).toEqual(before.messages);
+  });
+
+  it("a usage write leaves the messages as they are", () => {
+    const start = apply(
+      typed(free(), "One"),
+      { type: "session_created", session },
+      { type: "write_done" },
+      { type: "reply_received", reply },
+      { type: "write_done", savedId: "a" },
+      { type: "write_done", savedId: "b" },
+    );
+    expect(start.writes[0].kind).toBe("usage");
+    const after = conversationReducer(start, { type: "write_done", savedId: "ignored" });
+    expect(after.messages).toEqual(start.messages);
+  });
+
+  it("the learner message keeps the id of the message it replies to", () => {
+    const c = apply(
+      typed(apply(free(), { type: "reply_started", messageId: "opening" }), "Hi"),
+      { type: "session_created", session },
+      { type: "write_done", savedId: "db-open" },
+      { type: "reply_received", reply: { ...reply, corrections: [], explanation: null } },
+    );
+    expect(c.messages[1]).toMatchObject({ role: "user", replyTo: "opening" });
+    expect(c.pendingReplyTo).toBeNull();
+  });
+
+  it("the ask carries the quoted tutor text in the learner turn", () => {
+    const c = apply(
+      typed(apply(free(), { type: "reply_started", messageId: "opening" }), "Hi"),
+      { type: "session_created", session },
+      { type: "write_done", savedId: "db-open" },
+    );
+    const step = nextStep(c);
+    if (step.kind !== "ask") throw new Error("expected ask");
+    expect(step.request.turns.at(-1)).toEqual({
+      role: "user",
+      text: "> Hi Ada! What would you like to talk about today?\n\nHi",
+    });
+  });
+
+  it("a resumed message keeps its reply and its saved id", () => {
+    const c = startConversation({
+      origin: { kind: "resume", sessionId: "s1" },
+      profile,
+      spentUsd: 0,
+      opened: {
+        session,
+        messages: [message("tutor", "Where?"), message("user", "Park", { replyToId: "m-Where?" })],
+      },
+    });
+    expect(c.messages[1]).toMatchObject({ replyTo: "m-Where?", savedId: "m-Park" });
   });
 });

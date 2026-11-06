@@ -60,6 +60,7 @@ const messageRow = (n: number) => ({
   text: `m${n}`,
   corrections: null,
   new_words: null,
+  reply_to_id: null,
   created_at: stamp,
 });
 
@@ -562,7 +563,48 @@ describe("addMessage", () => {
       text: "I never been",
       corrections: input.corrections,
       new_words: ["definitely"],
+      reply_to_id: null,
     });
+  });
+
+  it("inserts the message with the id of the message it replies to", async () => {
+    const replyToId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ec9";
+    const { user, requests } = setup([
+      ok([sessionRow]),
+      ok({ ...messageRow(1), reply_to_id: replyToId }, 201),
+    ]);
+
+    const outcome = await user.addMessage(sessionId, { role: "user", text: "Hi", replyToId });
+
+    expect(outcome).toMatchObject({ ok: true, value: { replyToId } });
+    expect(JSON.parse(requests[1].body ?? "null")).toEqual({
+      session_id: sessionId,
+      role: "user",
+      text: "Hi",
+      corrections: null,
+      new_words: null,
+      reply_to_id: replyToId,
+    });
+  });
+
+  it("returns unavailable when the reply points to a message outside the session", async () => {
+    const rejected = new Response(
+      JSON.stringify({
+        code: "23503",
+        message:
+          'insert or update on table "messages" violates foreign key constraint "messages_reply_to_fkey"',
+      }),
+      { status: 409, headers: { "Content-Type": "application/json" } },
+    );
+    const { user } = setup([ok([sessionRow]), rejected]);
+
+    const outcome = await user.addMessage(sessionId, {
+      role: "user",
+      text: "Hi",
+      replyToId: "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ec9",
+    });
+
+    expect(outcome).toEqual({ ok: false, failure: "unavailable" });
   });
 
   it("inserts nulls for a message without corrections or new words", async () => {
@@ -576,6 +618,7 @@ describe("addMessage", () => {
       text: "Hi",
       corrections: null,
       new_words: null,
+      reply_to_id: null,
     });
   });
 

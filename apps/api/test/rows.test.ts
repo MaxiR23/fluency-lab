@@ -69,6 +69,7 @@ const messageRow = {
   text: "Hi",
   corrections: { items: [{ original: "a", corrected: "b" }], explanation: "Because." },
   new_words: ["word"],
+  reply_to_id: null,
   created_at: stamp,
 };
 
@@ -165,8 +166,21 @@ describe("toMessage", () => {
       text: "Hi",
       corrections: { items: [{ original: "a", corrected: "b" }], explanation: "Because." },
       newWords: ["word"],
+      replyToId: null,
       createdAt: stamp,
     });
+  });
+
+  it("maps reply_to_id to replyToId", () => {
+    expect(toMessage({ ...messageRow, reply_to_id: id })?.replyToId).toBe(id);
+  });
+
+  it("maps a null reply_to_id to null", () => {
+    expect(toMessage({ ...messageRow, reply_to_id: null })?.replyToId).toBeNull();
+  });
+
+  it("rejects a message row without reply_to_id", () => {
+    expect(toMessage(without(messageRow, "reply_to_id"))).toBeNull();
   });
 
   it("returns null for corrections that are not the saved shape", () => {

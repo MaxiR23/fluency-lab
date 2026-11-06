@@ -29,7 +29,8 @@ export type IconName =
   | "send"
   | "close"
   | "trash"
-  | "chevron";
+  | "chevron"
+  | "reply";
 
 // INFO: shapes the source draws as a circle or a rect are written as path data,
 // so Icon only draws Path.
@@ -111,6 +112,7 @@ const paths: Record<IconName, readonly string[]> = {
     "M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6",
   ],
   chevron: ["M9 6l6 6-6 6"],
+  reply: ["M9 14 4 9l5-5", "M4 9h10.5a5.5 5.5 0 0 1 0 11H11"],
 };
 
 export function Icon({

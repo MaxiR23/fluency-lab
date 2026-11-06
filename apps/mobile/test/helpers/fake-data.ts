@@ -93,6 +93,7 @@ export function activeSessionWith(
             text: "Where do you want to go?",
             corrections: null,
             newWords: null,
+            replyToId: null,
             createdAt: "2026-11-05T09:30:00Z",
             ...lastMessage,
           },

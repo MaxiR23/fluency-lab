@@ -104,6 +104,17 @@ Every function that calls the outside ships with four tests:
 
 A fixture never contains a real API key, token or user id.
 
+## Gestures
+
+A hook gesture (a swipe built with react-native-gesture-handler) is
+driven with `fireGestureHandler` and `getByGestureTestId` from
+`react-native-gesture-handler/jest-utils`, inside `act`, with the
+gesture's `testID` and the list of states and translations it passes
+through. Under the router's test renderer the timers are fake and the
+gesture callbacks reach the JS side through a microtask the fake clock
+holds, so call `jest.advanceTimersByTime(0)` inside the same `act`.
+`swipeToReply` in `apps/mobile/test/app/chat.test.tsx` is the example.
+
 ## File header
 
 Each test file MUST start with this header:

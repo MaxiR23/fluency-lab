@@ -28,10 +28,14 @@ import {
 } from "@/utils/chat-opening";
 import { spendLevel } from "@/utils/spend-limit";
 import { tutorPrompt } from "@/utils/tutor-prompt";
+import { replyTargetId, tutorTurns } from "@/utils/chat-reply";
 import { groundCorrections } from "@/utils/tutor-reply";
 
 // INFO: the longest message the API saves (messageCreateSchema).
 export const MAX_MESSAGE_LENGTH = 4000;
+
+// INFO: the list id of the tutor's opening line, which a new chat writes before its first ask.
+export const OPENING_ID = "opening";
 
 export type ChatMessage = {
   id: string;
@@ -40,10 +44,15 @@ export type ChatMessage = {
   corrections: Correction[];
   explanation: string | null;
   newWords: string[];
+  // INFO: the list id of the tutor message this one replies to.
+  replyTo: string | null;
+  // INFO: the id the database gave the message; null for a local one until its write returns.
+  savedId: string | null;
 };
 
 export type Write =
-  { kind: "message"; input: MessageCreate } | { kind: "usage"; usage: SessionUsage };
+  | { kind: "message"; localId: string; input: MessageCreate }
+  | { kind: "usage"; usage: SessionUsage };
 
 export type Learner = {
   displayName: string | null;
@@ -65,6 +74,9 @@ export type Conversation = {
   messages: ChatMessage[];
   draft: string;
   pending: string | null;
+  // INFO: the draft's quoted message, and the quoted message of the text in flight (list ids).
+  replyTo: string | null;
+  pendingReplyTo: string | null;
   phase: Phase;
   writes: Write[];
   failure: ChatFailure | null;
@@ -78,11 +90,13 @@ export type Conversation = {
 export type ConversationEvent =
   | { type: "draft_changed"; text: string }
   | { type: "send_started" }
+  | { type: "reply_started"; messageId: string }
+  | { type: "reply_cancelled" }
   | { type: "session_created"; session: Session }
   | { type: "reply_received"; reply: TutorReply }
   // INFO: usage is present when the provider answered and billed a reply that was not usable.
   | { type: "reply_failed"; failure: ChatFailure; usage?: TokenUsage }
-  | { type: "write_done" }
+  | { type: "write_done"; savedId?: string }
   | { type: "write_failed"; failure: ChatFailure }
   | { type: "create_failed"; failure: ChatFailure }
   | { type: "retry" }
@@ -116,11 +130,22 @@ export function fromMessage(message: Message): ChatMessage {
     corrections: message.corrections?.items ?? [],
     explanation: message.corrections?.explanation ?? null,
     newWords: message.newWords ?? [],
+    replyTo: message.replyToId,
+    savedId: message.id,
   };
 }
 
 function localMessage(id: string, role: "user" | "tutor", text: string): ChatMessage {
-  return { id, role, text, corrections: [], explanation: null, newWords: [] };
+  return {
+    id,
+    role,
+    text,
+    corrections: [],
+    explanation: null,
+    newWords: [],
+    replyTo: null,
+    savedId: null,
+  };
 }
 
 export function startConversation(input: {
@@ -140,6 +165,8 @@ export function startConversation(input: {
     },
     draft: "",
     pending: null,
+    replyTo: null,
+    pendingReplyTo: null,
     phase: "idle" as const,
     writes: [],
     failure: null,
@@ -168,7 +195,7 @@ export function startConversation(input: {
       title: label,
       topicTitle: label,
       opening,
-      messages: [localMessage("opening", "tutor", opening)],
+      messages: [localMessage(OPENING_ID, "tutor", opening)],
     };
   }
   const starter = origin.kind === "starter" ? origin.starter : null;
@@ -179,7 +206,7 @@ export function startConversation(input: {
     title: starter === null ? "Free chat" : starter.title,
     topicTitle: starter === null ? null : starter.title,
     opening,
-    messages: [localMessage("opening", "tutor", opening)],
+    messages: [localMessage(OPENING_ID, "tutor", opening)],
   };
 }
 
@@ -187,19 +214,25 @@ function round8(value: number): number {
   return Math.round(value * 1e8) / 1e8;
 }
 
-function messageWrite(input: MessageCreate): Write {
-  return { kind: "message", input };
+function messageWrite(input: MessageCreate, localId: string): Write {
+  return { kind: "message", localId, input };
 }
 
-function replyWrites(pending: string, reply: TutorReply): Write[] {
+function replyWrites(
+  pending: string,
+  reply: TutorReply,
+  ids: { user: string; tutor: string },
+  replyToId: string | null,
+): Write[] {
   const user: MessageCreate = { role: "user", text: pending };
+  if (replyToId !== null) user.replyToId = replyToId;
   if (reply.corrections.length > 0) {
     user.corrections = { items: reply.corrections, explanation: reply.explanation };
   }
   if (reply.newWords.length > 0) user.newWords = reply.newWords;
   return [
-    messageWrite(user),
-    messageWrite({ role: "tutor", text: reply.reply }),
+    messageWrite(user, ids.user),
+    messageWrite({ role: "tutor", text: reply.reply }, ids.tutor),
     {
       kind: "usage",
       usage: {
@@ -231,18 +264,31 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
       return {
         ...c,
         pending,
+        pendingReplyTo: c.pending === null ? c.replyTo : c.pendingReplyTo,
+        replyTo: c.pending === null ? null : c.replyTo,
         draft: c.pending === null ? "" : c.draft,
         failure: null,
         endFailed: false,
         phase: c.session === null ? "creating" : "asking",
       };
     }
+    case "reply_started": {
+      const target = c.messages.find((m) => m.id === event.messageId);
+      return target !== undefined && target.role === "tutor"
+        ? { ...c, replyTo: event.messageId }
+        : c;
+    }
+    case "reply_cancelled":
+      return { ...c, replyTo: null };
     case "session_created":
       return {
         ...c,
         session: event.session,
         phase: "asking",
-        writes: c.opening === null ? c.writes : [messageWrite({ role: "tutor", text: c.opening })],
+        writes:
+          c.opening === null
+            ? c.writes
+            : [messageWrite({ role: "tutor", text: c.opening }, OPENING_ID)],
       };
     case "reply_received": {
       const pending = c.pending ?? "";
@@ -258,13 +304,20 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
         corrections: reply.corrections,
         explanation: reply.explanation,
         newWords: reply.newWords,
+        replyTo: c.pendingReplyTo,
+        savedId: null,
       };
+      const ids = { user: `message-${id}`, tutor: `message-${id + 1}` };
       return {
         ...c,
-        messages: [...c.messages, user, localMessage(`message-${id + 1}`, "tutor", reply.reply)],
-        writes: [...c.writes, ...replyWrites(pending, reply)],
+        messages: [...c.messages, user, localMessage(ids.tutor, "tutor", reply.reply)],
+        writes: [
+          ...c.writes,
+          ...replyWrites(pending, reply, ids, replyTargetId(c.messages, c.pendingReplyTo)),
+        ],
         spentUsd: round8(c.spentUsd + usageCostUsd(reply.model, reply.usage)),
         pending: null,
+        pendingReplyTo: null,
         phase: "saving",
       };
     }
@@ -275,6 +328,8 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
         ...c,
         draft: merged.slice(0, MAX_MESSAGE_LENGTH),
         pending: null,
+        replyTo: c.pendingReplyTo ?? c.replyTo,
+        pendingReplyTo: null,
         phase: "idle" as const,
         failure: event.failure,
       };
@@ -288,9 +343,15 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
       };
     }
     case "write_done": {
-      const writes = c.writes.slice(1);
+      const [done, ...writes] = c.writes;
+      const saved = event.savedId;
+      const messages =
+        saved !== undefined && done?.kind === "message"
+          ? c.messages.map((m) => (m.id === done.localId ? { ...m, savedId: saved } : m))
+          : c.messages;
       return {
         ...c,
+        messages,
         writes,
         phase: writes.length === 0 && c.phase === "saving" ? "idle" : c.phase,
       };
@@ -344,10 +405,7 @@ export function nextStep(c: Conversation): Step {
     return { kind: "write", write: c.writes[0] };
   }
   if (c.phase === "asking" && c.pending !== null) {
-    const turns = [
-      ...c.messages.map((m) => ({ role: m.role, text: m.text })),
-      { role: "user" as const, text: c.pending },
-    ];
+    const turns = tutorTurns(c.messages, c.pending, c.pendingReplyTo);
     const system = tutorPrompt({
       ...c.learner,
       topicTitle: c.topicTitle,

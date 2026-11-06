@@ -60,6 +60,7 @@ export const messageCreateSchema = z.strictObject({
   text: z.string().trim().min(1).max(4000),
   corrections: messageCorrectionsSchema.optional(),
   newWords: newWordsSchema.optional(),
+  replyToId: z.uuid().optional(),
 });
 
 const tokenCount = z.int().min(0).max(10_000_000);
@@ -108,6 +109,7 @@ export const messageSchema = z.object({
   text: z.string(),
   corrections: messageCorrectionsSchema.nullable(),
   newWords: newWordsSchema.nullable(),
+  replyToId: z.string().nullable(),
   createdAt: z.string(),
 });
 

@@ -28,6 +28,7 @@ export const colors = {
   accentGlow: "rgba(109,165,192,0.22)",
   progressTrack: "rgba(255,255,255,0.08)",
   accentHalo: "rgba(109,165,192,0.15)",
+  quoteSurface: "rgba(0,0,0,0.35)",
   accentRing: "rgba(109,165,192,0.25)",
   accentChipLine: "rgba(109,165,192,0.3)",
 } as const;
@@ -84,6 +85,7 @@ export const size = {
   iconCard: 18,
   iconBadge: 20,
   dayCircle: 30,
+  replyHint: 32,
   badgeSmall: 36,
   pill: 40,
   avatar: 44,
@@ -208,7 +210,9 @@ export const shadow = {
 // follow chat-typing.html; the beziers are CSS ease-out and ease-in-out. Times are in ms,
 // the dot peak and settle points are shares of one dot cycle. The pill spring's 280 is
 // Reanimated's perceptual duration, 1.5 times that (420 ms) is the design's slide; a damping
-// ratio of 1 does not overshoot, like its curve.
+// ratio of 1 does not overshoot, like its curve. The reply swipe's travel (56), the hint's
+// start scale (0.6) and the preview's offset (8) follow chat-reply.html; the swipe slop of 10
+// is gesture-handler's own drag offset default.
 export const motion = {
   enterDuration: 240,
   enterOffset: 12,
@@ -221,6 +225,10 @@ export const motion = {
   dotSettleAt: 0.6,
   dotLift: 4,
   dotRestOpacity: 0.3,
+  replySwipe: 56,
+  previewOffset: 8,
+  replyHintScale: 0.6,
+  swipeSlop: 10,
   pillDuration: 280,
   pillDampingRatio: 1,
   easeOut: [0, 0, 0.58, 1],

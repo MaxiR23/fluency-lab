@@ -6,6 +6,7 @@
 // - The items in order, the typing indicator and the newest kept in view
 // - The newest message stays in view when the list shrinks for a taller input
 // - The keyboard lift offset, the still dots with reduce motion on and items added after mount
+// - A tutor row swipes to reply, a learner row does not, and a quote scrolls to its original row
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -15,11 +16,14 @@
 // SEE: apps/mobile/src/components/message-list.tsx
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { ScrollView, StyleSheet } from "react-native";
+import { GestureHandlerRootView, State } from "react-native-gesture-handler";
+import { fireGestureHandler, getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { MessageList } from "@/components/message-list";
+import { motion as tokens, spacing } from "@/constants/theme";
 import type { ChatItem } from "@/utils/chat-items";
 import { chatKeyboardLayout } from "@/utils/chat-keyboard";
 import { chatMotion, type ChatMotion } from "@/utils/chat-motion";
@@ -32,26 +36,57 @@ const items: ChatItem[] = [
     text: "I goed to Rome",
     corrections: [{ original: "goed", corrected: "went" }],
     explanation: "Go is irregular.",
+    quote: null,
   },
   { kind: "new_word", id: "3", word: "itinerary" },
 ];
 
-function list(listItems: ChatItem[], motion: ChatMotion = chatMotion(false)) {
+function list(
+  listItems: ChatItem[],
+  motion: ChatMotion = chatMotion(false),
+  handlers: { onReply?: (id: string) => void; onArm?: () => void } = {},
+) {
   return (
-    <SafeAreaProvider
-      initialMetrics={{
-        frame: { x: 0, y: 0, width: 390, height: 844 },
-        insets: { top: 0, left: 0, right: 0, bottom: 34 },
-      }}
-    >
-      <MessageList items={listItems} motion={motion} />
-    </SafeAreaProvider>
+    <GestureHandlerRootView>
+      <SafeAreaProvider
+        initialMetrics={{
+          frame: { x: 0, y: 0, width: 390, height: 844 },
+          insets: { top: 0, left: 0, right: 0, bottom: 34 },
+        }}
+      >
+        <MessageList items={listItems} motion={motion} {...handlers} />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
+}
+
+const quoted: ChatItem[] = [
+  { kind: "tutor", id: "1", text: "Where did you go?" },
+  {
+    kind: "user",
+    id: "2",
+    text: "To Rome",
+    corrections: [],
+    explanation: null,
+    quote: { targetId: "1", author: "Claude", text: "Where did you go?" },
+  },
+];
+
+async function swipeRight(id: string) {
+  await act(async () => {
+    fireGestureHandler(getByGestureTestId(`reply-swipe-${id}`), [
+      { state: State.BEGAN },
+      { state: State.ACTIVE, translationX: 0 },
+      { state: State.ACTIVE, translationX: tokens.replySwipe },
+      { state: State.END, translationX: tokens.replySwipe },
+    ]);
+  });
 }
 
 describe("MessageList", () => {
   beforeEach(() => {
     jest.mocked(ScrollView.prototype.scrollToEnd).mockClear();
+    jest.mocked(ScrollView.prototype.scrollTo).mockClear();
   });
 
   it("draws tutor, user with corrections and new word items in order", async () => {
@@ -126,5 +161,69 @@ describe("MessageList", () => {
     await rerender(list([...items, added]));
     const drawn = JSON.stringify(screen.toJSON());
     expect(drawn.indexOf("Tell me more.")).toBeGreaterThan(drawn.indexOf("itinerary"));
+  });
+
+  it("a tutor row can be swiped to reply and calls onReply with its id", async () => {
+    const onReply = jest.fn();
+    const onArm = jest.fn();
+    await render(list(items, chatMotion(false), { onReply, onArm }));
+
+    await swipeRight("1");
+
+    expect(onArm).toHaveBeenCalledTimes(1);
+    expect(onReply).toHaveBeenCalledWith("1");
+  });
+
+  it("a learner row has no reply gesture", async () => {
+    await render(list(items, chatMotion(false), { onReply: () => {} }));
+    expect(() => getByGestureTestId("reply-swipe-2")).toThrow();
+  });
+
+  it("no row can be swiped without onReply", async () => {
+    await render(list(items));
+    expect(() => getByGestureTestId("reply-swipe-1")).toThrow();
+  });
+
+  it("draws the quote on a learner reply", async () => {
+    await render(list(quoted));
+    expect(screen.getByRole("button", { name: "Go to the quoted message" })).toBeTruthy();
+    expect(screen.getByText("Claude")).toBeTruthy();
+    expect(screen.getByText("To Rome")).toBeTruthy();
+  });
+
+  it("tapping the quote scrolls to the original row", async () => {
+    await render(list(quoted));
+    await fireEvent(screen.getByTestId("row-1"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 400, width: 300, height: 60 } },
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Go to the quoted message" }));
+
+    expect(ScrollView.prototype.scrollTo).toHaveBeenCalledWith({
+      y: 400 - spacing.screenSide,
+      animated: true,
+    });
+  });
+
+  it("the quote scrolls without animation with reduce motion on", async () => {
+    await render(list(quoted, chatMotion(true)));
+    await fireEvent(screen.getByTestId("row-1"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 400, width: 300, height: 60 } },
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Go to the quoted message" }));
+
+    expect(ScrollView.prototype.scrollTo).toHaveBeenCalledWith({
+      y: 400 - spacing.screenSide,
+      animated: false,
+    });
+  });
+
+  it("the quote of a row that has not laid out does not scroll", async () => {
+    await render(list(quoted));
+
+    await fireEvent.press(screen.getByRole("button", { name: "Go to the quoted message" }));
+
+    expect(ScrollView.prototype.scrollTo).not.toHaveBeenCalled();
   });
 });

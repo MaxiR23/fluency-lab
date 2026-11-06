@@ -59,6 +59,7 @@ const message = {
   text: "Hello",
   corrections: null,
   newWords: null,
+  replyToId: null,
   createdAt: stamp,
 };
 

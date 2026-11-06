@@ -259,6 +259,7 @@ const message: Message = {
   text: "Hello",
   corrections: null,
   newWords: null,
+  replyToId: null,
   createdAt: stamp,
 };
 
@@ -1072,6 +1073,35 @@ describe("POST /sessions/:id/messages", () => {
     await add(sessionId, json(body));
 
     expect(fake.user.addMessage).toHaveBeenCalledWith(sessionId, body);
+  });
+
+  it("passes replyToId to the store", async () => {
+    fake.user.addMessage.mockResolvedValue({ ok: true, value: message });
+    const replyToId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ec2";
+
+    await add(sessionId, json({ role: "user", text: "Hi", replyToId }));
+
+    expect(fake.user.addMessage).toHaveBeenCalledWith(sessionId, {
+      role: "user",
+      text: "Hi",
+      replyToId,
+    });
+  });
+
+  it("responds 400 for a replyToId that is not a uuid", async () => {
+    const res = await add(sessionId, json({ role: "user", text: "Hi", replyToId: "abc" }));
+    expect(res.status).toBe(400);
+    expect(fake.user.addMessage).not.toHaveBeenCalled();
+  });
+
+  it("responds 503 unavailable when the store rejects the reply", async () => {
+    fake.user.addMessage.mockResolvedValue({ ok: false, failure: "unavailable" });
+    const replyToId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ec2";
+
+    const res = await add(sessionId, json({ role: "user", text: "Hi", replyToId }));
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
   });
 
   it("responds 400 for an id that is not a uuid, a bad body and a missing Content-Type", async () => {

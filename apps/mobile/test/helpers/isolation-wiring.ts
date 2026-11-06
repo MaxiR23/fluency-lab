@@ -40,6 +40,7 @@ const messageBody = {
   text: "x",
   corrections: null,
   newWords: null,
+  replyToId: null,
   createdAt: stamp,
 };
 

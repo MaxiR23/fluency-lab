@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, TextInput, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 import {
   composerInputStyle,
   composerLines,
+  composerRowStyle,
   sendButtonStyle,
 } from "@/components/chat-composer-style";
 import { Icon } from "@/components/icon";
-import { motion, size, spacing, strokeWidth } from "@/constants/theme";
+import { motion, size, strokeWidth } from "@/constants/theme";
 import { pressedScale, type PressMotion } from "@/utils/chat-motion";
 import { MAX_MESSAGE_LENGTH, canSend } from "@/utils/chat-state";
 import { easing } from "@/utils/chat-transitions";
@@ -21,6 +22,7 @@ export function ChatComposer({
   locked,
   busy,
   press,
+  replying,
 }: {
   value: string;
   onChangeText: (text: string) => void;
@@ -30,12 +32,14 @@ export function ChatComposer({
   // INFO: busy disables Send while a reply is pending; the input keeps its open look.
   busy?: boolean;
   press: PressMotion | null;
+  // INFO: a reply preview shows above the composer, which tightens the row's top padding.
+  replying?: boolean;
 }) {
   const [lines, setLines] = useState(1);
   const input = composerInputStyle({ locked, lines });
   const enabled = canSend(value, locked, busy);
   return (
-    <View style={styles.row}>
+    <View style={composerRowStyle(replying === true)}>
       <TextInput
         style={input.input}
         value={value}
@@ -108,13 +112,3 @@ function SendButton({
     </Animated.View>
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.cluster,
-    paddingTop: spacing.group,
-    paddingHorizontal: spacing.md,
-  },
-});

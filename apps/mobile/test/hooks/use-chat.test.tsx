@@ -9,6 +9,7 @@
 // - A first send: create, save the opener, ask, save the turn, add the usage, in order
 // - An AI failure restores the draft; a save failure resumes at the failed write
 // - A reopened session sends its saved messages as history
+// - A reply to a tutor message: its saved id on the write, the quote in the turn, cancel and failures
 // - End, Update key, the refocus refresh, and a reply that ends after unmount
 //
 // What is covered:
@@ -68,6 +69,7 @@ function saved(role: Message["role"], text: string): Message {
     text,
     corrections: null,
     newWords: null,
+    replyToId: null,
     createdAt: "2026-11-05T09:00:00Z",
   };
 }
@@ -727,6 +729,142 @@ describe("useChat", () => {
       const hook = await ready();
       hook.result.current.updateKey();
       expect(router.push).toHaveBeenCalledWith("/api-key");
+    });
+  });
+
+  describe("replying to a tutor message", () => {
+    const tutorText = "Nice! Where did you go?";
+
+    function savesByText() {
+      withKey();
+      fakeData.addMessage.mockImplementation(async (_id, input) => ({
+        ok: true,
+        value: saved(input.role, input.text),
+      }));
+    }
+
+    async function afterOneTurn() {
+      savesByText();
+      const hook = await ready(free);
+      await sendText(hook, "One");
+      return hook;
+    }
+
+    it("a reply sends the quoted tutor message's saved id with the learner message", async () => {
+      const hook = await afterOneTurn();
+
+      await act(async () => hook.result.current.startReply("message-2"));
+      await sendText(hook, "Japan");
+
+      expect(fakeData.addMessage).toHaveBeenCalledWith("session-1", {
+        role: "user",
+        text: "Japan",
+        replyToId: `m-${tutorText}`,
+      });
+    });
+
+    it("the reply's turn carries the quoted tutor text", async () => {
+      const hook = await afterOneTurn();
+
+      await act(async () => hook.result.current.startReply("message-2"));
+      await sendText(hook, "Japan");
+
+      const turns = fakeAi.reply.mock.calls[1][0].turns;
+      expect(turns.at(-1)?.text).toBe(`> ${tutorText}\n\nJapan`);
+    });
+
+    it("replying to the opening line sends the opening's saved id", async () => {
+      savesByText();
+      const hook = await ready(free);
+
+      await act(async () => hook.result.current.startReply("opening"));
+      await sendText(hook, "Hi");
+
+      expect(fakeData.addMessage).toHaveBeenCalledWith("session-1", {
+        role: "user",
+        text: "Hi",
+        replyToId: "m-Hi Ada! What would you like to talk about today?",
+      });
+    });
+
+    it("a message without a reply sends no replyToId", async () => {
+      await afterOneTurn();
+      expect(fakeData.addMessage).toHaveBeenCalledWith("session-1", { role: "user", text: "One" });
+    });
+
+    it("cancelReply clears the pending reply", async () => {
+      savesByText();
+      const hook = await ready(free);
+
+      await act(async () => hook.result.current.startReply("opening"));
+      expect(conversationOf(hook.result.current.view).replyTo).toBe("opening");
+      await act(async () => hook.result.current.cancelReply());
+
+      expect(conversationOf(hook.result.current.view).replyTo).toBeNull();
+    });
+
+    it("a failed save of the reply keeps it pending and the retry sends the same replyToId", async () => {
+      const hook = await afterOneTurn();
+      fakeData.addMessage.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+      await act(async () => hook.result.current.startReply("message-2"));
+
+      await sendText(hook, "Japan");
+
+      expect(conversationOf(hook.result.current.view).failure).toEqual({
+        source: "data",
+        failure: "unavailable",
+      });
+      await act(async () => hook.result.current.retry());
+      const replies = fakeData.addMessage.mock.calls.filter(
+        ([, input]) => input.role === "user" && input.text === "Japan",
+      );
+      expect(replies).toHaveLength(2);
+      for (const [, input] of replies) expect(input.replyToId).toBe(`m-${tutorText}`);
+    });
+
+    it("a network failure on the reply's save keeps the reply for the retry", async () => {
+      const hook = await afterOneTurn();
+      fakeData.addMessage.mockResolvedValueOnce({ ok: false, failure: "network" });
+      await act(async () => hook.result.current.startReply("message-2"));
+
+      await sendText(hook, "Japan");
+      await act(async () => hook.result.current.retry());
+
+      expect(fakeData.addMessage).toHaveBeenLastCalledWith("session-1", {
+        role: "tutor",
+        text: tutorText,
+      });
+      expect(conversationOf(hook.result.current.view).failure).toBeNull();
+      expect(fakeData.addMessage).toHaveBeenCalledWith("session-1", {
+        role: "user",
+        text: "Japan",
+        replyToId: `m-${tutorText}`,
+      });
+    });
+
+    it("an invalid key on a reply puts the text and its reply back", async () => {
+      const hook = await afterOneTurn();
+      fakeAi.reply.mockResolvedValueOnce({ ok: false, failure: "invalid_key" });
+      await act(async () => hook.result.current.startReply("message-2"));
+
+      await sendText(hook, "Japan");
+
+      const c = conversationOf(hook.result.current.view);
+      expect(c.draft).toBe("Japan");
+      expect(c.replyTo).toBe("message-2");
+      expect(c.failure).toEqual({ source: "ai", failure: "invalid_key" });
+    });
+
+    it("a network failure on a reply puts the text and its reply back", async () => {
+      const hook = await afterOneTurn();
+      fakeAi.reply.mockResolvedValueOnce({ ok: false, failure: "network" });
+      await act(async () => hook.result.current.startReply("message-2"));
+
+      await sendText(hook, "Japan");
+
+      const c = conversationOf(hook.result.current.view);
+      expect(c.draft).toBe("Japan");
+      expect(c.replyTo).toBe("message-2");
     });
   });
 });
