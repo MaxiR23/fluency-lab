@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The row and bubble style per role
+// - A quoted bubble: the design's 8, 8, 12, 8 padding, the gap and the inset body
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -52,5 +53,27 @@ describe("messageBubbleStyle", () => {
   it("caps both rows at 82%", () => {
     expect(messageBubbleStyle("tutor").row.maxWidth).toBe("82%");
     expect(messageBubbleStyle("user").row.maxWidth).toBe("82%");
+  });
+
+  it("a quoted bubble has the design's 8, 8, 12, 8 padding and an 8 gap", () => {
+    const { bubble } = messageBubbleStyle("user", { quoted: true });
+    expect(bubble.paddingTop).toBe(spacing.sm);
+    expect(bubble.paddingHorizontal).toBe(spacing.sm);
+    expect(bubble.paddingBottom).toBe(spacing.group);
+    expect(bubble.gap).toBe(spacing.sm);
+    expect(bubble.paddingVertical).toBeUndefined();
+    expect(bubble.backgroundColor).toBe(colors.accentDeep);
+    expect(bubble.borderRadius).toBe(radius.message);
+  });
+
+  it("the body of a quoted bubble is inset 6 so the text lines up with a plain bubble", () => {
+    expect(messageBubbleStyle("user", { quoted: true }).body).toEqual({
+      paddingHorizontal: spacing.stack,
+    });
+    expect(spacing.stack).toBe(6);
+  });
+
+  it("leaves the bubble as it was when quoted is false", () => {
+    expect(messageBubbleStyle("user", { quoted: false })).toEqual(messageBubbleStyle("user"));
   });
 });

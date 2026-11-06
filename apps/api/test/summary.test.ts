@@ -27,6 +27,7 @@ function message(overrides: Partial<Message> = {}): Message {
     text: "Hello",
     corrections: null,
     newWords: null,
+    replyToId: null,
     createdAt: stamp,
     ...overrides,
   };

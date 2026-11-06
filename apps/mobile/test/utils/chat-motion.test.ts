@@ -26,11 +26,32 @@ describe("chatMotion", () => {
       fade: { duration: 200 },
       press: { duration: 200, scale: 0.9 },
       dots: { rise: 360, fall: 360, rest: 480, stagger: 150, lift: 4, restOpacity: 0.3 },
+      preview: { duration: 240, offset: 8 },
+      swipeBack: { duration: 240 },
     });
   });
 
+  it("gives the reply preview the design's 8 point rise and the snap back the enter duration", () => {
+    const m = chatMotion(false);
+    expect(m.preview).toEqual({ duration: 240, offset: 8 });
+    expect(m.swipeBack).toEqual({ duration: 240 });
+  });
+
+  it("turns the preview and the snap back off with reduce motion", () => {
+    const m = chatMotion(true);
+    expect(m.preview).toBeNull();
+    expect(m.swipeBack).toBeNull();
+  });
+
   it("turns every animation off when reduce motion is on", () => {
-    expect(chatMotion(true)).toEqual({ enter: null, fade: null, press: null, dots: null });
+    expect(chatMotion(true)).toEqual({
+      enter: null,
+      fade: null,
+      press: null,
+      dots: null,
+      preview: null,
+      swipeBack: null,
+    });
   });
 });
 

@@ -1,6 +1,7 @@
 import type { Correction } from "@fluency-lab/shared";
 
 import type { Conversation } from "@/utils/chat-conversation";
+import { quoteFor, type Quote } from "@/utils/chat-reply";
 
 export type { Correction };
 
@@ -12,6 +13,7 @@ export type ChatItem =
       text: string;
       corrections: Correction[];
       explanation: string | null;
+      quote: Quote | null;
     }
   | { kind: "new_word"; id: string; word: string }
   | { kind: "typing"; id: "typing" };
@@ -35,6 +37,7 @@ export function chatItems(c: Conversation): ChatItem[] {
       text: message.text,
       corrections: message.corrections,
       explanation: message.explanation,
+      quote: quoteFor(c, message.replyTo),
     });
     message.newWords.forEach((word, index) => {
       items.push({ kind: "new_word", id: `${message.id}:word:${index}`, word });
@@ -48,6 +51,7 @@ export function chatItems(c: Conversation): ChatItem[] {
       text: c.pending,
       corrections: [],
       explanation: null,
+      quote: quoteFor(c, c.pendingReplyTo),
     });
   }
   if (c.phase === "asking" || c.phase === "creating") items.push({ kind: "typing", id: "typing" });

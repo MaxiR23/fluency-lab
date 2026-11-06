@@ -83,6 +83,7 @@ const messageRowSchema = z.object({
   text: z.string(),
   corrections: messageCorrectionsSchema.nullable(),
   new_words: newWordsSchema.nullable(),
+  reply_to_id: z.string().nullable(),
   created_at: z.string(),
 });
 
@@ -212,6 +213,7 @@ export function toMessage(row: unknown): Message | null {
     text: r.text,
     corrections: r.corrections,
     newWords: r.new_words,
+    replyToId: r.reply_to_id,
     createdAt: r.created_at,
   };
 }

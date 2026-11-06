@@ -22,6 +22,18 @@ export function composerLines(height: number): number {
   return Math.min(Math.max(lines, 1), MAX_COMPOSER_LINES);
 }
 
+// INFO: chat-reply.html draws the form with 10 on top under a reply preview; the other chat
+// designs draw 12.
+export function composerRowStyle(replying: boolean): ViewStyle {
+  return {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.cluster,
+    paddingTop: replying ? spacing.cluster : spacing.group,
+    paddingHorizontal: spacing.md,
+  };
+}
+
 export function composerInputStyle({ locked, lines }: { locked: boolean; lines: number }): {
   input: TextStyle;
   placeholderColor: string;

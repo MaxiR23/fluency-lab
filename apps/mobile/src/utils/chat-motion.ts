@@ -10,10 +10,13 @@ export type ChatMotion = {
   fade: FadeMotion | null;
   press: PressMotion | null;
   dots: DotMotion | null;
+  preview: EnterMotion | null;
+  swipeBack: FadeMotion | null;
 };
 
 export function chatMotion(reduceMotion: boolean): ChatMotion {
-  if (reduceMotion) return { enter: null, fade: null, press: null, dots: null };
+  if (reduceMotion)
+    return { enter: null, fade: null, press: null, dots: null, preview: null, swipeBack: null };
   return {
     enter: { duration: motion.enterDuration, offset: motion.enterOffset },
     fade: { duration: motion.fadeDuration },
@@ -24,6 +27,8 @@ export function chatMotion(reduceMotion: boolean): ChatMotion {
       lift: motion.dotLift,
       restOpacity: motion.dotRestOpacity,
     },
+    preview: { duration: motion.enterDuration, offset: motion.previewOffset },
+    swipeBack: { duration: motion.enterDuration },
   };
 }
 

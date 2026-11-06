@@ -252,6 +252,7 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
               text: input.text,
               corrections: input.corrections ?? null,
               new_words: input.newWords ?? null,
+              reply_to_id: input.replyToId ?? null,
             })
             .select("*")
             .single();

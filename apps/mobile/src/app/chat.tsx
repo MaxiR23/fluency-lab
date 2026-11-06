@@ -8,6 +8,7 @@ import { ChatHeader } from "@/components/chat-header";
 import { ConnectAiCard } from "@/components/connect-ai-card";
 import { FailureMessage } from "@/components/failure-message";
 import { MessageList } from "@/components/message-list";
+import { ReplyPreview } from "@/components/reply-preview";
 import { Screen } from "@/components/screen";
 import { Text } from "@/components/text";
 import { colors, spacing } from "@/constants/theme";
@@ -17,6 +18,7 @@ import { useHaptics } from "@/hooks/use-haptics";
 import { busy, sendState } from "@/utils/chat-conversation";
 import { chatItems } from "@/utils/chat-items";
 import { chatOrigin } from "@/utils/chat-opening";
+import { replyPreview } from "@/utils/chat-reply";
 import {
   chatNotice,
   endPromptButtons,
@@ -25,6 +27,7 @@ import {
   originTitle,
   providerLine,
 } from "@/utils/chat-state";
+import { enterTransition } from "@/utils/chat-transitions";
 
 export default function Chat() {
   const params = useLocalSearchParams<{
@@ -33,7 +36,7 @@ export default function Chat() {
     topic?: string | string[];
   }>();
   const origin = chatOrigin(params);
-  const { view, setDraft, send, retry, end, updateKey } = useChat(origin);
+  const { view, setDraft, startReply, cancelReply, send, retry, end, updateKey } = useChat(origin);
   const motion = useChatMotion();
   const { play } = useHaptics();
 
@@ -60,6 +63,7 @@ export default function Chat() {
   const notice = conversation === null ? null : chatNotice(conversation);
   const locked = conversation === null ? true : sendState(conversation).locked;
   const waiting = conversation === null ? false : busy(conversation);
+  const preview = conversation === null ? null : replyPreview(conversation);
   // INFO: edges left and right only: the design's top and bottom already clear the safe area.
   return (
     <Screen edges={["left", "right"]}>
@@ -85,7 +89,12 @@ export default function Chat() {
             <ConnectAiCard onAddKey={() => router.push("/api-key")} />
           </View>
         ) : (
-          <MessageList items={chatItems(conversation)} motion={motion} />
+          <MessageList
+            items={chatItems(conversation)}
+            motion={motion}
+            onReply={locked ? undefined : startReply}
+            onArm={() => play("reply")}
+          />
         )}
         <ChatFooter>
           {notice === null ? null : (
@@ -117,6 +126,14 @@ export default function Chat() {
               {notice.kind === "warning" ? <Text variant="caption">{notice.message}</Text> : null}
             </View>
           )}
+          {preview === null ? null : (
+            <ReplyPreview
+              label={preview.label}
+              text={preview.text}
+              onCancel={cancelReply}
+              entering={enterTransition(motion.preview)}
+            />
+          )}
           <ChatComposer
             value={conversation === null ? "" : conversation.draft}
             onChangeText={setDraft}
@@ -130,6 +147,7 @@ export default function Chat() {
             locked={locked}
             busy={waiting}
             press={motion.press}
+            replying={preview !== null}
           />
         </ChatFooter>
       </View>

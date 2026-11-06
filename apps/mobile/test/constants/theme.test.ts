@@ -8,6 +8,7 @@
 // - The floating tab bar tokens and the tab pill spring
 // - The Settings and Profile tokens: the spend bar, the switch, the large avatar and its glow
 // - The Summary tokens: the done badge, its check and glow, and the word chip
+// - The reply tokens of chat-reply.html and chat-reply-sent.html
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -104,6 +105,7 @@ describe("theme", () => {
       iconCard: 18,
       iconBadge: 20,
       dayCircle: 30,
+      replyHint: 32,
       badgeSmall: 36,
       pill: 40,
       avatar: 44,
@@ -291,6 +293,10 @@ describe("theme", () => {
       dotSettleAt: 0.6,
       dotLift: 4,
       dotRestOpacity: 0.3,
+      replySwipe: 56,
+      previewOffset: 8,
+      replyHintScale: 0.6,
+      swipeSlop: 10,
       pillDuration: 280,
       pillDampingRatio: 1,
       easeOut: [0, 0, 0.58, 1],
@@ -388,5 +394,14 @@ describe("theme", () => {
       shadowOpacity: 1,
       shadowRadius: 12,
     });
+  });
+
+  it("holds the reply tokens of chat-reply.html and chat-reply-sent.html", () => {
+    expect(colors.quoteSurface).toBe("rgba(0,0,0,0.35)");
+    expect(size.replyHint).toBe(32);
+    expect(motion.replySwipe).toBe(56);
+    expect(motion.previewOffset).toBe(8);
+    expect(motion.replyHintScale).toBe(0.6);
+    expect(motion.swipeSlop).toBe(10);
   });
 });

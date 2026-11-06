@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The text in the message style inside the role's bubble
+// - The quote above the text, and no quote without one
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -12,8 +13,8 @@
 //
 // SEE: apps/mobile/src/components/message-bubble.tsx
 
-import { describe, expect, it } from "@jest/globals";
-import { render, screen } from "@testing-library/react-native";
+import { describe, expect, it, jest } from "@jest/globals";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 
 import { MessageBubble } from "@/components/message-bubble";
@@ -35,5 +36,29 @@ describe("MessageBubble", () => {
     expect(StyleSheet.flatten(screen.getByText("Where to?").parent?.props.style)).toMatchObject(
       messageBubbleStyle("tutor").bubble,
     );
+  });
+
+  it("draws the quote above the text", async () => {
+    const onPress = jest.fn();
+    await render(
+      <MessageBubble
+        role="user"
+        text="To Rome"
+        quote={{ author: "Claude", text: "Where did you go?", onPress }}
+      />,
+    );
+
+    expect(screen.getByText("Claude")).toBeTruthy();
+    expect(screen.getByText("Where did you go?")).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByText("To Rome").parent?.props.style)).toMatchObject(
+      messageBubbleStyle("user", { quoted: true }).body ?? {},
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Go to the quoted message" }));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws no quote without one", async () => {
+    await render(<MessageBubble role="user" text="To Rome" />);
+    expect(screen.queryByRole("button", { name: "Go to the quoted message" })).toBeNull();
   });
 });

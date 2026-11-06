@@ -14,6 +14,8 @@
 // - The no key state: card, locked input and Send, Add API key opens the key step
 // - The ready state: Send follows the draft, the composer sits in the keyboard footer
 // - Send plays the send haptic, and nothing plays when haptics are off
+// - Swiping a tutor message opens the reply preview with one reply haptic; its X cancels it
+// - A sent reply draws the quote, a resumed chat draws it again, a learner message or a locked chat cannot be swiped
 // - The state updates when the key step goes back to Chat
 // - Signed out users cannot reach Chat
 //
@@ -29,6 +31,8 @@ import { STARTERS, type Message, type Session } from "@fluency-lab/shared";
 import { act, fireEvent, screen, within } from "@testing-library/react-native";
 import { type Href, router } from "expo-router";
 import { Alert, type AlertButton } from "react-native";
+import { State } from "react-native-gesture-handler";
+import { fireGestureHandler, getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
@@ -108,6 +112,7 @@ function saved(role: Message["role"], text: string, extra: Partial<Message> = {}
     text,
     corrections: null,
     newWords: null,
+    replyToId: null,
     createdAt: "2026-11-05T09:00:00Z",
     ...extra,
   };
@@ -252,6 +257,86 @@ describe("Chat", () => {
     await renderAppAt("/chat", fakeSession());
     await sendMessage("Hello");
     expect(fakeHaptics.play).not.toHaveBeenCalled();
+  });
+
+  async function swipeToReply(rowId: string) {
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId(`reply-swipe-${rowId}`), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE, translationX: 0 },
+        { state: State.ACTIVE, translationX: 56 },
+        { state: State.END, translationX: 56 },
+      ]);
+      // INFO: the router's test renderer fakes timers, and the gesture callbacks reach the JS
+      // side through a microtask, which the fake clock holds until it moves.
+      jest.advanceTimersByTime(0);
+    });
+  }
+
+  const greeting = "Hi Ada! What would you like to talk about today?";
+
+  it("swiping a tutor message shows the reply preview and plays one reply haptic", async () => {
+    withKey();
+    await renderAppAt("/chat", fakeSession());
+
+    await swipeToReply("opening");
+
+    expect(screen.getByText("Replying to Claude")).toBeTruthy();
+    expect(screen.getAllByText(greeting)).toHaveLength(2);
+    expect(fakeHaptics.play.mock.calls.filter(([kind]) => kind === "reply")).toHaveLength(1);
+  });
+
+  it("a learner message cannot be swiped", async () => {
+    withKey();
+    await renderAppAt("/chat", fakeSession());
+    await sendMessage("Hello");
+
+    expect(() => getByGestureTestId("reply-swipe-message-1")).toThrow();
+    expect(getByGestureTestId("reply-swipe-message-2")).toBeTruthy();
+  });
+
+  it("the X cancels the reply", async () => {
+    withKey();
+    await renderAppAt("/chat", fakeSession());
+    await swipeToReply("opening");
+
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel reply" }));
+
+    expect(screen.queryByText("Replying to Claude")).toBeNull();
+    expect(screen.getAllByText(greeting)).toHaveLength(1);
+  });
+
+  it("sending a reply clears the preview and draws the quote on the sent message", async () => {
+    withKey();
+    await renderAppAt("/chat", fakeSession());
+    await swipeToReply("opening");
+
+    await sendMessage("Hello");
+
+    expect(screen.queryByText("Replying to Claude")).toBeNull();
+    expect(screen.getByRole("button", { name: "Go to the quoted message" })).toBeTruthy();
+    expect(screen.getByText("Hello")).toBeTruthy();
+  });
+
+  it("a resumed chat draws the quote of a saved reply", async () => {
+    withKey();
+    const tutor = saved("tutor", "Where do you want to go?");
+    fakeData.openSession.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [tutor, saved("user", "To Rome", { replyToId: tutor.id })] },
+    });
+    await renderAppAt({ pathname: "/chat", params: { session: "session-1" } }, fakeSession());
+
+    expect(screen.getByRole("button", { name: "Go to the quoted message" })).toBeTruthy();
+    expect(screen.getAllByText("Where do you want to go?")).toHaveLength(2);
+    expect(screen.getByText("To Rome")).toBeTruthy();
+  });
+
+  it("a locked chat cannot start a reply", async () => {
+    withKey("openai");
+    await renderAppAt("/chat", fakeSession());
+
+    expect(() => getByGestureTestId("reply-swipe-opening")).toThrow();
   });
 
   it("draws the starter's title and opener", async () => {

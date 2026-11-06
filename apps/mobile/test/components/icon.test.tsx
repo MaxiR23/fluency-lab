@@ -47,6 +47,7 @@ const names: IconName[] = [
   "close",
   "trash",
   "chevron",
+  "reply",
 ];
 
 type Node = { props?: Record<string, unknown>; children?: unknown };
@@ -116,5 +117,10 @@ describe("Icon", () => {
   it("draws the chevron path of the design", async () => {
     await render(<Icon name="chevron" color={colors.textPlaceholder} />);
     expect(drawing()).toBe("M9 6l6 6-6 6");
+  });
+
+  it("draws the reply paths of the design", async () => {
+    await render(<Icon name="reply" color={colors.accent} />);
+    expect(drawing()).toBe("M9 14 4 9l5-5|M4 9h10.5a5.5 5.5 0 0 1 0 11H11");
   });
 });

@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The input, open or locked, and its placeholder color
+// - The row's top padding, 12 without a reply preview and 10 under one
 // - The send button: enabled, pressed, disabled
 // - The line count from the input height, the five-line cap and the radius at one line or more
 //
@@ -21,6 +22,7 @@ import {
   composerInputStyle,
   composerLines,
   composerMaxHeight,
+  composerRowStyle,
   sendButtonStyle,
 } from "@/components/chat-composer-style";
 import {
@@ -176,5 +178,24 @@ describe("sendButtonStyle", () => {
     expect(sendButtonStyle({ enabled: false, pressed: true })).toEqual(
       sendButtonStyle({ enabled: false, pressed: false }),
     );
+  });
+});
+
+describe("composerRowStyle", () => {
+  it("keeps the 12 point top padding without a reply", () => {
+    expect(composerRowStyle(false)).toEqual({
+      flexDirection: "row",
+      alignItems: "flex-end",
+      gap: spacing.cluster,
+      paddingTop: spacing.group,
+      paddingHorizontal: spacing.md,
+    });
+    expect(spacing.group).toBe(12);
+  });
+
+  it("tightens the top padding to 10 under a reply preview", () => {
+    expect(composerRowStyle(true).paddingTop).toBe(spacing.cluster);
+    expect(spacing.cluster).toBe(10);
+    expect(composerRowStyle(true).paddingHorizontal).toBe(spacing.md);
   });
 });

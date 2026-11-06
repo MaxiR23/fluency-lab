@@ -88,6 +88,7 @@ const message = {
   text: "Hello",
   corrections: null,
   newWords: null,
+  replyToId: null,
   createdAt: stamp,
 };
 
@@ -290,6 +291,11 @@ describe("response schemas", () => {
     expect(messageSchema.safeParse({ ...message, corrections: "x" }).success).toBe(false);
   });
 
+  it("parses a message with a null replyToId and one with a replyToId", () => {
+    expect(messageSchema.parse({ ...message, replyToId: null }).replyToId).toBeNull();
+    expect(messageSchema.parse({ ...message, replyToId: "t1" }).replyToId).toBe("t1");
+  });
+
   it("parses a month spend of zero and rejects a negative one", () => {
     const body = { monthStart: "2026-11-01", spentUsd: 0 };
     expect(monthSpendSchema.parse(body)).toEqual(body);
@@ -419,6 +425,23 @@ describe("messageCreateSchema", () => {
         newWords: ["word"],
       }).success,
     ).toBe(true);
+  });
+
+  it("accepts a message with a uuid replyToId and one without", () => {
+    const replyToId = crypto.randomUUID();
+    expect(messageCreateSchema.safeParse({ role: "user", text: "Hi", replyToId }).success).toBe(
+      true,
+    );
+    expect(messageCreateSchema.safeParse({ role: "user", text: "Hi" }).success).toBe(true);
+  });
+
+  it("rejects a replyToId that is not a uuid and a null one", () => {
+    expect(
+      messageCreateSchema.safeParse({ role: "user", text: "Hi", replyToId: "abc" }).success,
+    ).toBe(false);
+    expect(
+      messageCreateSchema.safeParse({ role: "user", text: "Hi", replyToId: null }).success,
+    ).toBe(false);
   });
 
   it("limits the text to 4000 characters and rejects empty text", () => {

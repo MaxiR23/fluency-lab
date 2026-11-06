@@ -3,7 +3,7 @@
 // Tests for the expo-haptics adapter of the haptics port, over injected fake functions.
 //
 // Tested:
-// - A tab press plays a selection and Send plays a light impact
+// - A tab press plays a selection; Send and a reply swipe play a light impact
 // - A rejected library call returns not_played
 //
 // What is covered:
@@ -42,6 +42,14 @@ describe("play", () => {
     const { port, impactAsync, selectionAsync } = setup();
 
     expect(await port.play("send")).toEqual({ ok: true, value: null });
+    expect(impactAsync).toHaveBeenCalledWith("light-style");
+    expect(selectionAsync).not.toHaveBeenCalled();
+  });
+
+  it("plays a light impact for a reply", async () => {
+    const { port, impactAsync, selectionAsync } = setup();
+
+    expect(await port.play("reply")).toEqual({ ok: true, value: null });
     expect(impactAsync).toHaveBeenCalledWith("light-style");
     expect(selectionAsync).not.toHaveBeenCalled();
   });

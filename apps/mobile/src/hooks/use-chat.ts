@@ -33,6 +33,8 @@ async function readChat(origin: ChatOrigin): Promise<ChatView> {
 export function useChat(chatOrigin: ChatOrigin): {
   view: ChatView;
   setDraft: (text: string) => void;
+  startReply: (messageId: string) => void;
+  cancelReply: () => void;
   send: () => Promise<void>;
   retry: () => Promise<void>;
   end: () => Promise<void>;
@@ -107,15 +109,21 @@ export function useChat(chatOrigin: ChatOrigin): {
       } else if (step.kind === "write") {
         const session = conversation.session;
         if (session === null) return;
-        const saved =
-          step.write.kind === "message"
-            ? await data.addMessage(session.id, step.write.input)
-            : await data.addUsage(session.id, step.write.usage);
-        if (!saved.ok) {
-          dispatch({ type: "write_failed", failure: { source: "data", failure: saved.failure } });
-          return;
+        if (step.write.kind === "message") {
+          const saved = await data.addMessage(session.id, step.write.input);
+          if (!saved.ok) {
+            dispatch({ type: "write_failed", failure: { source: "data", failure: saved.failure } });
+            return;
+          }
+          dispatch({ type: "write_done", savedId: saved.value.id });
+        } else {
+          const saved = await data.addUsage(session.id, step.write.usage);
+          if (!saved.ok) {
+            dispatch({ type: "write_failed", failure: { source: "data", failure: saved.failure } });
+            return;
+          }
+          dispatch({ type: "write_done" });
         }
-        dispatch({ type: "write_done" });
       } else {
         const answer = await ai.reply(step.request);
         if (!answer.ok) {
@@ -186,6 +194,8 @@ export function useChat(chatOrigin: ChatOrigin): {
   return {
     view,
     setDraft: (text) => dispatch({ type: "draft_changed", text }),
+    startReply: (messageId) => dispatch({ type: "reply_started", messageId }),
+    cancelReply: () => dispatch({ type: "reply_cancelled" }),
     send,
     retry,
     end,

@@ -65,6 +65,7 @@ const opened = (
       text: `t${n}`,
       corrections: null,
       newWords: null,
+      replyToId: null,
       createdAt: "2026-11-05T09:00:00Z",
     })),
   },

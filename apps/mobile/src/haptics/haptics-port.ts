@@ -1,7 +1,8 @@
 import type { FailureCause } from "@/auth/auth-port";
 
-// INFO: a tab press and the Send button are the two moments that play feedback.
-export type HapticKind = "tab" | "send";
+// INFO: a tab press, the Send button and a reply swipe crossing its threshold are the moments
+// that play feedback.
+export type HapticKind = "tab" | "send" | "reply";
 
 // INFO: there is no expected empty case: playing returns no data. A missed buzz has nothing to
 // draw, so callers ignore the failure.

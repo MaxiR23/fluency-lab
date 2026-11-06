@@ -60,6 +60,8 @@ const designUser: ChatMessage = {
   ],
   explanation: "No article before next year; use the present perfect.",
   newWords: ["definitely"],
+  replyTo: null,
+  savedId: null,
 };
 
 describe("correctionsLabel", () => {
@@ -95,6 +97,8 @@ describe("chatItems", () => {
       corrections: [],
       explanation: null,
       newWords: [],
+      replyTo: null,
+      savedId: null,
     };
     const items = chatItems(conversation({ messages: [designUser, tutor] }));
 
@@ -105,6 +109,7 @@ describe("chatItems", () => {
         text: designUser.text,
         corrections: designUser.corrections,
         explanation: designUser.explanation,
+        quote: null,
       },
       { kind: "new_word", id: "u1:word:0", word: "definitely" },
       { kind: "tutor", id: "t2", text: tutor.text },
@@ -119,7 +124,7 @@ describe("chatItems", () => {
       newWords: [],
     };
     expect(chatItems(conversation({ messages: [plain] }))).toEqual([
-      { kind: "user", id: "u1", text: plain.text, corrections: [], explanation: null },
+      { kind: "user", id: "u1", text: plain.text, corrections: [], explanation: null, quote: null },
     ]);
   });
 
@@ -137,7 +142,14 @@ describe("chatItems", () => {
     const items = chatItems(asking);
 
     expect(items.slice(-2)).toEqual([
-      { kind: "user", id: "message-1", text: "Hello", corrections: [], explanation: null },
+      {
+        kind: "user",
+        id: "message-1",
+        text: "Hello",
+        corrections: [],
+        explanation: null,
+        quote: null,
+      },
       { kind: "typing", id: "typing" },
     ]);
   });
@@ -182,5 +194,54 @@ describe("chatItems", () => {
     );
     const ids = items.map((item) => item.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  describe("quotes", () => {
+    const tutor: ChatMessage = {
+      id: "t1",
+      role: "tutor",
+      text: "Where did you go?",
+      corrections: [],
+      explanation: null,
+      newWords: [],
+      replyTo: null,
+      savedId: null,
+    };
+
+    it("a learner reply carries the quote with the tutor's name and text", () => {
+      const reply: ChatMessage = { ...designUser, newWords: [], replyTo: "t1" };
+      const item = chatItems(conversation({ messages: [tutor, reply] })).find(
+        (i) => i.kind === "user",
+      );
+      expect(item).toMatchObject({
+        quote: { targetId: "t1", author: "Claude", text: "Where did you go?" },
+      });
+    });
+
+    it("the pending row carries its quote while the tutor answers", () => {
+      const items = chatItems(
+        conversation({
+          messages: [tutor],
+          pending: "To Rome",
+          pendingReplyTo: "t1",
+          phase: "asking",
+        }),
+      );
+      expect(items.find((i) => i.kind === "user")).toMatchObject({
+        text: "To Rome",
+        quote: { targetId: "t1", author: "Claude", text: "Where did you go?" },
+      });
+    });
+
+    it("a message with no reply has no quote", () => {
+      const items = chatItems(conversation({ messages: [tutor, designUser] }));
+      expect(items.find((i) => i.kind === "user")).toMatchObject({ quote: null });
+    });
+
+    it("a reply whose original is missing has no quote", () => {
+      const reply: ChatMessage = { ...designUser, replyTo: "gone" };
+      const items = chatItems(conversation({ messages: [reply] }));
+      expect(items.find((i) => i.kind === "user")).toMatchObject({ quote: null });
+    });
   });
 });

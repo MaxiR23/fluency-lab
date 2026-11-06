@@ -24,7 +24,7 @@ import * as Reanimated from "react-native-reanimated";
 
 import { ChatComposer } from "@/components/chat-composer";
 import { composerMaxHeight } from "@/components/chat-composer-style";
-import { colors, motion, radius, size } from "@/constants/theme";
+import { colors, motion, radius, size, spacing } from "@/constants/theme";
 import { chatMotion } from "@/utils/chat-motion";
 
 // INFO: Reanimated styles do not advance under jest, so the press is proven by the target
@@ -152,6 +152,12 @@ describe("ChatComposer", () => {
     expect(props.multiline).toBe(true);
     expect(props.submitBehavior).toBe("newline");
     expect(props.onSubmitEditing).toBeUndefined();
+  });
+
+  it("draws the row with the reply padding when replying", async () => {
+    await render(composer({ replying: true }));
+    const row = screen.getByLabelText("Message").parent;
+    expect(StyleSheet.flatten(row?.props.style).paddingTop).toBe(spacing.cluster);
   });
 
   it("rounds the input to the control radius once it grows past one line, and back", async () => {

@@ -4,15 +4,31 @@ import { borderWidth, colors, radius, size, spacing } from "@/constants/theme";
 
 export type MessageRole = "tutor" | "user";
 
-export function messageBubbleStyle(role: MessageRole): { row: ViewStyle; bubble: ViewStyle } {
+// INFO: body is only present for a quoted bubble: the quote sits inside the 8 point padding of
+// chat-reply-sent.html, so the text gets a 6 point inset to keep its left edge where a plain
+// bubble puts it.
+export function messageBubbleStyle(
+  role: MessageRole,
+  options: { quoted?: boolean } = {},
+): { row: ViewStyle; bubble: ViewStyle; body?: ViewStyle } {
+  const quoted = options.quoted === true;
+  const padding: ViewStyle = quoted
+    ? {
+        paddingTop: spacing.sm,
+        paddingHorizontal: spacing.sm,
+        paddingBottom: spacing.group,
+        gap: spacing.sm,
+      }
+    : { paddingVertical: spacing.group, paddingHorizontal: spacing.card };
   const common: ViewStyle = {
-    paddingVertical: spacing.group,
-    paddingHorizontal: spacing.card,
+    ...padding,
     borderRadius: radius.message,
     borderWidth: borderWidth.thin,
   };
+  const body = quoted ? { body: { paddingHorizontal: spacing.stack } } : {};
   if (role === "tutor") {
     return {
+      ...body,
       row: { alignSelf: "flex-start", maxWidth: size.messageMaxWidth },
       bubble: {
         ...common,
@@ -23,6 +39,7 @@ export function messageBubbleStyle(role: MessageRole): { row: ViewStyle; bubble:
     };
   }
   return {
+    ...body,
     row: { alignSelf: "flex-end", maxWidth: size.messageMaxWidth, gap: spacing.sm },
     bubble: {
       ...common,

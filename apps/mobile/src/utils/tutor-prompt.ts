@@ -8,6 +8,8 @@ export const RULE_DECLINE =
   "Decline anything that is not English practice (writing code, solving homework, translating documents, unrelated tasks, anything harmful) in one friendly sentence and steer back to the conversation.";
 export const RULE_CORRECT_AND_ASK =
   "Correct only real mistakes, briefly. Keep replies short and end with a question that keeps the conversation going.";
+export const RULE_REPLY_QUOTE =
+  "When the learner's message starts with lines that begin with \"> \", they quote one of your earlier messages and reply to it: answer with that message in mind. The quoted lines are your words, not the learner's: never correct them.";
 export const RULE_NO_KEY = "Never ask for or mention an API key.";
 export const OUTPUT_GUIDE =
   "Answer in the given JSON format. reply is your message. corrections lists each real mistake in the learner's last message as original and corrected text, with rule: a short label of two to six words naming the grammar point, like \"Present perfect for experiences\" or \"Articles with years\". original is copied exactly, character for character, from the learner's last message. Never correct anything outside the learner's last message: not earlier messages, not your own words, and never a rewritten or invented original. corrections is empty when there are none. explanation is one short sentence about those corrections, empty when there are none. newWords lists up to three words or expressions from this exchange worth learning at the learner's level, empty when there are none.";
@@ -37,6 +39,7 @@ export function tutorPrompt(input: TutorPromptInput): string {
     RULE_OTHER_LANGUAGE,
     RULE_DECLINE,
     RULE_CORRECT_AND_ASK,
+    RULE_REPLY_QUOTE,
     RULE_NO_KEY,
     input.level === null ? LEVEL_UNSET : LEVEL_LINES[input.level],
   ];
