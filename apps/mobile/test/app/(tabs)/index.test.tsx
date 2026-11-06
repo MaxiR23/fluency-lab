@@ -208,7 +208,7 @@ describe("Home", () => {
     const [first] = suggestTopics(maxi);
     await fireEvent.press(screen.getByRole("button", { name: first?.title ?? "" }));
     expect(screen).toHavePathname("/chat");
-    expect(screen).toHaveSearchParams({ topic: first?.title ?? "" });
+    expect(screen).toHaveSearchParams({ starter: first?.id ?? "" });
   });
 
   it("opens Chat from Continue", async () => {
@@ -219,7 +219,7 @@ describe("Home", () => {
     await renderApp("/", fakeSession());
     await fireEvent.press(screen.getByRole("button", { name: "Weekend plans" }));
     expect(screen).toHavePathname("/chat");
-    expect(screen).toHaveSearchParams({ topic: "Weekend plans" });
+    expect(screen).toHaveSearchParams({ session: "session-1" });
   });
 
   it("opens the list of every suggestion from See all", async () => {

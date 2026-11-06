@@ -1,30 +1,71 @@
-import type { Profile, Provider } from "@fluency-lab/shared";
+import type { MonthSpend, Profile, Provider, SessionWithMessages } from "@fluency-lab/shared";
 
 import type { FailureCause } from "@/auth/auth-port";
 import type { DataOutcome } from "@/data/data-port";
 import type { KeyPresenceOutcome } from "@/keys/key-port";
+import {
+  chatFailureView,
+  endedSessionMessage,
+  unsupportedProviderMessage,
+  type ChatFailureView,
+} from "@/utils/chat-failure";
+import {
+  sendState,
+  startConversation,
+  type Conversation,
+  type ConversationEvent,
+} from "@/utils/chat-conversation";
+import type { ChatOrigin } from "@/utils/chat-opening";
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
 import { hasText } from "@/utils/has-text";
 import { providerOptions } from "@/utils/onboarding-options";
+import { spendWarningText } from "@/utils/spend-limit";
 
 export type ChatView =
   | { kind: "loading" }
   | { kind: "no_key" }
-  | { kind: "ready"; provider: Provider | null }
+  | { kind: "ready"; conversation: Conversation }
   | { kind: "failed"; message: string; cause?: FailureCause };
 
 export const noKeyProviderLine = "No AI connected";
 
-export function chatView(key: KeyPresenceOutcome, profile: DataOutcome<Profile>): ChatView {
+export { MAX_MESSAGE_LENGTH } from "@/utils/chat-conversation";
+
+// INFO: spend and opened are null when they were not read: with no key nothing else is read,
+// and only a resumed session is opened.
+export function chatView(input: {
+  key: KeyPresenceOutcome;
+  profile: DataOutcome<Profile>;
+  spend: DataOutcome<MonthSpend> | null;
+  origin: ChatOrigin;
+  opened: DataOutcome<SessionWithMessages> | null;
+}): ChatView {
+  const { key, profile, spend, origin, opened } = input;
   if (!key.ok) return { kind: "failed", message: keyReadFailureMessage, cause: key.cause };
   if (!key.value) return { kind: "no_key" };
   if (!profile.ok) return { kind: "failed", message: dataFailureMessage(profile.failure) };
-  return { kind: "ready", provider: profile.value.provider };
+  if (spend !== null && !spend.ok) {
+    return { kind: "failed", message: dataFailureMessage(spend.failure) };
+  }
+  if (opened !== null && !opened.ok) {
+    return { kind: "failed", message: dataFailureMessage(opened.failure) };
+  }
+  if (opened !== null && opened.value.session.status === "ended") {
+    return { kind: "failed", message: endedSessionMessage };
+  }
+  const conversation = startConversation({
+    origin,
+    profile: profile.value,
+    spentUsd: spend === null ? 0 : spend.value.spentUsd,
+    opened: opened === null ? undefined : opened.value,
+  });
+  return { kind: "ready", conversation };
 }
 
-export function chatTitle(topic: string | string[] | undefined): string {
-  const first = Array.isArray(topic) ? topic[0] : topic;
-  return hasText(first) ? (first as string).trim() : "Free chat";
+// INFO: a resumed session's title is known only once it is opened, which needs a key.
+export function originTitle(origin: ChatOrigin): string {
+  if (origin.kind === "starter") return origin.starter.title;
+  return origin.kind === "free" ? "Free chat" : "Chat";
 }
 
 export function providerLine(provider: Provider | null): string {
@@ -32,6 +73,55 @@ export function providerLine(provider: Provider | null): string {
   return option === undefined ? "AI connected" : option.label;
 }
 
-export function canSend(draft: string, locked: boolean): boolean {
-  return !locked && hasText(draft);
+export function canSend(draft: string, locked: boolean, busy = false): boolean {
+  return !locked && !busy && hasText(draft);
+}
+
+// INFO: coming back to a ready chat re-reads only the context. A failure stays in the
+// conversation, so the draft and the messages are not lost.
+export function contextRefresh(input: {
+  key: KeyPresenceOutcome;
+  profile: DataOutcome<Profile>;
+  spend: DataOutcome<MonthSpend>;
+}): { kind: "no_key" } | { kind: "event"; event: ConversationEvent } {
+  const { key, profile, spend } = input;
+  if (!key.ok) {
+    const failure = { source: "ai", failure: "key_unreadable", cause: key.cause } as const;
+    return { kind: "event", event: { type: "context_failed", failure } };
+  }
+  if (!key.value) return { kind: "no_key" };
+  if (!profile.ok) {
+    const failure = { source: "data", failure: profile.failure } as const;
+    return { kind: "event", event: { type: "context_failed", failure } };
+  }
+  if (!spend.ok) {
+    const failure = { source: "data", failure: spend.failure } as const;
+    return { kind: "event", event: { type: "context_failed", failure } };
+  }
+  return {
+    kind: "event",
+    event: {
+      type: "context_refreshed",
+      provider: profile.value.provider,
+      limitUsd: profile.value.monthlyLimitUsd,
+      spentUsd: spend.value.spentUsd,
+    },
+  };
+}
+
+export type ChatNotice =
+  | { kind: "failure"; view: ChatFailureView }
+  | { kind: "unsupported"; message: string }
+  | { kind: "limit"; view: ChatFailureView }
+  | { kind: "warning"; message: string }
+  | null;
+
+// INFO: at most one notice shows above the input; a failure comes first.
+export function chatNotice(c: Conversation): ChatNotice {
+  if (c.failure !== null) return { kind: "failure", view: chatFailureView(c.failure) };
+  const { notice } = sendState(c);
+  if (notice === "unsupported") return { kind: "unsupported", message: unsupportedProviderMessage };
+  if (notice === "limit") return { kind: "limit", view: chatFailureView({ source: "limit" }) };
+  if (notice === "warning") return { kind: "warning", message: spendWarningText };
+  return null;
 }

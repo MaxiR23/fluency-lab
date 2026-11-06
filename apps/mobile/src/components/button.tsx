@@ -9,6 +9,7 @@ export function Button({
   disabled,
   loading,
   compact,
+  small,
   ...rest
 }: Omit<PressableProps, "children" | "style" | "disabled"> & {
   label: string;
@@ -16,6 +17,7 @@ export function Button({
   disabled?: boolean;
   loading?: boolean;
   compact?: boolean;
+  small?: boolean;
 }) {
   const inactive = disabled === true || loading === true;
   return (
@@ -25,12 +27,16 @@ export function Button({
       accessibilityState={loading ? { busy: true } : undefined}
       disabled={inactive}
       style={({ pressed }) =>
-        buttonStyle(variant, { pressed, disabled: disabled === true }, { compact }).container
+        buttonStyle(variant, { pressed, disabled: disabled === true }, { compact, small }).container
       }
       {...rest}
     >
       {({ pressed }) => {
-        const style = buttonStyle(variant, { pressed, disabled: disabled === true }, { compact });
+        const style = buttonStyle(
+          variant,
+          { pressed, disabled: disabled === true },
+          { compact, small },
+        );
         return loading ? (
           <ActivityIndicator color={style.label.color} />
         ) : (

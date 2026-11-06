@@ -5,6 +5,7 @@ import { CorrectionsCard } from "@/components/corrections-card";
 import { MessageBubble } from "@/components/message-bubble";
 import { messageBubbleStyle } from "@/components/message-bubble-style";
 import { NewWord } from "@/components/new-word";
+import { TypingIndicator } from "@/components/typing-indicator";
 import { spacing } from "@/constants/theme";
 import type { ChatItem } from "@/utils/chat-items";
 
@@ -23,6 +24,7 @@ export function MessageList({ items }: { items: ChatItem[] }) {
       onLayout={scrollToNewest}
     >
       {items.map((item) => {
+        if (item.kind === "typing") return <TypingIndicator key={item.id} />;
         if (item.kind === "new_word") return <NewWord key={item.id} word={item.word} />;
         if (item.kind === "tutor") {
           return (

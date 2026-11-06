@@ -114,6 +114,7 @@ describe("theme", () => {
       bubbleSmallWidth: 34,
       bubbleSmallHeight: 24,
       controlCompact: 48,
+      controlSmall: 36,
       badgeLarge: 52,
       iconBadgeLarge: 24,
       tag: 28,

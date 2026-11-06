@@ -14,6 +14,7 @@
 //
 // SEE: apps/api/src/supabase-store.ts
 
+import type { MessageCreate } from "@fluency-lab/shared";
 import { describe, expect, it } from "vitest";
 import { createSupabaseStore, storeConfigFromEnv } from "../src/supabase-store";
 import { generatedSecret } from "./helpers/generated-secret";
@@ -393,46 +394,306 @@ describe("createSession", () => {
   });
 });
 
-describe("listMessages", () => {
-  it("returns the messages oldest first", async () => {
-    const { user, requests } = setup([ok([{ id: sessionId }]), ok([messageRow(1), messageRow(2)])]);
+describe("getSessionWithMessages", () => {
+  it("returns the session and its messages oldest first", async () => {
+    const { user, requests } = setup([ok([sessionRow]), ok([messageRow(1), messageRow(2)])]);
 
-    const outcome = await user.listMessages(sessionId);
+    const outcome = await user.getSessionWithMessages(sessionId);
 
-    expect(outcome.ok && outcome.value?.map((m) => m.text)).toEqual(["m1", "m2"]);
+    expect(outcome.ok && outcome.value?.session.id).toBe(sessionId);
+    expect(outcome.ok && outcome.value?.messages.map((m) => m.text)).toEqual(["m1", "m2"]);
     expect(requests[1].url.searchParams.get("order")).toBe("created_at.asc");
   });
 
-  it("returns an empty list for a session with no messages", async () => {
-    const { user } = setup([ok([{ id: sessionId }]), ok([])]);
-    expect(await user.listMessages(sessionId)).toEqual({ ok: true, value: [] });
+  it("returns the saved corrections and new words", async () => {
+    const saved = {
+      ...messageRow(1),
+      corrections: { items: [{ original: "a", corrected: "b" }], explanation: null },
+      new_words: ["word"],
+    };
+    const { user } = setup([ok([sessionRow]), ok([saved])]);
+
+    const outcome = await user.getSessionWithMessages(sessionId);
+
+    expect(outcome.ok && outcome.value?.messages[0]).toMatchObject({
+      corrections: { items: [{ original: "a", corrected: "b" }], explanation: null },
+      newWords: ["word"],
+    });
+  });
+
+  it("returns no messages for a session with none", async () => {
+    const { user } = setup([ok([sessionRow]), ok([])]);
+    const outcome = await user.getSessionWithMessages(sessionId);
+    expect(outcome.ok && outcome.value?.messages).toEqual([]);
   });
 
   it("returns null when the session is not visible", async () => {
     const { user, requests } = setup([ok([])]);
 
-    expect(await user.listMessages(sessionId)).toEqual({ ok: true, value: null });
+    expect(await user.getSessionWithMessages(sessionId)).toEqual({ ok: true, value: null });
     expect(requests).toHaveLength(1);
   });
 
   it("returns unauthorized on a 401", async () => {
     const { user } = setup([failure(401)]);
-    expect(await user.listMessages(sessionId)).toEqual({ ok: false, failure: "unauthorized" });
+    expect(await user.getSessionWithMessages(sessionId)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
   });
 
   it("returns unavailable when fetch rejects", async () => {
     const { user } = setup([new TypeError("network down")]);
-    expect(await user.listMessages(sessionId)).toEqual({ ok: false, failure: "unavailable" });
+    expect(await user.getSessionWithMessages(sessionId)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
   });
 
   it("returns unavailable when the messages request fails", async () => {
-    const { user } = setup([ok([{ id: sessionId }]), failure(500)]);
-    expect(await user.listMessages(sessionId)).toEqual({ ok: false, failure: "unavailable" });
+    const { user } = setup([ok([sessionRow]), failure(500)]);
+    expect(await user.getSessionWithMessages(sessionId)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
   });
 
-  it("returns unavailable for a bad message row", async () => {
-    const { user } = setup([ok([{ id: sessionId }]), ok([{ id }])]);
-    expect(await user.listMessages(sessionId)).toEqual({ ok: false, failure: "unavailable" });
+  it("returns unavailable for a bad session row or a bad message row", async () => {
+    const badSession = setup([ok([{ id: sessionId }])]);
+    expect(await badSession.user.getSessionWithMessages(sessionId)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+    const badMessage = setup([ok([sessionRow]), ok([{ id }])]);
+    expect(await badMessage.user.getSessionWithMessages(sessionId)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+});
+
+describe("addMessage", () => {
+  const input: MessageCreate = {
+    role: "user",
+    text: "I never been",
+    corrections: {
+      items: [{ original: "I never been", corrected: "I've never been" }],
+      explanation: "Use the present perfect.",
+    },
+    newWords: ["definitely"],
+  };
+
+  it("inserts the message with its corrections and new words", async () => {
+    const saved = {
+      ...messageRow(1),
+      text: input.text,
+      corrections: input.corrections,
+      new_words: input.newWords,
+    };
+    const { user, requests } = setup([ok([sessionRow]), ok(saved, 201)]);
+
+    const outcome = await user.addMessage(sessionId, input);
+
+    expect(outcome).toMatchObject({
+      ok: true,
+      value: { text: "I never been", newWords: ["definitely"] },
+    });
+    expect(requests[1].method).toBe("POST");
+    expect(requests[1].url.pathname).toBe("/rest/v1/messages");
+    expect(JSON.parse(requests[1].body ?? "null")).toEqual({
+      session_id: sessionId,
+      role: "user",
+      text: "I never been",
+      corrections: input.corrections,
+      new_words: ["definitely"],
+    });
+  });
+
+  it("inserts nulls for a message without corrections or new words", async () => {
+    const { user, requests } = setup([ok([sessionRow]), ok(messageRow(1), 201)]);
+
+    await user.addMessage(sessionId, { role: "tutor", text: "Hi" });
+
+    expect(JSON.parse(requests[1].body ?? "null")).toEqual({
+      session_id: sessionId,
+      role: "tutor",
+      text: "Hi",
+      corrections: null,
+      new_words: null,
+    });
+  });
+
+  it("returns null when the session is not visible", async () => {
+    const { user, requests } = setup([ok([])]);
+    expect(await user.addMessage(sessionId, input)).toEqual({ ok: true, value: null });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([ok([sessionRow]), failure(401)]);
+    expect(await user.addMessage(sessionId, input)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.addMessage(sessionId, input)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("returns unavailable for a bad row", async () => {
+    const { user } = setup([ok([sessionRow]), ok({ id }, 201)]);
+    expect(await user.addMessage(sessionId, input)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+});
+
+describe("addSessionCost", () => {
+  it("adds the amount through add_session_cost and returns the session", async () => {
+    const { user, requests } = setup([ok([{ ...sessionRow, cost_usd: 0.000145 }])]);
+
+    const outcome = await user.addSessionCost(sessionId, 0.000145);
+
+    expect(outcome).toMatchObject({ ok: true, value: { id: sessionId, costUsd: 0.000145 } });
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url.pathname).toBe("/rest/v1/rpc/add_session_cost");
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({
+      session_id: sessionId,
+      amount_usd: 0.000145,
+    });
+  });
+
+  it("adds a zero amount", async () => {
+    const { user, requests } = setup([ok([sessionRow])]);
+    const outcome = await user.addSessionCost(sessionId, 0);
+    expect(outcome).toMatchObject({ ok: true, value: { costUsd: 0 } });
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({
+      session_id: sessionId,
+      amount_usd: 0,
+    });
+  });
+
+  it("returns null when the session is not visible", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.addSessionCost(sessionId, 1)).toEqual({ ok: true, value: null });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.addSessionCost(sessionId, 1)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.addSessionCost(sessionId, 1)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("returns unavailable for a bad row", async () => {
+    const { user } = setup([ok([{ id }])]);
+    expect(await user.addSessionCost(sessionId, 1)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+});
+
+describe("endSession", () => {
+  it("sets the status to ended and returns the session", async () => {
+    const { user, requests } = setup([ok([{ ...sessionRow, status: "ended" }])]);
+
+    const outcome = await user.endSession(sessionId);
+
+    expect(outcome).toMatchObject({ ok: true, value: { status: "ended" } });
+    expect(requests[0].method).toBe("PATCH");
+    expect(requests[0].url.searchParams.get("id")).toBe(`eq.${sessionId}`);
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({ status: "ended" });
+  });
+
+  it("returns null when the session is not visible", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.endSession(sessionId)).toEqual({ ok: true, value: null });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.endSession(sessionId)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.endSession(sessionId)).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("returns unavailable for a bad row", async () => {
+    const { user } = setup([ok([{ id }])]);
+    expect(await user.endSession(sessionId)).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
+describe("listSessionCostsSince", () => {
+  const since = "2026-10-05T12:00:00.000Z";
+
+  it("returns the start and cost of each session since the given time", async () => {
+    const { user, requests } = setup([
+      ok([
+        { created_at: "2026-11-02T10:00:00+00:00", cost_usd: 0.25 },
+        { created_at: "2026-11-04T10:00:00+00:00", cost_usd: 0 },
+      ]),
+    ]);
+
+    const outcome = await user.listSessionCostsSince(since);
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: [
+        { createdAt: "2026-11-02T10:00:00+00:00", costUsd: 0.25 },
+        { createdAt: "2026-11-04T10:00:00+00:00", costUsd: 0 },
+      ],
+    });
+    expect(requests[0].url.pathname).toBe("/rest/v1/sessions");
+    expect(requests[0].url.searchParams.get("select")).toBe("created_at,cost_usd");
+    expect(requests[0].url.searchParams.get("created_at")).toBe(`gte.${since}`);
+  });
+
+  it("returns an empty list when there are no sessions", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.listSessionCostsSince(since)).toEqual({ ok: true, value: [] });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.listSessionCostsSince(since)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.listSessionCostsSince(since)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("returns unavailable for a bad row", async () => {
+    const { user } = setup([ok([{ created_at: "2026-11-02T10:00:00+00:00" }])]);
+    expect(await user.listSessionCostsSince(since)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
   });
 });
 

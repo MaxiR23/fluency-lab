@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, View } from "react-native";
 
+import { Button } from "@/components/button";
 import { Icon } from "@/components/icon";
 import { Text } from "@/components/text";
 import { borderWidth, colors, size, spacing } from "@/constants/theme";
@@ -8,10 +9,14 @@ export function ChatHeader({
   title,
   subtitle,
   onBack,
+  onEnd,
+  endDisabled,
 }: {
   title: string;
   subtitle: string;
   onBack: () => void;
+  onEnd?: () => void;
+  endDisabled?: boolean;
 }) {
   return (
     <View style={styles.row}>
@@ -29,6 +34,9 @@ export function ChatHeader({
         </Text>
         <Text variant="why">{subtitle}</Text>
       </View>
+      {onEnd === undefined ? null : (
+        <Button variant="secondary" small label="End" disabled={endDisabled} onPress={onEnd} />
+      )}
     </View>
   );
 }

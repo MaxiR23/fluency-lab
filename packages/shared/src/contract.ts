@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { GOALS, LEVELS, MESSAGE_ROLES, PROVIDERS, SESSION_STATUSES } from "./profile-values";
+import { MODEL_IDS } from "./model-price";
+import { STARTER_IDS } from "./suggestions";
 import { TOPIC_IDS } from "./topics";
 
 // INFO: not multipleOf(0.01), whose float error rejects valid values like 0.07.
@@ -23,7 +25,48 @@ export const profileUpdateSchema = z
   })
   .refine((update) => Object.values(update).some((value) => value !== undefined));
 
-export const sessionCreateSchema = z.strictObject({ topicId: z.enum(TOPIC_IDS).nullable() });
+export const sessionCreateSchema = z.union([
+  z.strictObject({ topicId: z.enum(TOPIC_IDS).nullable() }),
+  z.strictObject({ starterId: z.enum(STARTER_IDS) }),
+]);
+
+export const correctionSchema = z.strictObject({
+  original: z.string().trim().min(1).max(300),
+  corrected: z.string().trim().min(1).max(300),
+});
+
+export const messageCorrectionsSchema = z.strictObject({
+  items: z.array(correctionSchema).max(10),
+  explanation: z.string().trim().min(1).max(300).nullable(),
+});
+
+export const newWordsSchema = z.array(z.string().trim().min(1).max(60)).max(10);
+
+// INFO: the shape of the structured output of the tutor. It is parsed loosely
+// here and normalized by the app before it is saved.
+export const tutorReplySchema = z.object({
+  reply: z.string(),
+  corrections: z.array(z.object({ original: z.string(), corrected: z.string() })),
+  explanation: z.string(),
+  newWords: z.array(z.string()),
+});
+
+export const messageCreateSchema = z.strictObject({
+  role: z.enum(MESSAGE_ROLES),
+  text: z.string().trim().min(1).max(4000),
+  corrections: messageCorrectionsSchema.optional(),
+  newWords: newWordsSchema.optional(),
+});
+
+const tokenCount = z.int().min(0).max(10_000_000);
+
+export const sessionUsageSchema = z.strictObject({
+  model: z.enum(MODEL_IDS),
+  inputTokens: tokenCount,
+  outputTokens: tokenCount,
+  cacheCreationInputTokens: tokenCount,
+  cacheReadInputTokens: tokenCount,
+});
 
 export const sessionIdParamSchema = z.object({ id: z.uuid() });
 
@@ -51,16 +94,16 @@ export const sessionSchema = z.object({
   updatedAt: z.string(),
 });
 
-// INFO: corrections and newWords are JSON from the database. They are typed unknown
-// because z.json() is recursive and makes the typed client (hc) fail with
+// INFO: corrections and newWords have concrete, non-recursive shapes, so the
+// typed client (hc) can type them. z.json() is recursive and made hc fail with
 // "Type instantiation is excessively deep".
 export const messageSchema = z.object({
   id: z.string(),
   sessionId: z.string(),
   role: z.enum(MESSAGE_ROLES),
   text: z.string(),
-  corrections: z.unknown().nullable(),
-  newWords: z.unknown().nullable(),
+  corrections: messageCorrectionsSchema.nullable(),
+  newWords: newWordsSchema.nullable(),
   createdAt: z.string(),
 });
 
@@ -81,7 +124,15 @@ export const sessionWeekSchema = z.object({
 
 export const weekQuerySchema = z.object({ tz: z.string().min(1).max(100) });
 
-export const messagesResponseSchema = z.object({ messages: z.array(messageSchema) });
+export const sessionMessagesResponseSchema = z.object({
+  session: sessionSchema,
+  messages: z.array(messageSchema),
+});
+
+export const monthSpendSchema = z.object({
+  monthStart: z.iso.date(),
+  spentUsd: z.number().min(0),
+});
 
 export type Profile = z.infer<typeof profileSchema>;
 export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
@@ -90,3 +141,10 @@ export type SessionCreate = z.infer<typeof sessionCreateSchema>;
 export type SessionWeek = z.infer<typeof sessionWeekSchema>;
 export type Message = z.infer<typeof messageSchema>;
 export type ActiveSession = z.infer<typeof activeSessionSchema>;
+export type Correction = z.infer<typeof correctionSchema>;
+export type MessageCorrections = z.infer<typeof messageCorrectionsSchema>;
+export type MessageCreate = z.infer<typeof messageCreateSchema>;
+export type SessionUsage = z.infer<typeof sessionUsageSchema>;
+export type TutorReplyPayload = z.infer<typeof tutorReplySchema>;
+export type MonthSpend = z.infer<typeof monthSpendSchema>;
+export type SessionWithMessages = z.infer<typeof sessionMessagesResponseSchema>;

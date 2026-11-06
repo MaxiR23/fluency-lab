@@ -3,7 +3,7 @@
 // Tests for MessageList.
 //
 // Tested:
-// - The items in order and the newest kept in view
+// - The items in order, the typing indicator and the newest kept in view
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -45,6 +45,16 @@ describe("MessageList", () => {
     expect(at.every((index) => index >= 0)).toBe(true);
     expect(at).toEqual([...at].sort((a, b) => a - b));
     expect(screen.getByText("Go is irregular.")).toBeTruthy();
+  });
+
+  it("draws the typing indicator for a typing item", async () => {
+    await render(<MessageList items={[...items, { kind: "typing", id: "typing" }]} />);
+    expect(screen.getByTestId("typing-indicator")).toBeTruthy();
+  });
+
+  it("draws no typing indicator without a typing item", async () => {
+    await render(<MessageList items={items} />);
+    expect(screen.queryByTestId("typing-indicator")).toBeNull();
   });
 
   it("draws no bubble for an empty conversation", async () => {

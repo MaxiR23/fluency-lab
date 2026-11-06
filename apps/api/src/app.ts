@@ -1,8 +1,12 @@
 import {
+  messageCreateSchema,
   profileUpdateSchema,
   sessionCreateSchema,
   sessionIdParamSchema,
   sessionTitle,
+  sessionUsageSchema,
+  starterById,
+  usageCostUsd,
   weekQuerySchema,
 } from "@fluency-lab/shared";
 import { zValidator } from "@hono/zod-validator";
@@ -12,6 +16,7 @@ import { createMiddleware } from "hono/factory";
 // compiles this file, the mobile app's typecheck included.
 import type {} from "hono/jwt";
 import { requireAuth, readBearerToken, readTokenUser, type AuthConfig } from "./auth";
+import { MONTH_LOOKBACK_MS, currentMonthStart, monthSpend } from "./month";
 import type { Caller, Store, StoreFailure } from "./store";
 import { WEEK_LOOKBACK_MS, currentWeek, isTimeZone, sessionDays } from "./week";
 
@@ -104,19 +109,49 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
         return c.json({ weekStart, today, days: sessionDays(outcome.value, tz, weekStart) }, 200);
       },
     )
+    .get(
+      "/sessions/spend",
+      auth,
+      caller,
+      zValidator(
+        "query",
+        weekQuerySchema.refine((query) => isTimeZone(query.tz)),
+        invalidInput,
+      ),
+      async (c) => {
+        const { tz } = c.req.valid("query");
+        const at = now();
+        const monthStart = currentMonthStart(at, tz);
+        const since = new Date(at.getTime() - MONTH_LOOKBACK_MS).toISOString();
+        const outcome = await config.store.forUser(c.get("caller")).listSessionCostsSince(since);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        return c.json({ monthStart, spentUsd: monthSpend(outcome.value, tz, monthStart) }, 200);
+      },
+    )
     .post(
       "/sessions",
       auth,
       caller,
       zValidator("json", sessionCreateSchema, invalidInput),
       async (c) => {
-        const { topicId } = c.req.valid("json");
-        const outcome = await config.store
-          .forUser(c.get("caller"))
-          .createSession({ topicId, title: sessionTitle(topicId) });
+        const body = c.req.valid("json");
+        // INFO: the schema guarantees the starter exists; the title and topic
+        // come from the shared catalog, never from the client.
+        const starter = "starterId" in body ? starterById(body.starterId) : undefined;
+        const input =
+          "starterId" in body
+            ? starter === undefined
+              ? null
+              : { topicId: starter.topicId, title: starter.title }
+            : { topicId: body.topicId, title: sessionTitle(body.topicId) };
+        if (input === null) return c.json({ error: "invalid_input" }, 400);
+        const outcome = await config.store.forUser(c.get("caller")).createSession(input);
         if (!outcome.ok) {
-          const { status, body } = failureResponse(outcome.failure);
-          return c.json(body, status);
+          const { status, body: failure } = failureResponse(outcome.failure);
+          return c.json(failure, status);
         }
         return c.json(outcome.value, 201);
       },
@@ -129,13 +164,67 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
       async (c) => {
         const outcome = await config.store
           .forUser(c.get("caller"))
-          .listMessages(c.req.valid("param").id);
+          .getSessionWithMessages(c.req.valid("param").id);
         if (!outcome.ok) {
           const { status, body } = failureResponse(outcome.failure);
           return c.json(body, status);
         }
         if (outcome.value === null) return c.json({ error: "not_found" }, 404);
-        return c.json({ messages: outcome.value }, 200);
+        return c.json(outcome.value, 200);
+      },
+    )
+    .post(
+      "/sessions/:id/messages",
+      auth,
+      caller,
+      zValidator("param", sessionIdParamSchema, invalidInput),
+      zValidator("json", messageCreateSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .addMessage(c.req.valid("param").id, c.req.valid("json"));
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 201);
+      },
+    )
+    .post(
+      "/sessions/:id/usage",
+      auth,
+      caller,
+      zValidator("param", sessionIdParamSchema, invalidInput),
+      zValidator("json", sessionUsageSchema, invalidInput),
+      async (c) => {
+        const usage = c.req.valid("json");
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .addSessionCost(c.req.valid("param").id, usageCostUsd(usage.model, usage));
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
+      },
+    )
+    .post(
+      "/sessions/:id/end",
+      auth,
+      caller,
+      zValidator("param", sessionIdParamSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .endSession(c.req.valid("param").id);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
       },
     );
 }

@@ -11,6 +11,7 @@ export const fakeKeys = {
   saveApiKey: jest.fn<KeyPort["saveApiKey"]>(),
   deleteApiKey: jest.fn<KeyPort["deleteApiKey"]>(),
   hasApiKey: jest.fn<KeyPort["hasApiKey"]>(),
+  readApiKey: jest.fn<KeyPort["readApiKey"]>(),
 } satisfies KeyPort;
 
 export function resetFakeKeys(): void {
@@ -20,4 +21,6 @@ export function resetFakeKeys(): void {
   fakeKeys.deleteApiKey.mockResolvedValue({ ok: true, value: null });
   fakeKeys.hasApiKey.mockReset();
   fakeKeys.hasApiKey.mockResolvedValue({ ok: true, value: false });
+  fakeKeys.readApiKey.mockReset();
+  fakeKeys.readApiKey.mockResolvedValue({ ok: true, value: null });
 }

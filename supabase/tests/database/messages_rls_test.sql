@@ -4,7 +4,7 @@
 --
 -- Tested:
 -- - a user reads only the messages of their own sessions
--- - no insert, update or delete
+-- - a user inserts into their own sessions only; no update or delete
 --
 -- What is covered:
 -- - Normal case, empty case, edges
@@ -12,6 +12,7 @@
 -- Run with: pnpm supabase test db
 --
 -- SEE: supabase/migrations/20261106000211_create_profiles_sessions_messages.sql
+--      supabase/migrations/20261106035530_chat_writes.sql
 
 begin;
 create extension if not exists pgtap with schema extensions;
@@ -43,7 +44,7 @@ select set_config('request.jwt.claim.sub', (select id::text from t_ids where k =
 select results_eq($$select text from public.messages where session_id = (select id from t_ids where k = 'ea1')$$, array['Hello'], 'a user reads the messages of their own session');
 select is_empty($$select 1 from public.messages where session_id = (select id from t_ids where k = 'eb1')$$, 'the messages of another user session are empty');
 select throws_ok($$insert into public.messages (session_id, role, text) values ((select id from t_ids where k = 'eb1'), 'user', 'x')$$, '42501', null, 'inserting into another user session is not allowed');
-select throws_ok($$insert into public.messages (session_id, role, text) values ((select id from t_ids where k = 'ea1'), 'user', 'x')$$, '42501', null, 'inserting into their own session is not allowed');
+select lives_ok($$insert into public.messages (session_id, role, text) values ((select id from t_ids where k = 'ea1'), 'user', 'x')$$, 'a user inserts a message into their own session');
 select throws_ok($$update public.messages set text = 'x' where id = (select id from t_ids where k = 'ed1')$$, '42501', null, 'updating a message is not allowed');
 select throws_ok($$delete from public.messages where id = (select id from t_ids where k = 'ed1')$$, '42501', null, 'deleting a message is not allowed');
 

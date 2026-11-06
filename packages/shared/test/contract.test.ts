@@ -4,6 +4,7 @@
 //
 // Tested:
 // - profileUpdateSchema, sessionCreateSchema and sessionIdParamSchema
+// - The chat schemas: corrections, new words, the message to save, the usage and the tutor reply
 // - The response schemas of the profile, the active session and the messages
 // - The session week response and its query
 //
@@ -17,14 +18,25 @@
 import { describe, expect, it } from "vitest";
 import {
   activeSessionResponseSchema,
-  messagesResponseSchema,
+  correctionSchema,
+  messageCorrectionsSchema,
+  messageCreateSchema,
+  messageSchema,
+  monthSpendSchema,
+  newWordsSchema,
   profileSchema,
   profileUpdateSchema,
   sessionCreateSchema,
   sessionIdParamSchema,
+  sessionMessagesResponseSchema,
+  sessionUsageSchema,
   sessionWeekSchema,
+  tutorReplySchema,
   weekQuerySchema,
 } from "../src/contract";
+import { TUTOR_MODEL } from "../src/model-price";
+import { STARTERS } from "../src/suggestions";
+import { sessionTitle } from "../src/session-title";
 import { TOPIC_IDS } from "../src/topics";
 
 const uuid = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e6f";
@@ -221,8 +233,30 @@ describe("response schemas", () => {
     expect(activeSessionResponseSchema.parse(body)).toEqual(body);
   });
 
-  it("parses a messages body with no messages", () => {
-    expect(messagesResponseSchema.parse({ messages: [] })).toEqual({ messages: [] });
+  it("parses a session body with no messages", () => {
+    const body = { session, messages: [] };
+    expect(sessionMessagesResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it("parses a session body with saved corrections and new words", () => {
+    const saved = {
+      ...message,
+      corrections: {
+        items: [{ original: "I never been", corrected: "I've never been" }],
+        explanation: "Use the present perfect.",
+      },
+      newWords: ["definitely"],
+    };
+    const body = { session, messages: [saved] };
+    expect(sessionMessagesResponseSchema.parse(body)).toEqual(body);
+    expect(messageSchema.safeParse({ ...message, corrections: "x" }).success).toBe(false);
+  });
+
+  it("parses a month spend of zero and rejects a negative one", () => {
+    const body = { monthStart: "2026-11-01", spentUsd: 0 };
+    expect(monthSpendSchema.parse(body)).toEqual(body);
+    expect(monthSpendSchema.safeParse({ ...body, spentUsd: -1 }).success).toBe(false);
+    expect(monthSpendSchema.safeParse({ ...body, monthStart: "2026-11" }).success).toBe(false);
   });
 
   it("parses a session week with no days", () => {
@@ -251,5 +285,150 @@ describe("weekQuerySchema", () => {
   it("rejects a missing or empty time zone", () => {
     expect(weekQuerySchema.safeParse({}).success).toBe(false);
     expect(weekQuerySchema.safeParse({ tz: "" }).success).toBe(false);
+  });
+});
+
+describe("sessionCreateSchema with a starter", () => {
+  it("accepts a starter id", () => {
+    expect(sessionCreateSchema.safeParse({ starterId: "tech-app" }).success).toBe(true);
+  });
+
+  it("rejects an unknown starter, both fields together and an empty body", () => {
+    expect(sessionCreateSchema.safeParse({ starterId: "nope" }).success).toBe(false);
+    expect(sessionCreateSchema.safeParse({ topicId: null, starterId: "tech-app" }).success).toBe(
+      false,
+    );
+    expect(sessionCreateSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("no starter is titled like a free chat", () => {
+    for (const entry of STARTERS) expect(entry.title).not.toBe(sessionTitle(null));
+  });
+});
+
+describe("correction schemas", () => {
+  const item = { original: "I never been", corrected: "I've never been" };
+
+  it("accepts a correction and rejects an empty or extra field", () => {
+    expect(correctionSchema.safeParse(item).success).toBe(true);
+    expect(correctionSchema.safeParse({ ...item, original: " " }).success).toBe(false);
+    expect(correctionSchema.safeParse({ ...item, apiKey: "x" }).success).toBe(false);
+  });
+
+  it("accepts a side of 300 characters and rejects 301", () => {
+    expect(correctionSchema.safeParse({ ...item, corrected: "a".repeat(300) }).success).toBe(true);
+    expect(correctionSchema.safeParse({ ...item, corrected: "a".repeat(301) }).success).toBe(false);
+  });
+
+  it("accepts no corrections and a null explanation (the empty case)", () => {
+    expect(messageCorrectionsSchema.safeParse({ items: [], explanation: null }).success).toBe(true);
+  });
+
+  it("accepts 10 corrections and rejects 11", () => {
+    const items = (n: number) => Array.from({ length: n }, () => item);
+    expect(
+      messageCorrectionsSchema.safeParse({ items: items(10), explanation: null }).success,
+    ).toBe(true);
+    expect(
+      messageCorrectionsSchema.safeParse({ items: items(11), explanation: null }).success,
+    ).toBe(false);
+  });
+
+  it("limits the explanation to 300 characters", () => {
+    const body = { items: [item], explanation: "a".repeat(300) };
+    expect(messageCorrectionsSchema.safeParse(body).success).toBe(true);
+    expect(
+      messageCorrectionsSchema.safeParse({ ...body, explanation: "a".repeat(301) }).success,
+    ).toBe(false);
+  });
+
+  it("accepts no new words, 10 words of 60 characters, and rejects 11 or 61", () => {
+    expect(newWordsSchema.safeParse([]).success).toBe(true);
+    expect(newWordsSchema.safeParse(Array.from({ length: 10 }, () => "a".repeat(60))).success).toBe(
+      true,
+    );
+    expect(newWordsSchema.safeParse(Array.from({ length: 11 }, () => "a")).success).toBe(false);
+    expect(newWordsSchema.safeParse(["a".repeat(61)]).success).toBe(false);
+    expect(newWordsSchema.safeParse([" "]).success).toBe(false);
+  });
+});
+
+describe("messageCreateSchema", () => {
+  it("accepts a plain message and one with corrections and new words", () => {
+    expect(messageCreateSchema.safeParse({ role: "tutor", text: "Hi" }).success).toBe(true);
+    expect(
+      messageCreateSchema.safeParse({
+        role: "user",
+        text: "Hi",
+        corrections: { items: [], explanation: null },
+        newWords: ["word"],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("limits the text to 4000 characters and rejects empty text", () => {
+    expect(messageCreateSchema.safeParse({ role: "user", text: "a".repeat(4000) }).success).toBe(
+      true,
+    );
+    expect(messageCreateSchema.safeParse({ role: "user", text: "a".repeat(4001) }).success).toBe(
+      false,
+    );
+    expect(messageCreateSchema.safeParse({ role: "user", text: "  " }).success).toBe(false);
+  });
+
+  it("rejects an extra apiKey field and an unknown role", () => {
+    expect(messageCreateSchema.safeParse({ role: "user", text: "Hi", apiKey: "x" }).success).toBe(
+      false,
+    );
+    expect(messageCreateSchema.safeParse({ role: "system", text: "Hi" }).success).toBe(false);
+  });
+});
+
+describe("sessionUsageSchema", () => {
+  const usage = {
+    model: TUTOR_MODEL,
+    inputTokens: 700,
+    outputTokens: 150,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+  };
+
+  it("accepts a usage and a zero usage", () => {
+    expect(sessionUsageSchema.safeParse(usage).success).toBe(true);
+    expect(
+      sessionUsageSchema.safeParse({ ...usage, inputTokens: 0, outputTokens: 0 }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an unknown model, a negative count, a fraction and an extra field", () => {
+    expect(sessionUsageSchema.safeParse({ ...usage, model: "other" }).success).toBe(false);
+    expect(sessionUsageSchema.safeParse({ ...usage, inputTokens: -1 }).success).toBe(false);
+    expect(sessionUsageSchema.safeParse({ ...usage, outputTokens: 1.5 }).success).toBe(false);
+    expect(sessionUsageSchema.safeParse({ ...usage, inputTokens: 10_000_001 }).success).toBe(false);
+    expect(sessionUsageSchema.safeParse({ ...usage, apiKey: "x" }).success).toBe(false);
+  });
+});
+
+describe("tutorReplySchema", () => {
+  it("parses a reply and one with nothing to correct", () => {
+    const full = {
+      reply: "Nice!",
+      corrections: [{ original: "a", corrected: "b" }],
+      explanation: "Because.",
+      newWords: ["definitely"],
+    };
+    expect(tutorReplySchema.parse(full)).toEqual(full);
+    const empty = { reply: "Nice!", corrections: [], explanation: "", newWords: [] };
+    expect(tutorReplySchema.parse(empty)).toEqual(empty);
+  });
+
+  it("rejects a missing field and a wrong type", () => {
+    expect(tutorReplySchema.safeParse({ reply: "x", corrections: [], newWords: [] }).success).toBe(
+      false,
+    );
+    expect(
+      tutorReplySchema.safeParse({ reply: 1, corrections: [], explanation: "", newWords: [] })
+        .success,
+    ).toBe(false);
   });
 });

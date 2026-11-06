@@ -8,8 +8,10 @@
 // - the typed client sees /health (typecheck fails if AppType loses it)
 // - GET /me answers the user for a valid token, 401 for any bad one and 500
 //   when the signing keys cannot be loaded
-// - GET/PUT /profile, GET/POST /sessions, GET /sessions/week and GET /sessions/:id/messages: 401
-//   without a valid token, 400 on invalid input, 404, 503, and the typed client
+// - GET/PUT /profile, GET/POST /sessions, GET /sessions/week, GET /sessions/spend,
+//   GET/POST /sessions/:id/messages, POST /sessions/:id/usage and POST /sessions/:id/end:
+//   401 without a valid token, 400 on invalid input, 404, 503, and the typed client
+// - the usage route prices the tokens, and the routes reject an apiKey field
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -21,7 +23,15 @@
 import { sign } from "hono/jwt";
 import { testClient } from "hono/testing";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { ActiveSession, Message, Profile, Session } from "@fluency-lab/shared";
+import {
+  STARTERS,
+  TUTOR_MODEL,
+  usageCostUsd,
+  type ActiveSession,
+  type Message,
+  type Profile,
+  type Session,
+} from "@fluency-lab/shared";
 import { createApp } from "../src/app";
 import type { JwksOutcome } from "../src/auth";
 import { createFakeStore } from "./helpers/fake-store";
@@ -259,7 +269,27 @@ const routes: { name: string; path: string; method: string; body?: unknown }[] =
   { name: "GET /sessions/active", path: "/sessions/active", method: "GET" },
   { name: "GET /sessions/week", path: "/sessions/week?tz=UTC", method: "GET" },
   { name: "POST /sessions", path: "/sessions", method: "POST", body: { topicId: null } },
+  { name: "GET /sessions/spend", path: "/sessions/spend?tz=UTC", method: "GET" },
   { name: "GET /sessions/:id/messages", path: `/sessions/${sessionId}/messages`, method: "GET" },
+  {
+    name: "POST /sessions/:id/messages",
+    path: `/sessions/${sessionId}/messages`,
+    method: "POST",
+    body: { role: "user", text: "Hi" },
+  },
+  {
+    name: "POST /sessions/:id/usage",
+    path: `/sessions/${sessionId}/usage`,
+    method: "POST",
+    body: {
+      model: TUTOR_MODEL,
+      inputTokens: 1,
+      outputTokens: 1,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+    },
+  },
+  { name: "POST /sessions/:id/end", path: `/sessions/${sessionId}/end`, method: "POST" },
 ];
 
 describe("authentication of the data routes", () => {
@@ -548,45 +578,311 @@ describe("POST /sessions", () => {
   });
 });
 
+describe("POST /sessions with a starter", () => {
+  it("titles the session with the starter's title and topic", async () => {
+    fake.user.createSession.mockResolvedValue({ ok: true, value: session });
+
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: await authed(jsonType),
+      body: json({ starterId: "tech-app" }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(fake.user.createSession).toHaveBeenCalledWith({
+      topicId: "technology",
+      title: "The app you use most",
+    });
+  });
+
+  it("uses a null topic for a goal starter", async () => {
+    fake.user.createSession.mockResolvedValue({ ok: true, value: session });
+    const goalStarter = STARTERS.find((entry) => entry.topicId === null);
+    if (goalStarter === undefined) throw new Error("no goal starter in the catalog");
+
+    await app.request("/sessions", {
+      method: "POST",
+      headers: await authed(jsonType),
+      body: json({ starterId: goalStarter.id }),
+    });
+
+    expect(fake.user.createSession).toHaveBeenCalledWith({
+      topicId: null,
+      title: goalStarter.title,
+    });
+  });
+
+  it("responds 400 for an unknown starter", async () => {
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: await authed(jsonType),
+      body: json({ starterId: "nope" }),
+    });
+    expect(res.status).toBe(400);
+    expect(fake.user.createSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /sessions/spend", () => {
+  async function spend(query: string) {
+    return app.request(`/sessions/spend${query}`, { headers: await authed() });
+  }
+
+  it("responds 200 with 0 when nothing was spent", async () => {
+    fake.user.listSessionCostsSince.mockResolvedValue({ ok: true, value: [] });
+
+    const res = await spend("?tz=UTC");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ monthStart: "2026-11-01", spentUsd: 0 });
+  });
+
+  it("sums this month's sessions and reads since 32 days before now", async () => {
+    fake.user.listSessionCostsSince.mockResolvedValue({
+      ok: true,
+      value: [
+        { createdAt: "2026-11-02T09:00:00+00:00", costUsd: 0.25 },
+        { createdAt: "2026-11-04T09:00:00+00:00", costUsd: 0.5 },
+      ],
+    });
+
+    const res = await spend("?tz=UTC");
+
+    expect(await res.json()).toEqual({ monthStart: "2026-11-01", spentUsd: 0.75 });
+    expect(fake.user.listSessionCostsSince).toHaveBeenCalledWith("2026-10-04T12:00:00.000Z");
+  });
+
+  it("leaves out a session of the previous month in the zone", async () => {
+    fake.user.listSessionCostsSince.mockResolvedValue({
+      ok: true,
+      value: [{ createdAt: "2026-11-01T02:30:00+00:00", costUsd: 1 }],
+    });
+
+    const res = await spend("?tz=America%2FArgentina%2FBuenos_Aires");
+
+    expect(await res.json()).toEqual({ monthStart: "2026-11-01", spentUsd: 0 });
+  });
+
+  it("responds 400 for an unknown time zone and without tz", async () => {
+    expect((await spend("?tz=Mars%2FOlympus")).status).toBe(400);
+    expect((await spend("")).status).toBe(400);
+  });
+
+  it("responds 401 when the store reports unauthorized", async () => {
+    fake.user.listSessionCostsSince.mockResolvedValue({ ok: false, failure: "unauthorized" });
+    expect((await spend("?tz=UTC")).status).toBe(401);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.listSessionCostsSince.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await spend("?tz=UTC")).status).toBe(503);
+  });
+});
+
 describe("GET /sessions/:id/messages", () => {
   async function list(id: string) {
     return app.request(`/sessions/${id}/messages`, { headers: await authed() });
   }
 
-  it("responds 200 with the messages", async () => {
-    fake.user.listMessages.mockResolvedValue({ ok: true, value: [message] });
+  it("responds 200 with the session and its messages", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [message] },
+    });
 
     const res = await list(sessionId);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ messages: [message] });
-    expect(fake.user.listMessages).toHaveBeenCalledWith(sessionId);
+    expect(await res.json()).toEqual({ session, messages: [message] });
+    expect(fake.user.getSessionWithMessages).toHaveBeenCalledWith(sessionId);
   });
 
-  it("responds 200 with { messages: [] } for a session with none", async () => {
-    fake.user.listMessages.mockResolvedValue({ ok: true, value: [] });
+  it("responds 200 with no messages for a session with none", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [] },
+    });
 
     const res = await list(sessionId);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ messages: [] });
+    expect(await res.json()).toEqual({ session, messages: [] });
   });
 
   it("responds 400 for an id that is not a uuid", async () => {
     expect((await list("abc")).status).toBe(400);
-    expect(fake.user.listMessages).not.toHaveBeenCalled();
+    expect(fake.user.getSessionWithMessages).not.toHaveBeenCalled();
   });
 
   it("responds 404 when the session is not visible", async () => {
-    fake.user.listMessages.mockResolvedValue({ ok: true, value: null });
+    fake.user.getSessionWithMessages.mockResolvedValue({ ok: true, value: null });
 
     expect((await list(sessionId)).status).toBe(404);
   });
 
   it("responds 503 when the store is unavailable", async () => {
-    fake.user.listMessages.mockResolvedValue({ ok: false, failure: "unavailable" });
+    fake.user.getSessionWithMessages.mockResolvedValue({ ok: false, failure: "unavailable" });
 
     expect((await list(sessionId)).status).toBe(503);
+  });
+});
+
+describe("POST /sessions/:id/messages", () => {
+  async function add(id: string, body: string, headers?: Record<string, string>) {
+    return app.request(`/sessions/${id}/messages`, {
+      method: "POST",
+      headers: headers ?? (await authed(jsonType)),
+      body,
+    });
+  }
+
+  it("responds 201 with the saved message", async () => {
+    fake.user.addMessage.mockResolvedValue({ ok: true, value: message });
+
+    const res = await add(sessionId, json({ role: "user", text: "Hello" }));
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual(message);
+    expect(fake.user.addMessage).toHaveBeenCalledWith(sessionId, { role: "user", text: "Hello" });
+  });
+
+  it("passes the corrections and new words to the store", async () => {
+    fake.user.addMessage.mockResolvedValue({ ok: true, value: message });
+    const body = {
+      role: "user",
+      text: "I never been",
+      corrections: { items: [{ original: "a", corrected: "b" }], explanation: null },
+      newWords: ["definitely"],
+    };
+
+    await add(sessionId, json(body));
+
+    expect(fake.user.addMessage).toHaveBeenCalledWith(sessionId, body);
+  });
+
+  it("responds 400 for an id that is not a uuid, a bad body and a missing Content-Type", async () => {
+    expect((await add("abc", json({ role: "user", text: "Hi" }))).status).toBe(400);
+    expect((await add(sessionId, json({ role: "user", text: "" }))).status).toBe(400);
+    expect((await add(sessionId, json({ role: "user", text: "Hi" }), await authed())).status).toBe(
+      400,
+    );
+    expect(fake.user.addMessage).not.toHaveBeenCalled();
+  });
+
+  it("responds 400 when the body carries an apiKey field", async () => {
+    const res = await add(sessionId, json({ role: "user", text: "Hi", apiKey: "x" }));
+    expect(res.status).toBe(400);
+    expect(fake.user.addMessage).not.toHaveBeenCalled();
+  });
+
+  it("responds 404 when the session is not visible", async () => {
+    fake.user.addMessage.mockResolvedValue({ ok: true, value: null });
+    expect((await add(sessionId, json({ role: "user", text: "Hi" }))).status).toBe(404);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.addMessage.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await add(sessionId, json({ role: "user", text: "Hi" }))).status).toBe(503);
+  });
+});
+
+describe("POST /sessions/:id/usage", () => {
+  const usage = {
+    model: TUTOR_MODEL,
+    inputTokens: 700,
+    outputTokens: 150,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+  };
+
+  async function post(id: string, body: string, headers?: Record<string, string>) {
+    return app.request(`/sessions/${id}/usage`, {
+      method: "POST",
+      headers: headers ?? (await authed(jsonType)),
+      body,
+    });
+  }
+
+  it("adds the usage times the price", async () => {
+    fake.user.addSessionCost.mockResolvedValue({
+      ok: true,
+      value: { ...session, costUsd: 0.000145 },
+    });
+
+    const res = await post(sessionId, json(usage));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ...session, costUsd: 0.000145 });
+    expect(fake.user.addSessionCost).toHaveBeenCalledWith(
+      sessionId,
+      usageCostUsd(TUTOR_MODEL, usage),
+    );
+    expect(fake.user.addSessionCost).toHaveBeenCalledWith(sessionId, 0.000145);
+  });
+
+  it("adds 0 for a zero usage", async () => {
+    fake.user.addSessionCost.mockResolvedValue({ ok: true, value: session });
+
+    await post(sessionId, json({ ...usage, inputTokens: 0, outputTokens: 0 }));
+
+    expect(fake.user.addSessionCost).toHaveBeenCalledWith(sessionId, 0);
+  });
+
+  it("responds 400 for an unknown model", async () => {
+    expect((await post(sessionId, json({ ...usage, model: "other" }))).status).toBe(400);
+    expect(fake.user.addSessionCost).not.toHaveBeenCalled();
+  });
+
+  it("responds 400 for a bad id, a negative count and a missing Content-Type", async () => {
+    expect((await post("abc", json(usage))).status).toBe(400);
+    expect((await post(sessionId, json({ ...usage, inputTokens: -1 }))).status).toBe(400);
+    expect((await post(sessionId, json(usage), await authed())).status).toBe(400);
+  });
+
+  it("responds 400 when the body carries an apiKey field", async () => {
+    expect((await post(sessionId, json({ ...usage, apiKey: "x" }))).status).toBe(400);
+    expect(fake.user.addSessionCost).not.toHaveBeenCalled();
+  });
+
+  it("responds 404 when the session is not visible", async () => {
+    fake.user.addSessionCost.mockResolvedValue({ ok: true, value: null });
+    expect((await post(sessionId, json(usage))).status).toBe(404);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.addSessionCost.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await post(sessionId, json(usage))).status).toBe(503);
+  });
+});
+
+describe("POST /sessions/:id/end", () => {
+  async function end(id: string) {
+    return app.request(`/sessions/${id}/end`, { method: "POST", headers: await authed() });
+  }
+
+  it("responds 200 with the ended session", async () => {
+    fake.user.endSession.mockResolvedValue({ ok: true, value: { ...session, status: "ended" } });
+
+    const res = await end(sessionId);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ...session, status: "ended" });
+    expect(fake.user.endSession).toHaveBeenCalledWith(sessionId);
+  });
+
+  it("responds 400 for an id that is not a uuid", async () => {
+    expect((await end("abc")).status).toBe(400);
+    expect(fake.user.endSession).not.toHaveBeenCalled();
+  });
+
+  it("responds 404 when the session is not visible", async () => {
+    fake.user.endSession.mockResolvedValue({ ok: true, value: null });
+    expect((await end(sessionId)).status).toBe(404);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.endSession.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await end(sessionId)).status).toBe(503);
   });
 });
 
@@ -605,5 +901,35 @@ describe("typed client (data routes)", () => {
     expect(profileRes.status).toBe(200);
     expect(await activeRes.json()).toEqual({ activeSession: null });
     expect(weekRes.status).toBe(200);
+  });
+
+  it("exposes the chat routes through AppType", async () => {
+    fake.user.listSessionCostsSince.mockResolvedValue({ ok: true, value: [] });
+    fake.user.addMessage.mockResolvedValue({ ok: true, value: message });
+    fake.user.addSessionCost.mockResolvedValue({ ok: true, value: session });
+    fake.user.endSession.mockResolvedValue({ ok: true, value: session });
+    const client = testClient(app, undefined, undefined, { headers: await authed() });
+
+    const spendRes = await client.sessions.spend.$get({ query: { tz: "UTC" } });
+    const messageRes = await client.sessions[":id"].messages.$post({
+      param: { id: sessionId },
+      json: { role: "user", text: "Hi" },
+    });
+    const usageRes = await client.sessions[":id"].usage.$post({
+      param: { id: sessionId },
+      json: {
+        model: TUTOR_MODEL,
+        inputTokens: 1,
+        outputTokens: 1,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+      },
+    });
+    const endRes = await client.sessions[":id"].end.$post({ param: { id: sessionId } });
+
+    expect(spendRes.status).toBe(200);
+    expect(messageRes.status).toBe(201);
+    expect(usageRes.status).toBe(200);
+    expect(endRes.status).toBe(200);
   });
 });

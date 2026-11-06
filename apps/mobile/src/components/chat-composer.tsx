@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { composerInputStyle, sendButtonStyle } from "@/components/chat-composer-style";
 import { Icon } from "@/components/icon";
 import { size, spacing, strokeWidth } from "@/constants/theme";
-import { canSend } from "@/utils/chat-state";
+import { MAX_MESSAGE_LENGTH, canSend } from "@/utils/chat-state";
 
 export function ChatComposer({
   value,
@@ -11,15 +11,18 @@ export function ChatComposer({
   onSend,
   placeholder,
   locked,
+  busy,
 }: {
   value: string;
   onChangeText: (text: string) => void;
   onSend: () => void;
   placeholder: string;
   locked: boolean;
+  // INFO: busy disables Send while a reply is pending; the input keeps its open look.
+  busy?: boolean;
 }) {
   const input = composerInputStyle({ locked });
-  const enabled = canSend(value, locked);
+  const enabled = canSend(value, locked, busy);
   return (
     <View style={styles.row}>
       <TextInput
@@ -29,6 +32,7 @@ export function ChatComposer({
         placeholder={placeholder}
         placeholderTextColor={input.placeholderColor}
         editable={!locked}
+        maxLength={MAX_MESSAGE_LENGTH}
         accessibilityLabel="Message"
       />
       <SendButton enabled={enabled} onSend={onSend} />

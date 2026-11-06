@@ -1,6 +1,8 @@
 import type {
   ActiveSession,
   Message,
+  MessageCreate,
+  SessionWithMessages,
   Profile,
   ProfileUpdate,
   Session,
@@ -18,8 +20,14 @@ export type UserStore = {
   getActiveSession(): Promise<StoreOutcome<ActiveSession | null>>;
   createSession(input: { topicId: TopicId | null; title: string }): Promise<StoreOutcome<Session>>;
   // INFO: null means the session is not visible to the caller (missing or another user's).
-  listMessages(sessionId: string): Promise<StoreOutcome<Message[] | null>>;
+  getSessionWithMessages(sessionId: string): Promise<StoreOutcome<SessionWithMessages | null>>;
+  addMessage(sessionId: string, input: MessageCreate): Promise<StoreOutcome<Message | null>>;
+  addSessionCost(sessionId: string, amountUsd: number): Promise<StoreOutcome<Session | null>>;
+  endSession(sessionId: string): Promise<StoreOutcome<Session | null>>;
   listSessionStarts(since: string): Promise<StoreOutcome<string[]>>;
+  listSessionCostsSince(
+    since: string,
+  ): Promise<StoreOutcome<{ createdAt: string; costUsd: number }[]>>;
 };
 
 export type Store = { forUser(caller: Caller): UserStore };

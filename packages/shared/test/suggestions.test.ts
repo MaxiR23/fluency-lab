@@ -18,7 +18,9 @@ import { describe, expect, it } from "vitest";
 import { GOALS, LEVELS, type Goal } from "../src/profile-values";
 import {
   STARTERS,
+  STARTER_IDS,
   allSuggestions,
+  starterById,
   suggestTopics,
   type Starter,
   type SuggestionInput,
@@ -266,5 +268,21 @@ describe("allSuggestions", () => {
     const result = allSuggestions(input({ goals: ["work"] }), catalog);
     const exams = result.find((entry) => entry.id === "e1");
     expect(exams).toMatchObject({ tag: "New topic", why: "Something different to try" });
+  });
+});
+
+describe("starterById", () => {
+  it("finds a known starter", () => {
+    expect(starterById("tech-app")).toBe(STARTERS.find((entry) => entry.id === "tech-app"));
+  });
+
+  it("returns undefined for an unknown id", () => {
+    expect(starterById("nope")).toBeUndefined();
+  });
+});
+
+describe("STARTER_IDS", () => {
+  it("lists every starter id in order", () => {
+    expect([...STARTER_IDS]).toEqual(STARTERS.map((entry) => entry.id));
   });
 });
