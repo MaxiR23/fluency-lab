@@ -28,6 +28,7 @@ import {
 } from "@/utils/chat-opening";
 import { spendLevel } from "@/utils/spend-limit";
 import { tutorPrompt } from "@/utils/tutor-prompt";
+import { groundCorrections } from "@/utils/tutor-reply";
 
 // INFO: the longest message the API saves (messageCreateSchema).
 export const MAX_MESSAGE_LENGTH = 4000;
@@ -245,24 +246,24 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
       };
     case "reply_received": {
       const pending = c.pending ?? "";
+      const reply: TutorReply = {
+        ...event.reply,
+        ...groundCorrections(pending, event.reply.corrections, event.reply.explanation),
+      };
       const id = c.messages.length;
       const user: ChatMessage = {
         id: `message-${id}`,
         role: "user",
         text: pending,
-        corrections: event.reply.corrections,
-        explanation: event.reply.explanation,
-        newWords: event.reply.newWords,
+        corrections: reply.corrections,
+        explanation: reply.explanation,
+        newWords: reply.newWords,
       };
       return {
         ...c,
-        messages: [
-          ...c.messages,
-          user,
-          localMessage(`message-${id + 1}`, "tutor", event.reply.reply),
-        ],
-        writes: [...c.writes, ...replyWrites(pending, event.reply)],
-        spentUsd: round8(c.spentUsd + usageCostUsd(event.reply.model, event.reply.usage)),
+        messages: [...c.messages, user, localMessage(`message-${id + 1}`, "tutor", reply.reply)],
+        writes: [...c.writes, ...replyWrites(pending, reply)],
+        spentUsd: round8(c.spentUsd + usageCostUsd(reply.model, reply.usage)),
         pending: null,
         phase: "saving",
       };

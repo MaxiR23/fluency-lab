@@ -5,6 +5,7 @@
 // Tested:
 // - startConversation for a free chat, a starter, a topic and a resumed session
 // - conversationReducer and nextStep: the order of the outside calls of a turn
+// - A reply's corrections are grounded in the learner's message before they are shown or saved
 // - Failures: an AI failure restores the draft, a save failure resumes at the failed write
 // - retryKind, sendState and busy
 //
@@ -325,6 +326,54 @@ describe("a first turn", () => {
       },
     ]);
     expect(afterReply.phase).toBe("saving");
+  });
+
+  it("drops a correction whose original is not in the learner's message from the shown message and the saved write", () => {
+    const mixed: TutorReply = {
+      ...reply,
+      corrections: [
+        { original: "I never been", corrected: "I've never been" },
+        { original: "I'm most exited", corrected: "I'm most excited" },
+      ],
+    };
+    const c = play(typed(free(), "I never been to Rome"), {
+      ask: { type: "reply_received", reply: mixed },
+    }).c;
+    const kept = [{ original: "I never been", corrected: "I've never been" }];
+    expect(c.messages[1]).toMatchObject({
+      role: "user",
+      corrections: kept,
+      explanation: "Use the present perfect.",
+    });
+    const userWrite = apply(
+      typed(free(), "I never been to Rome"),
+      { type: "session_created", session },
+      { type: "write_done" },
+      { type: "reply_received", reply: mixed },
+    ).writes[0];
+    expect(userWrite).toEqual({
+      kind: "message",
+      input: {
+        role: "user",
+        text: "I never been to Rome",
+        corrections: { items: kept, explanation: "Use the present perfect." },
+        newWords: ["definitely"],
+      },
+    });
+  });
+
+  it("drops the explanation and saves no corrections when every original is invented", () => {
+    const c = apply(
+      typed(free(), "Hello"),
+      { type: "session_created", session },
+      { type: "write_done" },
+      { type: "reply_received", reply },
+    );
+    expect(c.messages[1]).toMatchObject({ role: "user", corrections: [], explanation: null });
+    expect(c.writes[0]).toEqual({
+      kind: "message",
+      input: { role: "user", text: "Hello", newWords: ["definitely"] },
+    });
   });
 
   it("omits corrections and new words when the reply has none", () => {

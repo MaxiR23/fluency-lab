@@ -53,3 +53,24 @@ export function toTutorReply(payload: TutorReplyPayload): NormalizedReply | null
     newWords: newWords.slice(0, MAX_WORDS),
   };
 }
+
+export type GroundedCorrections = { corrections: Correction[]; explanation: string | null };
+
+function comparable(text: string): string {
+  return text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+// INFO: the tutor can invent or rewrite an original; only text the learner wrote in
+// this message may be shown or saved as their mistake.
+export function groundCorrections(
+  message: string,
+  corrections: readonly Correction[],
+  explanation: string | null,
+): GroundedCorrections {
+  const written = comparable(message);
+  const kept = corrections.filter((item) => {
+    const original = comparable(item.original);
+    return original !== "" && written.includes(original);
+  });
+  return { corrections: kept, explanation: kept.length === 0 ? null : explanation };
+}
