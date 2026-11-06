@@ -9,6 +9,7 @@ import { renderRouter } from "expo-router/testing-library";
 import RootLayout from "@/app/_layout";
 import ApiKey from "@/app/api-key";
 import Chat from "@/app/chat";
+import Chats from "@/app/chats";
 import CreateAccount from "@/app/create-account";
 import ForgotPassword from "@/app/forgot-password";
 import Home from "@/app/(tabs)/index";
@@ -31,6 +32,7 @@ export async function renderApp(initialUrl: string, session: AuthSession | null)
       "(tabs)/progress": Progress,
       "(tabs)/settings": Settings,
       chat: Chat,
+      chats: Chats,
       suggestions: Suggestions,
       "api-key": ApiKey,
       onboarding: Onboarding,

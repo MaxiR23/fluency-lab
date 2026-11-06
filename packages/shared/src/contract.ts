@@ -116,6 +116,10 @@ export const activeSessionResponseSchema = z.object({
   activeSession: activeSessionSchema.nullable(),
 });
 
+export const openSessionsResponseSchema = z.object({
+  sessions: z.array(activeSessionSchema),
+});
+
 export const sessionWeekSchema = z.object({
   weekStart: z.iso.date(),
   today: z.iso.date(),

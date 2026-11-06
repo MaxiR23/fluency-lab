@@ -323,10 +323,44 @@ describe("textStyle", () => {
       "cardHeading",
       "cardBody",
       "tagOutline",
+      "screenTitle",
+      "intro",
+      "swipeAction",
+      "swipeActionDanger",
     ];
     for (const variant of variants) {
       expect(Object.values(fontFamily)).toContain(textStyle(variant).fontFamily);
     }
+  });
+
+  it("draws screenTitle in bold at the card heading size, not centered", () => {
+    expect(textStyle("screenTitle")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.cardHeading,
+      color: colors.text,
+    });
+  });
+
+  it("draws intro muted at the small size with the small line height", () => {
+    expect(textStyle("intro")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.small,
+      color: colors.textMuted,
+      lineHeight: lineHeight.small,
+    });
+  });
+
+  it("draws swipeAction semibold at the xsmall size in the text color and swipeActionDanger in the error color", () => {
+    expect(textStyle("swipeAction")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.xsmall,
+      color: colors.text,
+    });
+    expect(textStyle("swipeActionDanger")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.xsmall,
+      color: colors.error,
+    });
   });
 
   it("draws muted in the muted color", () => {

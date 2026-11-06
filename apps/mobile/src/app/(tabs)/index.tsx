@@ -15,7 +15,7 @@ import { WeekStrip } from "@/components/week-strip";
 import { colors, spacing } from "@/constants/theme";
 import { useHome } from "@/hooks/use-home";
 import { dataFailureMessage } from "@/utils/data-message";
-import { avatarInitial, continueCard, greeting } from "@/utils/home";
+import { avatarInitial, continueCard, greeting, seeAllLabel } from "@/utils/home";
 
 function openChat(params?: { starter: string } | { session: string }) {
   router.push(params === undefined ? "/chat" : { pathname: "/chat", params });
@@ -23,6 +23,10 @@ function openChat(params?: { starter: string } | { session: string }) {
 
 function openAll() {
   router.push("/suggestions");
+}
+
+function openChats() {
+  router.push("/chats");
 }
 
 export default function Home() {
@@ -51,6 +55,7 @@ export default function Home() {
   const { profile } = state;
   const { activeSession } = state;
   const card = activeSession === null ? null : continueCard(activeSession, state.loadedAt);
+  const seeAll = seeAllLabel(state.openCount);
   return (
     <Screen edges={["left", "right"]}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -67,7 +72,11 @@ export default function Home() {
         <HeroCard onPress={() => openChat()} />
         {card === null || activeSession === null ? null : (
           <View style={styles.section}>
-            <SectionHeader title="Continue" />
+            <SectionHeader
+              title="Continue"
+              actionLabel={seeAll ?? undefined}
+              onAction={openChats}
+            />
             <ActionCard
               title={card.title}
               meta={card.meta}

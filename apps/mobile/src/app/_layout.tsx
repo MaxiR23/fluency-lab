@@ -6,6 +6,7 @@ import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { OnboardingProvider, useOnboarding } from "@/hooks/use-onboarding";
@@ -52,6 +53,7 @@ function RootNavigator({ fontsSettled }: { fontsSettled: boolean }) {
         <Stack.Screen name="chat" />
         <Stack.Screen name="api-key" />
         <Stack.Screen name="suggestions" />
+        <Stack.Screen name="chats" />
       </Stack.Protected>
       <Stack.Protected guard={entry === "onboarding"}>
         <Stack.Screen name="onboarding" />
@@ -73,15 +75,18 @@ export default function RootLayout() {
     [fontFamily.bold]: PlusJakartaSans_700Bold,
   });
 
+  // INFO: ReanimatedSwipeable needs the app wrapped in GestureHandlerRootView (its docs).
   return (
-    <KeyboardProvider>
-      <ThemeProvider value={navigationTheme}>
-        <SessionProvider>
-          <OnboardingProvider>
-            <RootNavigator fontsSettled={isFontLoadSettled(loaded, error)} />
-          </OnboardingProvider>
-        </SessionProvider>
-      </ThemeProvider>
-    </KeyboardProvider>
+    <GestureHandlerRootView>
+      <KeyboardProvider>
+        <ThemeProvider value={navigationTheme}>
+          <SessionProvider>
+            <OnboardingProvider>
+              <RootNavigator fontsSettled={isFontLoadSettled(loaded, error)} />
+            </OnboardingProvider>
+          </SessionProvider>
+        </ThemeProvider>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 }

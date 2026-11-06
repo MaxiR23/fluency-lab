@@ -4,6 +4,7 @@
 //
 // Tested:
 // - toProfile, toSession and toMessage rename snake_case rows and reject bad rows
+// - toOpenSession reads a session row with its newest embedded message
 // - toSessionStart reads the start time of a session row
 // - toSessionCost reads the start time and the cost of a session row
 // - toProfilePatch renames an update to columns
@@ -18,6 +19,7 @@
 import { describe, expect, it } from "vitest";
 import {
   toMessage,
+  toOpenSession,
   toProfile,
   toProfilePatch,
   toSession,
@@ -255,5 +257,33 @@ describe("toSessionCost", () => {
   it("returns null for a row without a cost or with a bad date", () => {
     expect(toSessionCost({ created_at: stamp })).toBeNull();
     expect(toSessionCost({ created_at: "yesterday", cost_usd: 1 })).toBeNull();
+  });
+});
+
+describe("toOpenSession", () => {
+  it("maps a session row with its newest message", () => {
+    expect(toOpenSession({ ...sessionRow, messages: [messageRow] })).toMatchObject({
+      session: { id, title: "Music" },
+      lastMessage: { text: "Hi", role: "tutor" },
+    });
+  });
+
+  it("maps a session with no messages to a null last message", () => {
+    expect(toOpenSession({ ...sessionRow, messages: [] })).toMatchObject({
+      session: { id },
+      lastMessage: null,
+    });
+  });
+
+  it("returns null for a bad session row", () => {
+    expect(toOpenSession({ id, messages: [] })).toBeNull();
+  });
+
+  it("returns null for a bad embedded message", () => {
+    expect(toOpenSession({ ...sessionRow, messages: [{ id }] })).toBeNull();
+  });
+
+  it("returns null without a messages list", () => {
+    expect(toOpenSession(sessionRow)).toBeNull();
   });
 });

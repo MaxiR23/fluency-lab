@@ -6,6 +6,7 @@
 // - Loading, with data, expected empty (no Continue, empty week) and error states
 // - The greeting, the avatar, the week, Free chat, Continue and the suggestions
 // - Free chat, Continue and a suggestion open Chat, and See all opens the list
+// - See all (N) next to Continue with more than one open session, opening Open chats
 // - The tab bar: Home is the current tab and not a link or a button
 // - Signed out users cannot reach Home
 //
@@ -94,12 +95,14 @@ describe("Home", () => {
       ok: true,
       value: weekWith(["2026-11-02", "2026-11-04", "2026-11-05"]),
     });
-    fakeData.getActiveSession.mockResolvedValue({
+    fakeData.listOpenSessions.mockResolvedValue({
       ok: true,
-      value: activeSessionWith(
-        { topicId: "job_interviews", title: "Weekend plans" },
-        { createdAt: new Date(Date.now() - 24 * 60 * 60_000).toISOString() },
-      ),
+      value: [
+        activeSessionWith(
+          { topicId: "job_interviews", title: "Weekend plans" },
+          { createdAt: new Date(Date.now() - 24 * 60 * 60_000).toISOString() },
+        ),
+      ],
     });
     await renderApp("/", fakeSession());
     expect(screen.getByText(greeting("Maxi", new Date()))).toBeTruthy();
@@ -182,8 +185,8 @@ describe("Home", () => {
     expect(screen.getByText(dataFailureMessage("unauthorized"))).toBeTruthy();
   });
 
-  it("draws the generic message when the active session read is unavailable", async () => {
-    fakeData.getActiveSession.mockResolvedValue({ ok: false, failure: "unavailable" });
+  it("draws the generic message when the open sessions read is unavailable", async () => {
+    fakeData.listOpenSessions.mockResolvedValue({ ok: false, failure: "unavailable" });
     await renderApp("/", fakeSession());
     expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
   });
@@ -212,14 +215,48 @@ describe("Home", () => {
   });
 
   it("opens Chat from Continue", async () => {
-    fakeData.getActiveSession.mockResolvedValue({
+    fakeData.listOpenSessions.mockResolvedValue({
       ok: true,
-      value: activeSessionWith({ title: "Weekend plans" }),
+      value: [activeSessionWith({ title: "Weekend plans" })],
     });
     await renderApp("/", fakeSession());
     await fireEvent.press(screen.getByRole("button", { name: "Weekend plans" }));
     expect(screen).toHavePathname("/chat");
     expect(screen).toHaveSearchParams({ session: "session-1" });
+  });
+
+  it("shows no See all next to Continue with one open session", async () => {
+    fakeData.listOpenSessions.mockResolvedValue({
+      ok: true,
+      value: [activeSessionWith({ title: "Weekend plans" })],
+    });
+    await renderApp("/", fakeSession());
+    expect(screen.getByText("Continue")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /See all \(/ })).toBeNull();
+  });
+
+  it("shows See all (2) next to Continue with two open sessions and Continue is the newest", async () => {
+    fakeData.listOpenSessions.mockResolvedValue({
+      ok: true,
+      value: [
+        activeSessionWith({ id: "session-2", title: "Newest chat" }),
+        activeSessionWith({ id: "session-1", title: "Older chat" }),
+      ],
+    });
+    await renderApp("/", fakeSession());
+    expect(screen.getByRole("link", { name: "See all (2)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Newest chat" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Older chat" })).toBeNull();
+  });
+
+  it("opens Open chats from See all (N)", async () => {
+    fakeData.listOpenSessions.mockResolvedValue({
+      ok: true,
+      value: [activeSessionWith({ id: "session-2" }), activeSessionWith({ id: "session-1" })],
+    });
+    await renderApp("/", fakeSession());
+    await fireEvent.press(screen.getByRole("link", { name: "See all (2)" }));
+    expect(screen).toHavePathname("/chats");
   });
 
   it("opens the list of every suggestion from See all", async () => {

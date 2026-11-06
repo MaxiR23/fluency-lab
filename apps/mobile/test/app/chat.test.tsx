@@ -497,9 +497,9 @@ describe("Chat", () => {
 
   it("Back after a turn keeps the session open and Home offers Continue", async () => {
     withKey();
-    fakeData.getActiveSession.mockResolvedValue({
+    fakeData.listOpenSessions.mockResolvedValue({
       ok: true,
-      value: activeSessionWith({ id: "session-1", title: "Free chat" }),
+      value: [activeSessionWith({ id: "session-1", title: "Free chat" })],
     });
     await renderAppAt("/chat", fakeSession());
     await sendMessage("Hello");

@@ -2,7 +2,7 @@
 // URL or reaches the backend. Wire it with
 // jest.mock("@/data", () => ({ data: fake.fakeData })), where fake is
 // jest.requireActual of this file. Call resetFakeData() in beforeEach: it makes
-// getProfile answer with a completed profile, getActiveSession with no active
+// getProfile answer with a completed profile, listOpenSessions with no open
 // session and getSessionWeek with an empty week (Home reads all three), and
 // getMonthSpend with 0 spent (Chat reads it), so a
 // signed in user lands on Home.
@@ -16,6 +16,8 @@ export const fakeData = {
   getProfile: jest.fn<DataPort["getProfile"]>(),
   updateProfile: jest.fn<DataPort["updateProfile"]>(),
   getActiveSession: jest.fn<DataPort["getActiveSession"]>(),
+  listOpenSessions: jest.fn<DataPort["listOpenSessions"]>(),
+  deleteSession: jest.fn<DataPort["deleteSession"]>(),
   createSession: jest.fn<DataPort["createSession"]>(),
   openSession: jest.fn<DataPort["openSession"]>(),
   addMessage: jest.fn<DataPort["addMessage"]>(),
@@ -88,6 +90,7 @@ export function resetFakeData(): void {
   }
   fakeData.getProfile.mockResolvedValue({ ok: true, value: completedProfile() });
   fakeData.getActiveSession.mockResolvedValue({ ok: true, value: null });
+  fakeData.listOpenSessions.mockResolvedValue({ ok: true, value: [] });
   fakeData.getSessionWeek.mockResolvedValue({ ok: true, value: weekWith([]) });
   fakeData.getMonthSpend.mockResolvedValue({
     ok: true,

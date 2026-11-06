@@ -9,6 +9,7 @@ export type HomeState =
       kind: "ready";
       profile: Profile;
       activeSession: ActiveSession | null;
+      openCount: number;
       week: SessionWeek;
       loadedAt: number;
     };
@@ -18,7 +19,7 @@ export type HomeEvent =
   | {
       type: "loaded";
       profile: DataOutcome<Profile>;
-      active: DataOutcome<ActiveSession | null>;
+      open: DataOutcome<ActiveSession[]>;
       week: DataOutcome<SessionWeek>;
       loadedAt: number;
     };
@@ -27,17 +28,18 @@ export const initialHome: HomeState = { kind: "loading" };
 
 export function homeFromReads(
   profile: DataOutcome<Profile>,
-  active: DataOutcome<ActiveSession | null>,
+  open: DataOutcome<ActiveSession[]>,
   week: DataOutcome<SessionWeek>,
   loadedAt: number,
 ): HomeState {
   if (!profile.ok) return { kind: "failed", failure: profile.failure };
-  if (!active.ok) return { kind: "failed", failure: active.failure };
+  if (!open.ok) return { kind: "failed", failure: open.failure };
   if (!week.ok) return { kind: "failed", failure: week.failure };
   return {
     kind: "ready",
     profile: profile.value,
-    activeSession: active.value,
+    activeSession: open.value[0] ?? null,
+    openCount: open.value.length,
     week: week.value,
     loadedAt,
   };
@@ -48,6 +50,6 @@ export function homeReducer(_state: HomeState, event: HomeEvent): HomeState {
     case "load_started":
       return initialHome;
     case "loaded":
-      return homeFromReads(event.profile, event.active, event.week, event.loadedAt);
+      return homeFromReads(event.profile, event.open, event.week, event.loadedAt);
   }
 }

@@ -70,7 +70,10 @@ describe("RootLayout", () => {
   it("renders nothing and keeps the splash while the fonts load", async () => {
     jest.mocked(useFonts).mockReturnValue([false, null]);
     await render(<RootLayout />);
-    expect(screen.toJSON()).toMatchObject({ type: "KeyboardProvider", children: [] });
+    expect(screen.toJSON()).toMatchObject({
+      type: "View",
+      children: [{ type: "KeyboardProvider", children: [] }],
+    });
     expect(SplashScreen.hide).not.toHaveBeenCalled();
     expect(Stack).not.toHaveBeenCalled();
   });
@@ -106,7 +109,10 @@ describe("RootLayout", () => {
   it("keeps the splash and renders nothing while the session loads, with the fonts loaded", async () => {
     jest.mocked(useFonts).mockReturnValue([true, null]);
     await render(<RootLayout />);
-    expect(screen.toJSON()).toMatchObject({ type: "KeyboardProvider", children: [] });
+    expect(screen.toJSON()).toMatchObject({
+      type: "View",
+      children: [{ type: "KeyboardProvider", children: [] }],
+    });
     expect(SplashScreen.hide).not.toHaveBeenCalled();
     expect(Stack).not.toHaveBeenCalled();
   });
