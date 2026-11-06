@@ -18,10 +18,12 @@ import { describe, expect, it } from "@jest/globals";
 import {
   hasFieldErrors,
   normalizeEmail,
+  normalizeName,
   readEmailParam,
   validateCredentials,
   validateResetConfirm,
   validateResetRequest,
+  validateSignUp,
 } from "@/utils/auth-form";
 import { generatedSecret } from "../helpers/generated-secret";
 
@@ -158,5 +160,41 @@ describe("readEmailParam", () => {
 
   it("returns null for an empty array", () => {
     expect(readEmailParam([])).toBeNull();
+  });
+});
+
+describe("normalizeName", () => {
+  it("trims the name", () => {
+    expect(normalizeName("  Ana Ruiz  ")).toBe("Ana Ruiz");
+  });
+});
+
+describe("validateSignUp", () => {
+  const password = generatedSecret("password");
+
+  it("returns no errors for a name, an email and a password", () => {
+    expect(validateSignUp({ name: "Ana", email, password })).toEqual({});
+  });
+
+  it("asks for the name when it is empty", () => {
+    expect(validateSignUp({ name: "", email, password })).toEqual({ name: "Enter your name." });
+  });
+
+  it("asks for the name when it is only spaces", () => {
+    expect(validateSignUp({ name: "   ", email, password })).toEqual({
+      name: "Enter your name.",
+    });
+  });
+
+  it("keeps the email and password errors beside the name error", () => {
+    expect(validateSignUp({ name: "", email: "", password: "" })).toEqual({
+      name: "Enter your name.",
+      email: "Enter your email.",
+      password: "Enter your password.",
+    });
+  });
+
+  it("trims the name", () => {
+    expect(normalizeName(" Ana ")).toBe("Ana");
   });
 });

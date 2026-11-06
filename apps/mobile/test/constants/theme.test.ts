@@ -76,8 +76,8 @@ describe("theme", () => {
     expect(radius).toEqual({ control: 18, badge: 12 });
   });
 
-  it("holds the design's control, badge and icon sizes", () => {
-    expect(size).toEqual({ control: 52, badge: 40, icon: 22 });
+  it("holds the design's control, badge, icon and progress bar sizes", () => {
+    expect(size).toEqual({ control: 52, badge: 40, icon: 22, progressBar: 4 });
     expect(strokeWidth.icon).toBe(1.8);
   });
 

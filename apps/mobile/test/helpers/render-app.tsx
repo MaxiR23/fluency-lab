@@ -9,6 +9,7 @@ import RootLayout from "@/app/_layout";
 import CreateAccount from "@/app/create-account";
 import ForgotPassword from "@/app/forgot-password";
 import Home from "@/app/index";
+import Onboarding from "@/app/onboarding";
 import ResetPassword from "@/app/reset-password";
 import SignIn from "@/app/sign-in";
 import type { AuthSession } from "@/auth/auth-port";
@@ -19,6 +20,7 @@ export async function renderApp(initialUrl: string, session: AuthSession | null)
     {
       _layout: RootLayout,
       index: Home,
+      onboarding: Onboarding,
       "sign-in": SignIn,
       "create-account": CreateAccount,
       "forgot-password": ForgotPassword,

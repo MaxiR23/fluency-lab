@@ -1,9 +1,13 @@
-export type FieldErrors = { email?: string; password?: string; code?: string };
+export type FieldErrors = { name?: string; email?: string; password?: string; code?: string };
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function normalizeEmail(email: string): string {
   return email.trim();
+}
+
+export function normalizeName(name: string): string {
+  return name.trim();
 }
 
 function emailError(email: string): string | undefined {
@@ -25,6 +29,17 @@ export function validateCredentials(input: { email: string; password: string }):
   return withoutUndefined({
     email: emailError(input.email),
     password: input.password.length === 0 ? "Enter your password." : undefined,
+  });
+}
+
+export function validateSignUp(input: {
+  name: string;
+  email: string;
+  password: string;
+}): FieldErrors {
+  return withoutUndefined({
+    ...validateCredentials(input),
+    name: normalizeName(input.name) === "" ? "Enter your name." : undefined,
   });
 }
 

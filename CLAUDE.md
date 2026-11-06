@@ -10,8 +10,8 @@ mistakes, new words and progress, and the suggestions get better with
 use. Following a plan is optional; free practice is the default.
 
 Status: Expo project in a pnpm monorepo. The design layer exists (tokens
-and base components); email sign-in, sign-up, password reset and a Home
-placeholder are built, the other screens are not. The screen map, the
+and base components); email sign-in, sign-up, password reset, onboarding and
+a Home placeholder are built, the other screens are not. The screen map, the
 palette and the Home design are decided (see README.md).
 
 ## Stack
@@ -27,7 +27,7 @@ palette and the Home design are decided (see README.md).
   `@fluency-lab` scope, so `pnpm --filter api` works.
 - Inside `apps/mobile/src/`: `app/` (routes only), `auth/` (the auth and Apple
   ports, their adapters and the Apple sign-in flow), `components/` (shared components), `constants/` (`theme.ts`, the only source of visual values),
-  `data/` (the data port and its Hono adapter), `hooks/` (shared hooks) and `utils/` (pure functions not tied to one
+  `data/` (the data port and its Hono adapter), `hooks/` (shared hooks), `keys/` (the key port and its secure-store adapter) and `utils/` (pure functions not tied to one
   component).
 - pnpm is the only package manager. Add Expo packages with
   `pnpm --filter @fluency-lab/mobile exec expo install <package>`, never with npm or npx. AGENTS.md was

@@ -15,7 +15,11 @@ type SessionResult = { data: { session: LibSession | null }; error: LibError };
 
 export type SupabaseAuthClient = {
   signInWithPassword(c: { email: string; password: string }): Promise<SessionResult>;
-  signUp(c: { email: string; password: string }): Promise<SessionResult>;
+  signUp(c: {
+    email: string;
+    password: string;
+    options: { data: { full_name: string } };
+  }): Promise<SessionResult>;
   signInWithIdToken(c: { provider: "apple"; token: string; nonce: string }): Promise<SessionResult>;
   resetPasswordForEmail(email: string): Promise<{ error: LibError }>;
   verifyOtp(p: { email: string; token: string; type: "recovery" }): Promise<SessionResult>;
@@ -129,7 +133,15 @@ export function createSupabaseAuth(client: SupabaseAuthClient): AuthPort {
     signInWithEmail: (input) =>
       guarded(async () => fromSessionResult(await client.signInWithPassword(input))),
     signUpWithEmail: (input) =>
-      guarded(async () => fromOptionalSessionResult(await client.signUp(input))),
+      guarded(async () =>
+        fromOptionalSessionResult(
+          await client.signUp({
+            email: input.email,
+            password: input.password,
+            options: { data: { full_name: input.name } },
+          }),
+        ),
+      ),
     requestPasswordReset: (email) =>
       guarded(async () => fromError(await client.resetPasswordForEmail(email))),
     confirmPasswordReset,

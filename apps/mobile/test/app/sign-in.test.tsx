@@ -28,6 +28,8 @@ import type { FailureCause } from "@/auth/auth-port";
 import { appleNameFailureMessage, authFailureMessage } from "@/utils/auth-message";
 import { emitSession, fakeApple, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { generatedSecret } from "../helpers/generated-secret";
+import { resetFakeData } from "../helpers/fake-data";
+import { resetFakeKeys } from "../helpers/fake-keys";
 import { renderApp } from "../helpers/render-app";
 import { setDev } from "../helpers/set-dev";
 
@@ -43,6 +45,12 @@ jest.mock("expo-apple-authentication", () => ({
     jest.requireActual<typeof import("react-native")>("react-native").Pressable,
   AppleAuthenticationButtonType: { CONTINUE: 1 },
   AppleAuthenticationButtonStyle: { WHITE: 0 },
+}));
+jest.mock("@/data", () => ({
+  data: jest.requireActual<typeof import("../helpers/fake-data")>("../helpers/fake-data").fakeData,
+}));
+jest.mock("@/keys", () => ({
+  keys: jest.requireActual<typeof import("../helpers/fake-keys")>("../helpers/fake-keys").fakeKeys,
 }));
 jest.mock("@/auth", () => {
   const fake = jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth");
@@ -102,6 +110,8 @@ const causeLine =
 describe("Login screen", () => {
   beforeEach(() => {
     resetFakeAuth();
+    resetFakeData();
+    resetFakeKeys();
   });
 
   afterEach(() => {

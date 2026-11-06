@@ -6,7 +6,9 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 
+import { OnboardingProvider, useOnboarding } from "@/hooks/use-onboarding";
 import { SessionProvider, useSession } from "@/hooks/use-session";
+import { appEntry } from "@/utils/onboarding-gate";
 import { isFontLoadSettled } from "@/utils/font-load";
 import { isAppReady } from "@/utils/session-state";
 import { colors, fontFamily } from "@/constants/theme";
@@ -14,8 +16,10 @@ import { colors, fontFamily } from "@/constants/theme";
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator({ fontsSettled }: { fontsSettled: boolean }) {
-  const { state, signedIn } = useSession();
+  const { state } = useSession();
+  const { gate, userId } = useOnboarding();
   const ready = isAppReady(fontsSettled, state);
+  const entry = appEntry(userId, gate);
 
   useEffect(() => {
     if (ready) {
@@ -27,16 +31,20 @@ function RootNavigator({ fontsSettled }: { fontsSettled: boolean }) {
     return null;
   }
 
-  // INFO: sign-in must stay the first screen of the second guard: a signed out
-  // user denied Home lands on the first available screen.
+  // INFO: a user denied a screen lands on the first available one. So onboarding
+  // sits before the auth group: a signed in user who has not finished it lands
+  // there. Sign-in stays the first screen of the last guard, for a signed out user.
   return (
     <Stack
       screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}
     >
-      <Stack.Protected guard={signedIn}>
+      <Stack.Protected guard={entry === "home"}>
         <Stack.Screen name="index" />
       </Stack.Protected>
-      <Stack.Protected guard={!signedIn}>
+      <Stack.Protected guard={entry === "onboarding"}>
+        <Stack.Screen name="onboarding" />
+      </Stack.Protected>
+      <Stack.Protected guard={entry === "signed_out"}>
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="create-account" />
         <Stack.Screen name="forgot-password" />
@@ -55,7 +63,9 @@ export default function RootLayout() {
 
   return (
     <SessionProvider>
-      <RootNavigator fontsSettled={isFontLoadSettled(loaded, error)} />
+      <OnboardingProvider>
+        <RootNavigator fontsSettled={isFontLoadSettled(loaded, error)} />
+      </OnboardingProvider>
     </SessionProvider>
   );
 }

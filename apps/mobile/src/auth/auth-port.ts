@@ -39,6 +39,7 @@ export type AuthPort = {
   signUpWithEmail(input: {
     email: string;
     password: string;
+    name: string;
   }): Promise<AuthOutcome<AuthSession | null>>;
   requestPasswordReset(email: string): Promise<AuthOutcome<null>>;
   confirmPasswordReset(input: {

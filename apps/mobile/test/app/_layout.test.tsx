@@ -23,6 +23,7 @@ import * as SplashScreen from "expo-splash-screen";
 import RootLayout from "@/app/_layout";
 import { fontFamily } from "@/constants/theme";
 import { emitSession, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
+import { resetFakeData } from "../helpers/fake-data";
 
 jest.mock("expo-font", () => ({ useFonts: jest.fn() }));
 jest.mock("expo-splash-screen", () => ({
@@ -35,6 +36,9 @@ jest.mock("expo-router", () => ({
     { Protected: () => null, Screen: () => null },
   ),
 }));
+jest.mock("@/data", () => ({
+  data: jest.requireActual<typeof import("../helpers/fake-data")>("../helpers/fake-data").fakeData,
+}));
 jest.mock("@/auth", () => ({
   auth: jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth").fakeAuth,
 }));
@@ -44,6 +48,7 @@ describe("RootLayout", () => {
     jest.mocked(SplashScreen.hide).mockClear();
     jest.mocked(Stack).mockClear();
     resetFakeAuth();
+    resetFakeData();
   });
 
   it("prevents the splash from hiding when the module loads", () => {

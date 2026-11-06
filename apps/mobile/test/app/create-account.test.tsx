@@ -22,12 +22,20 @@ import { act, fireEvent, screen } from "@testing-library/react-native";
 import { authFailureMessage, signUpPendingMessage } from "@/utils/auth-message";
 import { emitSession, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { generatedSecret } from "../helpers/generated-secret";
+import { resetFakeData } from "../helpers/fake-data";
+import { resetFakeKeys } from "../helpers/fake-keys";
 import { renderApp } from "../helpers/render-app";
 
 jest.mock("expo-font", () => ({ useFonts: jest.fn(() => [true, null]) }));
 jest.mock("expo-splash-screen", () => ({
   preventAutoHideAsync: jest.fn(),
   hide: jest.fn(),
+}));
+jest.mock("@/data", () => ({
+  data: jest.requireActual<typeof import("../helpers/fake-data")>("../helpers/fake-data").fakeData,
+}));
+jest.mock("@/keys", () => ({
+  keys: jest.requireActual<typeof import("../helpers/fake-keys")>("../helpers/fake-keys").fakeKeys,
 }));
 jest.mock("@/auth", () => {
   const fake = jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth");
@@ -49,7 +57,8 @@ async function openForm() {
   await renderApp("/create-account", null);
 }
 
-async function submit(values: { email: string; password: string }) {
+async function submit(values: { name?: string; email: string; password: string }) {
+  await fireEvent.changeText(screen.getByLabelText("Name"), values.name ?? "Ana Ruiz");
   await fireEvent.changeText(screen.getByLabelText("Email"), values.email);
   await fireEvent.changeText(screen.getByLabelText("Password"), values.password);
   await fireEvent.press(screen.getByRole("button", { name: "Create account" }));
@@ -65,6 +74,8 @@ const causeLine =
 describe("Create account screen", () => {
   beforeEach(() => {
     resetFakeAuth();
+    resetFakeData();
+    resetFakeKeys();
   });
 
   it("draws its texts and placeholders", async () => {
@@ -73,12 +84,14 @@ describe("Create account screen", () => {
     expect(screen.getByText("Create your account")).toBeTruthy();
     expect(screen.getByText("Start practicing English by writing.")).toBeTruthy();
     expect(screen.getByLabelText("Password").props.placeholder).toBe("Choose a password");
+    expect(screen.getByLabelText("Name").props.placeholder).toBe("Your name");
     expect(screen.getByText("Already have an account?", { exact: false })).toBeTruthy();
   });
 
   it("shows the field errors and does not call the port when the form is empty", async () => {
     await openForm();
     await fireEvent.press(screen.getByRole("button", { name: "Create account" }));
+    expect(screen.getByText("Enter your name.")).toBeTruthy();
     expect(screen.getByText("Enter your email.")).toBeTruthy();
     expect(screen.getByText("Enter your password.")).toBeTruthy();
     expect(fakeAuth.signUpWithEmail).not.toHaveBeenCalled();
@@ -89,9 +102,39 @@ describe("Create account screen", () => {
     fakeAuth.signUpWithEmail.mockResolvedValue({ ok: true, value: session });
     await openForm();
     await submit({ email: ` ${email} `, password });
-    expect(fakeAuth.signUpWithEmail).toHaveBeenCalledWith({ email, password });
+    expect(fakeAuth.signUpWithEmail).toHaveBeenCalledWith({ email, password, name: "Ana Ruiz" });
     await act(async () => emitSession(session));
     expect(screen).toHavePathname("/");
+  });
+
+  it("draws the name field with its placeholder", async () => {
+    await openForm();
+    const field = screen.getByLabelText("Name");
+    expect(field.props.placeholder).toBe("Your name");
+    expect(field.props.autoCapitalize).toBe("words");
+  });
+
+  it("shows the name error and does not call the port when the name is empty", async () => {
+    await openForm();
+    await fireEvent.changeText(screen.getByLabelText("Email"), email);
+    await fireEvent.changeText(screen.getByLabelText("Password"), password);
+    await fireEvent.press(screen.getByRole("button", { name: "Create account" }));
+    expect(screen.getByText("Enter your name.")).toBeTruthy();
+    expect(fakeAuth.signUpWithEmail).not.toHaveBeenCalled();
+  });
+
+  it("shows the name error when the name is only spaces", async () => {
+    await openForm();
+    await submit({ name: "   ", email, password });
+    expect(screen.getByText("Enter your name.")).toBeTruthy();
+    expect(fakeAuth.signUpWithEmail).not.toHaveBeenCalled();
+  });
+
+  it("sends the trimmed name with the email and password", async () => {
+    fakeAuth.signUpWithEmail.mockResolvedValue({ ok: true, value: null });
+    await openForm();
+    await submit({ name: "  Ana Ruiz  ", email, password });
+    expect(fakeAuth.signUpWithEmail).toHaveBeenCalledWith({ email, password, name: "Ana Ruiz" });
   });
 
   it("shows the confirmation message when no session was issued", async () => {

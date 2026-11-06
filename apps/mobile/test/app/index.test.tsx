@@ -22,6 +22,8 @@ import { StyleSheet } from "react-native";
 import { textStyle } from "@/components/text-style";
 import { authFailureMessage } from "@/utils/auth-message";
 import { emitSession, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
+import { resetFakeData } from "../helpers/fake-data";
+import { resetFakeKeys } from "../helpers/fake-keys";
 import { renderApp } from "../helpers/render-app";
 import { setDev } from "../helpers/set-dev";
 
@@ -32,6 +34,12 @@ jest.mock("expo-font", () => ({ useFonts: jest.fn(() => [true, null]) }));
 jest.mock("expo-splash-screen", () => ({
   preventAutoHideAsync: jest.fn(),
   hide: jest.fn(),
+}));
+jest.mock("@/data", () => ({
+  data: jest.requireActual<typeof import("../helpers/fake-data")>("../helpers/fake-data").fakeData,
+}));
+jest.mock("@/keys", () => ({
+  keys: jest.requireActual<typeof import("../helpers/fake-keys")>("../helpers/fake-keys").fakeKeys,
 }));
 jest.mock("@/auth", () => {
   const fake = jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth");
@@ -49,6 +57,8 @@ function deferred<T>() {
 describe("Home placeholder", () => {
   beforeEach(() => {
     resetFakeAuth();
+    resetFakeData();
+    resetFakeKeys();
   });
 
   afterEach(() => {
