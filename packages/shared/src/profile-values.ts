@@ -9,3 +9,14 @@ export type Goal = (typeof GOALS)[number];
 export type Provider = (typeof PROVIDERS)[number];
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 export type MessageRole = (typeof MESSAGE_ROLES)[number];
+
+export const GOAL_LABELS: Record<Goal, string> = {
+  work: "Work",
+  travel: "Travel",
+  exams: "Exams",
+  conversation: "Everyday conversation",
+};
+
+export function goalLabel(goal: Goal): string {
+  return GOAL_LABELS[goal];
+}

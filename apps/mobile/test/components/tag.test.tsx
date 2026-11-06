@@ -3,7 +3,7 @@
 // Tests for Tag.
 //
 // Tested:
-// - The read-only tag
+// - The read-only tag pill
 //
 // What is covered:
 // - Normal case, edges
@@ -18,20 +18,19 @@ import { StyleSheet } from "react-native";
 
 import { Tag } from "@/components/tag";
 import { textStyle } from "@/components/text-style";
-import { borderWidth, colors, radius, spacing } from "@/constants/theme";
+import { colors, radius, spacing } from "@/constants/theme";
 
 describe("Tag", () => {
-  it("draws its label in the tag style", async () => {
+  it("draws its label in the tag style on a tint pill", async () => {
     await render(<Tag label="Travel" />);
     const label = screen.getByText("Travel");
-    expect(StyleSheet.flatten(label.props.style)).toMatchObject(textStyle("captionLink"));
+    expect(StyleSheet.flatten(label.props.style)).toMatchObject(textStyle("tag"));
     const box = StyleSheet.flatten(label.parent?.props.style);
     expect(box).toMatchObject({
-      borderColor: colors.accentLine,
-      borderWidth: borderWidth.thin,
-      borderRadius: radius.badge,
+      backgroundColor: colors.accentTag,
+      borderRadius: radius.pill,
       paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.xs,
+      paddingVertical: spacing.hair,
     });
   });
 });

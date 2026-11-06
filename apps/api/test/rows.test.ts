@@ -4,6 +4,7 @@
 //
 // Tested:
 // - toProfile, toSession and toMessage rename snake_case rows and reject bad rows
+// - toSessionStart reads the start time of a session row
 // - toProfilePatch renames an update to columns
 //
 // What is covered:
@@ -14,7 +15,7 @@
 // SEE: apps/api/src/rows.ts
 
 import { describe, expect, it } from "vitest";
-import { toMessage, toProfile, toProfilePatch, toSession } from "../src/rows";
+import { toMessage, toProfile, toProfilePatch, toSession, toSessionStart } from "../src/rows";
 
 const id = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e6f";
 const stamp = "2026-01-01T10:00:00+00:00";
@@ -204,5 +205,23 @@ describe("toProfilePatch", () => {
 
   it("keeps a null display name as null", () => {
     expect(toProfilePatch({ displayName: null }, now)).toEqual({ display_name: null });
+  });
+});
+
+describe("toSessionStart", () => {
+  it("returns the created_at of the row", () => {
+    expect(toSessionStart({ created_at: stamp })).toBe(stamp);
+  });
+
+  it("returns null for a missing field", () => {
+    expect(toSessionStart({})).toBeNull();
+  });
+
+  it("returns null for text that is not a timestamp", () => {
+    expect(toSessionStart({ created_at: "yesterday" })).toBeNull();
+  });
+
+  it("returns null for a number", () => {
+    expect(toSessionStart({ created_at: 1 })).toBeNull();
   });
 });

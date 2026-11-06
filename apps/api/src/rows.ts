@@ -36,6 +36,8 @@ const sessionRowSchema = z.object({
   updated_at: z.string(),
 });
 
+const sessionStartRowSchema = z.object({ created_at: z.iso.datetime({ offset: true }) });
+
 const messageRowSchema = z.object({
   id: z.string(),
   session_id: z.string(),
@@ -78,6 +80,11 @@ export function toSession(row: unknown): Session | null {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+}
+
+export function toSessionStart(row: unknown): string | null {
+  const parsed = sessionStartRowSchema.safeParse(row);
+  return parsed.success ? parsed.data.created_at : null;
 }
 
 export function toMessage(row: unknown): Message | null {

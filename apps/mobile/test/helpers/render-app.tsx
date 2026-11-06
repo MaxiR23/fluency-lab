@@ -18,6 +18,7 @@ import TabsLayout from "@/app/(tabs)/_layout";
 import Onboarding from "@/app/onboarding";
 import ResetPassword from "@/app/reset-password";
 import SignIn from "@/app/sign-in";
+import Suggestions from "@/app/suggestions";
 import type { AuthSession } from "@/auth/auth-port";
 import { emitSession } from "./fake-auth";
 
@@ -30,6 +31,7 @@ export async function renderApp(initialUrl: string, session: AuthSession | null)
       "(tabs)/progress": Progress,
       "(tabs)/settings": Settings,
       chat: Chat,
+      suggestions: Suggestions,
       "api-key": ApiKey,
       onboarding: Onboarding,
       "sign-in": SignIn,

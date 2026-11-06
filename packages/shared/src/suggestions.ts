@@ -1,16 +1,22 @@
-import type { Goal, Level } from "./profile-values";
+import { GOALS, goalLabel, type Goal, type Level } from "./profile-values";
 import { TOPIC_IDS, topicLabel, type TopicId } from "./topics";
 
-export type Starter = {
-  id: string;
-  topicId: TopicId;
-  title: string;
-  levels: readonly Level[];
-  goals: readonly Goal[];
-  tags: readonly string[];
-};
+type StarterBase = { id: string; levels: readonly Level[]; title: string; opener: string };
 
-export type Suggestion = { id: string; topicId: TopicId; title: string; tags: string[] };
+export type Starter = StarterBase &
+  ({ topicId: TopicId; goal: null } | { topicId: null; goal: Goal });
+
+export type SuggestionTag = "Your interests" | "For your goal" | "New topic";
+
+export type Suggestion = {
+  id: string;
+  title: string;
+  opener: string;
+  topicId: TopicId | null;
+  goal: Goal | null;
+  tag: SuggestionTag;
+  why: string;
+};
 
 export type SuggestionInput = {
   level: Level | null;
@@ -18,210 +24,443 @@ export type SuggestionInput = {
   topics: readonly TopicId[];
 };
 
-export const SUGGESTION_LIMIT = 3;
+export const SUGGESTION_LIMIT = 6;
 
+const ALL: readonly Level[] = ["beginner", "intermediate", "advanced"];
 const EASY: readonly Level[] = ["beginner", "intermediate"];
 const HARD: readonly Level[] = ["intermediate", "advanced"];
+const FIRST: readonly Level[] = ["beginner"];
 
-// INFO: per topic, one starter for beginner and intermediate and one for
-// intermediate and advanced, so every topic has a starter at every level.
+// INFO: the content comes from the approved starter catalog, in its order.
 export const STARTERS: readonly Starter[] = [
   {
-    id: "technology-1",
+    id: "tech-app",
     topicId: "technology",
-    title: "Describe the phone you use every day",
-    levels: EASY,
-    goals: ["conversation"],
-    tags: ["Everyday"],
+    goal: null,
+    levels: ALL,
+    title: "The app you use most",
+    opener: "Which app do you open most every day, and what do you use it for?",
   },
   {
-    id: "technology-2",
+    id: "tech-ai",
     topicId: "technology",
-    title: "Explain how AI could change your job",
+    goal: null,
     levels: HARD,
-    goals: ["work"],
-    tags: ["Opinion"],
+    title: "AI in your daily life",
+    opener: "Do you use AI tools in your life or work? What do you think they are good and bad at?",
   },
   {
-    id: "sports-1",
+    id: "tech-gadget",
+    topicId: "technology",
+    goal: null,
+    levels: EASY,
+    title: "A gadget you'd like to buy",
+    opener: "If you could buy any gadget tomorrow, what would it be and why?",
+  },
+  {
+    id: "sports-match",
     topicId: "sports",
-    title: "Talk about a sport you like to watch",
-    levels: EASY,
-    goals: ["conversation"],
-    tags: ["Everyday"],
+    goal: null,
+    levels: ALL,
+    title: "A match you'll never forget",
+    opener: "Tell me about a game or match you watched that you still remember. What happened?",
   },
   {
-    id: "sports-2",
+    id: "sports-play",
     topicId: "sports",
-    title: "Debate whether athletes are paid too much",
-    levels: HARD,
-    goals: ["exams"],
-    tags: ["Debate"],
+    goal: null,
+    levels: EASY,
+    title: "Sports you play",
+    opener: "Do you play any sport? How often, and who do you play with?",
   },
   {
-    id: "music-1",
+    id: "sports-fan",
+    topicId: "sports",
+    goal: null,
+    levels: HARD,
+    title: "Being a fan",
+    opener: "What team do you support? How did you start following them?",
+  },
+  {
+    id: "music-song",
     topicId: "music",
-    title: "Tell me about your favorite song",
+    goal: null,
     levels: EASY,
-    goals: ["conversation"],
-    tags: ["Everyday"],
+    title: "A song on repeat",
+    opener: "What song are you listening to a lot these days? What do you like about it?",
   },
   {
-    id: "music-2",
+    id: "music-concert",
     topicId: "music",
-    title: "Discuss how streaming changed music",
+    goal: null,
     levels: HARD,
-    goals: ["exams"],
-    tags: ["Opinion"],
+    title: "Your best concert",
+    opener: "What is the best concert you have been to? Describe the night.",
   },
   {
-    id: "movies_and_series-1",
+    id: "music-taste",
+    topicId: "music",
+    goal: null,
+    levels: ALL,
+    title: "How your taste changed",
+    opener: "Has your taste in music changed over the years? What did you listen to as a teenager?",
+  },
+  {
+    id: "movies-recommend",
     topicId: "movies_and_series",
-    title: "Recommend a series to a friend",
-    levels: EASY,
-    goals: ["conversation"],
-    tags: ["Everyday"],
+    goal: null,
+    levels: ALL,
+    title: "Recommend a series",
+    opener:
+      "What series would you recommend to a friend right now? Try to convince me to watch it.",
   },
   {
-    id: "movies_and_series-2",
+    id: "movies-ending",
     topicId: "movies_and_series",
-    title: "Review a movie you watched recently",
+    goal: null,
     levels: HARD,
-    goals: ["exams", "conversation"],
-    tags: ["Review"],
+    title: "An ending you'd change",
+    opener: "Is there a movie or series ending you didn't like? How would you change it?",
   },
   {
-    id: "food-1",
+    id: "movies-weekend",
+    topicId: "movies_and_series",
+    goal: null,
+    levels: FIRST,
+    title: "Movie night",
+    opener: "What kind of movies do you like to watch on the weekend?",
+  },
+  {
+    id: "food-cook",
     topicId: "food",
-    title: "Describe your favorite meal",
+    goal: null,
     levels: EASY,
-    goals: ["conversation"],
-    tags: ["Everyday"],
+    title: "A dish you cook well",
+    opener: "What is a dish you can cook well? Tell me how you make it.",
   },
   {
-    id: "food-2",
+    id: "food-restaurant",
     topicId: "food",
-    title: "Order dinner and handle a mistake in the bill",
-    levels: HARD,
-    goals: ["travel"],
-    tags: ["Role play"],
+    goal: null,
+    levels: ALL,
+    title: "Ordering at a restaurant",
+    opener:
+      "Let's role-play: I'm the waiter and you just sat down. Good evening! What can I get you to drink?",
   },
   {
-    id: "travel-1",
+    id: "food-local",
+    topicId: "food",
+    goal: null,
+    levels: HARD,
+    title: "Food from your country",
+    opener:
+      "What food from your country should every visitor try? Explain it to someone who has never had it.",
+  },
+  {
+    id: "travel-trip",
     topicId: "travel",
-    title: "Ask for directions in a new city",
-    levels: EASY,
-    goals: ["travel"],
-    tags: ["Role play"],
+    goal: null,
+    levels: ALL,
+    title: "Your best trip",
+    opener: "What is the best trip you have ever taken? Where did you go and what did you do?",
   },
   {
-    id: "travel-2",
+    id: "travel-plan",
     topicId: "travel",
-    title: "Plan a two week trip and explain your choices",
-    levels: HARD,
-    goals: ["travel", "conversation"],
-    tags: ["Planning"],
+    goal: null,
+    levels: EASY,
+    title: "Planning your next trip",
+    opener: "Where would you like to travel next? What would you do there?",
   },
   {
-    id: "gaming-1",
+    id: "travel-problem",
+    topicId: "travel",
+    goal: null,
+    levels: HARD,
+    title: "When a trip went wrong",
+    opener:
+      "Has something ever gone wrong on a trip? A lost bag, a missed flight? Tell me the story.",
+  },
+  {
+    id: "gaming-favorite",
     topicId: "gaming",
-    title: "Explain the rules of a game you enjoy",
-    levels: EASY,
-    goals: ["conversation"],
-    tags: ["Everyday"],
+    goal: null,
+    levels: ALL,
+    title: "Your favorite game",
+    opener: "What game have you enjoyed the most? What makes it special?",
   },
   {
-    id: "gaming-2",
+    id: "gaming-explain",
     topicId: "gaming",
-    title: "Argue if video games are good for learning",
+    goal: null,
     levels: HARD,
-    goals: ["exams"],
-    tags: ["Debate"],
+    title: "Explain a game's rules",
+    opener: "Pick a game you know well and explain how to play it, as if I had never played it.",
   },
   {
-    id: "job_interviews-1",
+    id: "gaming-online",
+    topicId: "gaming",
+    goal: null,
+    levels: EASY,
+    title: "Playing online",
+    opener: "Do you play online with other people? What is it like?",
+  },
+  {
+    id: "jobs-intro",
     topicId: "job_interviews",
-    title: "Introduce yourself in a job interview",
-    levels: EASY,
-    goals: ["work"],
-    tags: ["Role play"],
+    goal: null,
+    levels: ALL,
+    title: "Tell me about yourself",
+    opener:
+      "Let's practice an interview. I'm the interviewer: so, tell me a little about yourself.",
   },
   {
-    id: "job_interviews-2",
+    id: "jobs-strength",
     topicId: "job_interviews",
-    title: "Answer: tell me about a time you failed",
+    goal: null,
     levels: HARD,
-    goals: ["work"],
-    tags: ["Role play"],
+    title: "Strengths and weaknesses",
+    opener:
+      "Interview practice: what would you say is your biggest strength, and one thing you are working to improve?",
   },
   {
-    id: "books-1",
+    id: "jobs-project",
+    topicId: "job_interviews",
+    goal: null,
+    levels: HARD,
+    title: "A project you're proud of",
+    opener: "Interview practice: tell me about a project you are proud of and what your role was.",
+  },
+  {
+    id: "books-reading",
     topicId: "books",
-    title: "Talk about a book you read as a kid",
-    levels: EASY,
-    goals: ["conversation"],
-    tags: ["Everyday"],
+    goal: null,
+    levels: ALL,
+    title: "What you're reading",
+    opener: "Are you reading anything right now? What is it about?",
   },
   {
-    id: "books-2",
+    id: "books-change",
     topicId: "books",
-    title: "Summarize a book and say what it taught you",
+    goal: null,
     levels: HARD,
-    goals: ["exams"],
-    tags: ["Review"],
+    title: "A book that changed you",
+    opener: "Is there a book that changed the way you think about something? How?",
   },
   {
-    id: "health_and_fitness-1",
+    id: "books-recommend",
+    topicId: "books",
+    goal: null,
+    levels: EASY,
+    title: "Recommend a book",
+    opener: "What book would you recommend to someone who doesn't read much?",
+  },
+  {
+    id: "health-routine",
     topicId: "health_and_fitness",
-    title: "Describe your daily routine to stay healthy",
-    levels: EASY,
-    goals: ["conversation"],
-    tags: ["Everyday"],
+    goal: null,
+    levels: ALL,
+    title: "Your daily routine",
+    opener: "What does a healthy day look like for you? Walk me through it.",
   },
   {
-    id: "health_and_fitness-2",
+    id: "health-goal",
     topicId: "health_and_fitness",
-    title: "Discuss how to build a habit that lasts",
+    goal: null,
     levels: HARD,
-    goals: ["conversation", "exams"],
-    tags: ["Opinion"],
+    title: "A fitness goal",
+    opener: "Do you have a fitness or health goal right now? What are you doing to reach it?",
   },
   {
-    id: "science-1",
-    topicId: "science",
-    title: "Explain why the sky is blue",
+    id: "health-sleep",
+    topicId: "health_and_fitness",
+    goal: null,
     levels: EASY,
-    goals: ["exams"],
-    tags: ["Explain"],
+    title: "Sleep habits",
+    opener: "How many hours do you usually sleep? Do you think it's enough?",
   },
   {
-    id: "science-2",
+    id: "science-discovery",
     topicId: "science",
-    title: "Discuss a scientific discovery that impressed you",
+    goal: null,
     levels: HARD,
-    goals: ["exams"],
-    tags: ["Opinion"],
+    title: "A discovery that amazes you",
+    opener: "What scientific discovery or fact amazes you the most? Explain it in simple words.",
   },
   {
-    id: "daily_life-1",
+    id: "science-space",
+    topicId: "science",
+    goal: null,
+    levels: ALL,
+    title: "Would you go to space?",
+    opener: "If you had the chance to travel to space, would you go? Why or why not?",
+  },
+  {
+    id: "science-future",
+    topicId: "science",
+    goal: null,
+    levels: HARD,
+    title: "The world in 50 years",
+    opener: "How do you imagine daily life 50 years from now?",
+  },
+  {
+    id: "daily-weekend",
     topicId: "daily_life",
-    title: "Tell me about your morning",
+    goal: null,
+    levels: ALL,
+    title: "Your weekend",
+    opener: "What did you do last weekend? Tell me about it.",
+  },
+  {
+    id: "daily-home",
+    topicId: "daily_life",
+    goal: null,
     levels: EASY,
-    goals: ["conversation"],
-    tags: ["Everyday"],
+    title: "Where you live",
+    opener: "Describe your neighborhood. What do you like about living there?",
   },
   {
-    id: "daily_life-2",
+    id: "daily-habit",
     topicId: "daily_life",
-    title: "Describe a day that did not go as planned",
+    goal: null,
     levels: HARD,
-    goals: ["conversation", "work"],
-    tags: ["Story"],
+    title: "A habit you want to change",
+    opener: "Is there a habit you would like to change? What have you tried so far?",
+  },
+  {
+    id: "goal-work-meeting",
+    topicId: null,
+    goal: "work",
+    levels: HARD,
+    title: "Running a short meeting",
+    opener: "Role-play: you are starting a team meeting. Open it and explain today's goal.",
+  },
+  {
+    id: "goal-work-email",
+    topicId: null,
+    goal: "work",
+    levels: ALL,
+    title: "Writing to a colleague",
+    opener: "Write a short message to a colleague asking for help with a task. I'll reply as them.",
+  },
+  {
+    id: "goal-work-job",
+    topicId: null,
+    goal: "work",
+    levels: EASY,
+    title: "Explaining your job",
+    opener: "What do you do for work? Explain it to someone outside your field.",
+  },
+  {
+    id: "goal-travel-hotel",
+    topicId: null,
+    goal: "travel",
+    levels: EASY,
+    title: "Checking in at a hotel",
+    opener:
+      "Role-play: I'm at the hotel front desk. Good afternoon, welcome! Do you have a reservation?",
+  },
+  {
+    id: "goal-travel-directions",
+    topicId: null,
+    goal: "travel",
+    levels: EASY,
+    title: "Asking for directions",
+    opener: "Role-play: you're lost in a new city and you stop me on the street. What do you ask?",
+  },
+  {
+    id: "goal-travel-airport",
+    topicId: null,
+    goal: "travel",
+    levels: HARD,
+    title: "A problem at the airport",
+    opener:
+      "Role-play: your flight was just cancelled and I'm the airline agent. Explain your situation.",
+  },
+  {
+    id: "goal-exams-opinion",
+    topicId: null,
+    goal: "exams",
+    levels: HARD,
+    title: "Give and defend an opinion",
+    opener:
+      "Exam practice: do you think people should work from home? Give your opinion with two reasons.",
+  },
+  {
+    id: "goal-exams-describe",
+    topicId: null,
+    goal: "exams",
+    levels: EASY,
+    title: "Describe a place",
+    opener: "Exam practice: describe a place you like to visit, in at least five sentences.",
+  },
+  {
+    id: "goal-exams-compare",
+    topicId: null,
+    goal: "exams",
+    levels: HARD,
+    title: "Compare two options",
+    opener: "Exam practice: compare living in a big city and in a small town. Which do you prefer?",
+  },
+  {
+    id: "goal-conv-day",
+    topicId: null,
+    goal: "conversation",
+    levels: ALL,
+    title: "How was your day?",
+    opener: "Hey! How was your day? Tell me one good thing that happened.",
+  },
+  {
+    id: "goal-conv-plans",
+    topicId: null,
+    goal: "conversation",
+    levels: EASY,
+    title: "Plans for the week",
+    opener: "What plans do you have for this week?",
+  },
+  {
+    id: "goal-conv-story",
+    topicId: null,
+    goal: "conversation",
+    levels: HARD,
+    title: "A funny story",
+    opener: "Tell me a funny or strange thing that happened to you recently.",
   },
 ];
 
-function sharedGoals(entry: Starter, goals: readonly Goal[]): number {
-  return entry.goals.filter((goal) => goals.includes(goal)).length;
+const NEW_WHY = "Something different to try";
+
+function roundRobin(lists: readonly (readonly Starter[])[]): Starter[] {
+  const merged: Starter[] = [];
+  const rounds = Math.max(0, ...lists.map((list) => list.length));
+  for (let round = 0; round < rounds; round += 1) {
+    for (const list of lists) {
+      const entry = list[round];
+      if (entry !== undefined) merged.push(entry);
+    }
+  }
+  return merged;
+}
+
+function describeStarter(entry: Starter, input: SuggestionInput): Suggestion {
+  const base = {
+    id: entry.id,
+    title: entry.title,
+    opener: entry.opener,
+    topicId: entry.topicId,
+    goal: entry.goal,
+  };
+  if (entry.topicId !== null && input.topics.includes(entry.topicId)) {
+    return { ...base, tag: "Your interests", why: `Because you like ${topicLabel(entry.topicId)}` };
+  }
+  if (entry.goal !== null && input.goals.includes(entry.goal)) {
+    return {
+      ...base,
+      tag: "For your goal",
+      why: `Useful for ${goalLabel(entry.goal).toLowerCase()}`,
+    };
+  }
+  return { ...base, tag: "New topic", why: NEW_WHY };
 }
 
 export function suggestTopics(
@@ -230,30 +469,45 @@ export function suggestTopics(
   limit: number = SUGGESTION_LIMIT,
 ): Suggestion[] {
   if (limit <= 0) return [];
-  const topics: readonly TopicId[] = input.topics.length > 0 ? input.topics : TOPIC_IDS;
-  const queues = topics.map((topicId) =>
-    catalog
-      .filter(
-        (entry) =>
-          entry.topicId === topicId && (input.level === null || entry.levels.includes(input.level)),
-      )
-      // INFO: Array.prototype.sort is stable, so ties keep catalog order.
-      .sort((a, b) => sharedGoals(b, input.goals) - sharedGoals(a, input.goals)),
+  const fits = catalog.filter(
+    (entry) => input.level === null || entry.levels.includes(input.level),
   );
+  const ofTopic = (topicId: TopicId) => fits.filter((entry) => entry.topicId === topicId);
+  const ofGoal = (goal: Goal) => fits.filter((entry) => entry.goal === goal);
+  const queues: Starter[][] = [
+    roundRobin(input.topics.map(ofTopic)),
+    roundRobin(input.goals.map(ofGoal)),
+    [
+      ...roundRobin(TOPIC_IDS.filter((id) => !input.topics.includes(id)).map(ofTopic)),
+      ...roundRobin(GOALS.filter((goal) => !input.goals.includes(goal)).map(ofGoal)),
+    ],
+  ];
   const picked: Suggestion[] = [];
-  const rounds = Math.max(0, ...queues.map((queue) => queue.length));
-  for (let round = 0; round < rounds; round += 1) {
-    for (const queue of queues) {
-      const entry = queue[round];
+  const seen = new Set<string>();
+  const positions = queues.map(() => 0);
+  while (picked.length < limit) {
+    let took = false;
+    for (const [index, queue] of queues.entries()) {
+      if (picked.length >= limit) break;
+      let entry = queue[positions[index]];
+      while (entry !== undefined && seen.has(entry.id)) {
+        positions[index] += 1;
+        entry = queue[positions[index]];
+      }
       if (entry === undefined) continue;
-      if (picked.length >= limit) return picked;
-      picked.push({
-        id: entry.id,
-        topicId: entry.topicId,
-        title: entry.title,
-        tags: [topicLabel(entry.topicId), ...entry.tags],
-      });
+      positions[index] += 1;
+      seen.add(entry.id);
+      picked.push(describeStarter(entry, input));
+      took = true;
     }
+    if (!took) break;
   }
   return picked;
+}
+
+export function allSuggestions(
+  input: SuggestionInput,
+  catalog: readonly Starter[] = STARTERS,
+): Suggestion[] {
+  return suggestTopics(input, catalog, Infinity);
 }

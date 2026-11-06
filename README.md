@@ -100,10 +100,13 @@ phone reaches it on the LAN IP.
 token; 401 when the token is missing or invalid, 500 when the signing keys
 cannot be loaded, so an outage never tells the client its token is bad).
 It also has `GET /profile`, `PUT /profile`, `GET /sessions/active`,
-`POST /sessions` and `GET /sessions/:id/messages`: 401 without a valid token,
-400 on invalid input, 404 when the row is not the caller's, 503 when the
-database cannot be reached. The API reads the database as the signed-in user,
-so row level security applies.
+`GET /sessions/week`, `POST /sessions` and `GET /sessions/:id/messages`: 401
+without a valid token, 400 on invalid input, 404 when the row is not the
+caller's, 503 when the database cannot be reached. `GET /profile` creates the
+caller's profile when it is missing instead of answering 404. `GET
+/sessions/week?tz=<IANA zone>` answers the days of the current week (Monday
+first, in that zone) that have a session; 400 for an unknown zone. The API
+reads the database as the signed-in user, so row level security applies.
 `pnpm --filter api dev` needs `apps/api/.env.local`. Its routes are chained on one `Hono`
 expression and the type of the app (`AppType`) is exported for the typed
 client (RPC). Run it with `pnpm --filter api dev`.
@@ -113,6 +116,7 @@ client (RPC). Run it with `pnpm --filter api dev`.
     Login           Google, Apple, email
     Onboarding      first launch only: provider, key, monthly limit, level
     Home            free chat, continue last session, suggested topics
+    Suggestions     the full list of suggested topics, opened from Home
     Chat            the session, corrections inline, end session
     Summary         after a session: mistakes, new words, topic, cost
     Plan            optional, off by default
@@ -120,27 +124,34 @@ client (RPC). Run it with `pnpm --filter api dev`.
     Session detail  one session, opened from Progress
     Settings        key, provider, model, monthly limit and spend, level, data
 
-Bottom navigation: Home, Progress, Settings. Chat, Summary and Session
-detail open on top of it.
+Bottom navigation: Home, Progress, Settings. Suggestions, Chat, Summary
+and Session detail open on top of it.
 
 Later, not in the MVP: YouTube suggestions and a small web page to see
 progress.
 
 ## Palette
 
-| Token            | Value     | Use                                                             |
-| ---------------- | --------- | --------------------------------------------------------------- |
-| background       | `#000000` | screen                                                          |
-| surface          | `#141414` | cards, input background                                         |
-| border           | `#262626` | card borders, dividers                                          |
-| text             | `#F5F5F5` | primary text                                                    |
-| text-muted       | `#A3A3A3` | secondary text                                                  |
-| text-placeholder | `#737373` | input placeholder                                               |
-| accent           | `#6DA5C0` | tags, links, active item                                        |
-| accent-deep      | `#072E33` | highlighted card background, Logo badge, deep button background |
-| accent-line      | `#0C4A50` | highlighted card border, Logo badge border, deep button border  |
-| accent-pressed   | `#0C7075` | pressed accent                                                  |
-| error            | `#F87171` | error text and borders                                          |
+| Token              | Value                    | Use                                                             |
+| ------------------ | ------------------------ | --------------------------------------------------------------- |
+| background         | `#000000`                | screen                                                          |
+| surface            | `#141414`                | cards, input background                                         |
+| surface-sunken     | `#0A0A0A`                | empty day circle of the week strip                              |
+| border             | `#262626`                | card borders, dividers                                          |
+| border-strong      | `#404040`                | dashed border of a future day                                   |
+| text               | `#F5F5F5`                | primary text                                                    |
+| text-muted         | `#A3A3A3`                | secondary text                                                  |
+| text-placeholder   | `#737373`                | input placeholder                                               |
+| accent             | `#6DA5C0`                | tags, links, active item                                        |
+| accent-deep        | `#072E33`                | highlighted card background, Logo badge, deep button background |
+| accent-line        | `#0C4A50`                | highlighted card border, Logo badge border, deep button border  |
+| accent-pressed     | `#0C7075`                | pressed accent                                                  |
+| accent-soft        | `rgba(109,165,192,0.12)` | icon box tint                                                   |
+| accent-tag         | `rgba(109,165,192,0.16)` | tag pill background                                             |
+| accent-bubble      | `rgba(109,165,192,0.18)` | tutor bubble in the Free chat card                              |
+| accent-bubble-line | `rgba(109,165,192,0.35)` | tutor bubble border                                             |
+| shadow             | `#000000`                | raised card shadow                                              |
+| error              | `#F87171`                | error text and borders                                          |
 
 ## Rules
 

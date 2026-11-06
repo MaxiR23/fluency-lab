@@ -2,11 +2,12 @@
 // URL or reaches the backend. Wire it with
 // jest.mock("@/data", () => ({ data: fake.fakeData })), where fake is
 // jest.requireActual of this file. Call resetFakeData() in beforeEach: it makes
-// getProfile answer with a completed profile and getActiveSession with no active
-// session (Home reads both), so a signed in user lands on Home.
+// getProfile answer with a completed profile, getActiveSession with no active
+// session and getSessionWeek with an empty week (Home reads all three), so a
+// signed in user lands on Home.
 
 import { jest } from "@jest/globals";
-import type { ActiveSession, Message, Profile, Session } from "@fluency-lab/shared";
+import type { ActiveSession, Message, Profile, Session, SessionWeek } from "@fluency-lab/shared";
 
 import type { DataPort } from "@/data/data-port";
 
@@ -16,6 +17,7 @@ export const fakeData = {
   getActiveSession: jest.fn<DataPort["getActiveSession"]>(),
   createSession: jest.fn<DataPort["createSession"]>(),
   listMessages: jest.fn<DataPort["listMessages"]>(),
+  getSessionWeek: jest.fn<DataPort["getSessionWeek"]>(),
 } satisfies DataPort;
 
 export function profileWith(overrides: Partial<Profile>): Profile {
@@ -71,10 +73,15 @@ export function activeSessionWith(
   };
 }
 
+export function weekWith(days: string[], overrides: Partial<SessionWeek> = {}): SessionWeek {
+  return { weekStart: "2026-11-02", today: "2026-11-05", days, ...overrides };
+}
+
 export function resetFakeData(): void {
   for (const fn of Object.values(fakeData)) {
     fn.mockReset();
   }
   fakeData.getProfile.mockResolvedValue({ ok: true, value: completedProfile() });
   fakeData.getActiveSession.mockResolvedValue({ ok: true, value: null });
+  fakeData.getSessionWeek.mockResolvedValue({ ok: true, value: weekWith([]) });
 }

@@ -177,9 +177,38 @@ describe("getProfile", () => {
     expect(requests[0].url.searchParams.get("id")).toBe(`eq.${id}`);
   });
 
-  it("returns null when no row is visible", async () => {
-    const { user } = setup([ok([])]);
-    expect(await user.getProfile()).toEqual({ ok: true, value: null });
+  it("does not call ensure_profile when the row exists", async () => {
+    const { user, requests } = setup([ok([profileRow])]);
+
+    await user.getProfile();
+
+    expect(requests).toHaveLength(1);
+  });
+
+  it("creates the missing profile through ensure_profile and returns it", async () => {
+    const { user, requests } = setup([ok([]), ok([profileRow])]);
+
+    const outcome = await user.getProfile();
+
+    expect(outcome).toMatchObject({ ok: true, value: { id, displayName: "Ada" } });
+    expect(requests).toHaveLength(2);
+    expect(requests[1].method).toBe("POST");
+    expect(requests[1].url.pathname).toBe("/rest/v1/rpc/ensure_profile");
+  });
+
+  it("returns unavailable when ensure_profile returns no row", async () => {
+    const { user } = setup([ok([]), ok([])]);
+    expect(await user.getProfile()).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("returns unauthorized when ensure_profile answers 401", async () => {
+    const { user } = setup([ok([]), failure(401)]);
+    expect(await user.getProfile()).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable for a bad row from ensure_profile", async () => {
+    const { user } = setup([ok([]), ok([{ ...profileRow, level: "expert" }])]);
+    expect(await user.getProfile()).toEqual({ ok: false, failure: "unavailable" });
   });
 
   it("returns unauthorized on a 401 from PostgREST", async () => {
@@ -404,5 +433,49 @@ describe("listMessages", () => {
   it("returns unavailable for a bad message row", async () => {
     const { user } = setup([ok([{ id: sessionId }]), ok([{ id }])]);
     expect(await user.listMessages(sessionId)).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
+describe("listSessionStarts", () => {
+  const since = "2026-10-28T12:00:00.000Z";
+
+  it("returns the start of each session since the given time, oldest first", async () => {
+    const { user, requests } = setup([
+      ok([
+        { created_at: "2026-11-02T10:00:00+00:00" },
+        { created_at: "2026-11-04T10:00:00+00:00" },
+      ]),
+    ]);
+
+    const outcome = await user.listSessionStarts(since);
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: ["2026-11-02T10:00:00+00:00", "2026-11-04T10:00:00+00:00"],
+    });
+    expect(requests[0].url.pathname).toBe("/rest/v1/sessions");
+    expect(requests[0].url.searchParams.get("select")).toBe("created_at");
+    expect(requests[0].url.searchParams.get("created_at")).toBe(`gte.${since}`);
+    expect(requests[0].url.searchParams.get("order")).toBe("created_at.asc");
+  });
+
+  it("returns an empty list when there are no sessions", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.listSessionStarts(since)).toEqual({ ok: true, value: [] });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.listSessionStarts(since)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.listSessionStarts(since)).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("returns unavailable for a bad row", async () => {
+    const { user } = setup([ok([{ id }])]);
+    expect(await user.listSessionStarts(since)).toEqual({ ok: false, failure: "unavailable" });
   });
 });

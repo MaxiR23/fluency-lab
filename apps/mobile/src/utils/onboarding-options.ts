@@ -1,4 +1,4 @@
-import type { Goal, Level, Provider } from "@fluency-lab/shared";
+import { GOALS, goalLabel, type Goal, type Level, type Provider } from "@fluency-lab/shared";
 
 export const levelOptions: readonly { id: Level; label: string; description: string }[] = [
   { id: "beginner", label: "Beginner", description: "I can write short, simple sentences." },
@@ -14,12 +14,10 @@ export const levelOptions: readonly { id: Level; label: string; description: str
   },
 ];
 
-export const goalOptions: readonly { id: Goal; label: string }[] = [
-  { id: "work", label: "Work" },
-  { id: "travel", label: "Travel" },
-  { id: "exams", label: "Exams" },
-  { id: "conversation", label: "Everyday conversation" },
-];
+export const goalOptions: readonly { id: Goal; label: string }[] = GOALS.map((id) => ({
+  id,
+  label: goalLabel(id),
+}));
 
 export const providerOptions: readonly { id: Provider; label: string }[] = [
   { id: "claude", label: "Claude" },

@@ -6,3 +6,4 @@ coverage/
 ios/
 android/
 .claude/
+docs/design/

@@ -5,6 +5,7 @@
 // Tested:
 // - profileUpdateSchema, sessionCreateSchema and sessionIdParamSchema
 // - The response schemas of the profile, the active session and the messages
+// - The session week response and its query
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -21,6 +22,8 @@ import {
   profileUpdateSchema,
   sessionCreateSchema,
   sessionIdParamSchema,
+  sessionWeekSchema,
+  weekQuerySchema,
 } from "../src/contract";
 import { TOPIC_IDS } from "../src/topics";
 
@@ -220,5 +223,33 @@ describe("response schemas", () => {
 
   it("parses a messages body with no messages", () => {
     expect(messagesResponseSchema.parse({ messages: [] })).toEqual({ messages: [] });
+  });
+
+  it("parses a session week with no days", () => {
+    const body = { weekStart: "2026-11-02", today: "2026-11-05", days: [] };
+    expect(sessionWeekSchema.parse(body)).toEqual(body);
+  });
+
+  it("parses a session week with days", () => {
+    const body = { weekStart: "2026-11-02", today: "2026-11-05", days: ["2026-11-02"] };
+    expect(sessionWeekSchema.parse(body)).toEqual(body);
+  });
+
+  it("rejects a session week with a malformed date, a missing today or days that are not a list", () => {
+    const ok = { weekStart: "2026-11-02", today: "2026-11-05", days: [] };
+    expect(sessionWeekSchema.safeParse({ ...ok, weekStart: "2026-11-2" }).success).toBe(false);
+    expect(sessionWeekSchema.safeParse({ weekStart: ok.weekStart, days: [] }).success).toBe(false);
+    expect(sessionWeekSchema.safeParse({ ...ok, days: "2026-11-02" }).success).toBe(false);
+  });
+});
+
+describe("weekQuerySchema", () => {
+  it("accepts a time zone", () => {
+    expect(weekQuerySchema.parse({ tz: "UTC" })).toEqual({ tz: "UTC" });
+  });
+
+  it("rejects a missing or empty time zone", () => {
+    expect(weekQuerySchema.safeParse({}).success).toBe(false);
+    expect(weekQuerySchema.safeParse({ tz: "" }).success).toBe(false);
   });
 });

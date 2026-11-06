@@ -42,6 +42,7 @@ function RootNavigator({ fontsSettled }: { fontsSettled: boolean }) {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="chat" />
         <Stack.Screen name="api-key" />
+        <Stack.Screen name="suggestions" />
       </Stack.Protected>
       <Stack.Protected guard={entry === "onboarding"}>
         <Stack.Screen name="onboarding" />

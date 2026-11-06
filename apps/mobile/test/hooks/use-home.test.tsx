@@ -3,7 +3,7 @@
 // Tests for the Home hook.
 //
 // Tested:
-// - The profile and the active session read from the data port
+// - The profile, the active session and the week read from the data port
 // - The expected empty (no active session) and each failure
 // - A read again on retry and on regaining focus, and a read that ends after unmount
 //
@@ -19,9 +19,17 @@ import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { useIsFocused } from "expo-router";
 
 import { useHome } from "@/hooks/use-home";
-import { activeSessionWith, completedProfile, fakeData, resetFakeData } from "../helpers/fake-data";
+import { deviceTimeZone } from "@/utils/time-zone";
+import {
+  activeSessionWith,
+  completedProfile,
+  fakeData,
+  resetFakeData,
+  weekWith,
+} from "../helpers/fake-data";
 
 jest.mock("expo-router", () => ({ useIsFocused: jest.fn(() => true) }));
+jest.mock("@/utils/time-zone", () => ({ deviceTimeZone: jest.fn(() => "UTC") }));
 jest.mock("@/data", () => ({
   data: jest.requireActual<typeof import("../helpers/fake-data")>("../helpers/fake-data").fakeData,
 }));
@@ -41,6 +49,7 @@ describe("useHome", () => {
         kind: "ready",
         profile: completedProfile(),
         activeSession: active,
+        week: weekWith([]),
         loadedAt: expect.any(Number),
       }),
     );
@@ -53,6 +62,7 @@ describe("useHome", () => {
         kind: "ready",
         profile: completedProfile(),
         activeSession: null,
+        week: weekWith([]),
         loadedAt: expect.any(Number),
       }),
     );
@@ -71,6 +81,21 @@ describe("useHome", () => {
     const { result } = await renderHook(() => useHome());
     await waitFor(() =>
       expect(result.current.state).toEqual({ kind: "failed", failure: "network" }),
+    );
+  });
+
+  it("asks for the week in the device's time zone", async () => {
+    jest.mocked(deviceTimeZone).mockReturnValue("America/Argentina/Buenos_Aires");
+    const { result } = await renderHook(() => useHome());
+    await waitFor(() => expect(result.current.state.kind).toBe("ready"));
+    expect(fakeData.getSessionWeek).toHaveBeenCalledWith("America/Argentina/Buenos_Aires");
+  });
+
+  it("fails when the week read fails", async () => {
+    fakeData.getSessionWeek.mockResolvedValue({ ok: false, failure: "unavailable" });
+    const { result } = await renderHook(() => useHome());
+    await waitFor(() =>
+      expect(result.current.state).toEqual({ kind: "failed", failure: "unavailable" }),
     );
   });
 
@@ -124,6 +149,7 @@ describe("useHome", () => {
         kind: "ready",
         profile: completedProfile(),
         activeSession: active,
+        week: weekWith([]),
         loadedAt: first + 1000,
       }),
     );

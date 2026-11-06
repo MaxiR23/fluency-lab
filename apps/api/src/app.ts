@@ -3,6 +3,7 @@ import {
   sessionCreateSchema,
   sessionIdParamSchema,
   sessionTitle,
+  weekQuerySchema,
 } from "@fluency-lab/shared";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
@@ -12,6 +13,7 @@ import { createMiddleware } from "hono/factory";
 import type {} from "hono/jwt";
 import { requireAuth, readBearerToken, readTokenUser, type AuthConfig } from "./auth";
 import type { Caller, Store, StoreFailure } from "./store";
+import { WEEK_LOOKBACK_MS, currentWeek, isTimeZone, sessionDays } from "./week";
 
 // INFO: no zod issue text leaves the API.
 const invalidInput = (
@@ -29,7 +31,8 @@ export function failureResponse(failure: StoreFailure) {
 
 // INFO: routes are chained so the type of `app` carries every route to the
 // typed client (RPC). Never register routes on separate `app.get(...)` calls.
-export function createApp(config: { auth: AuthConfig; store: Store }) {
+export function createApp(config: { auth: AuthConfig; store: Store; now?: () => Date }) {
+  const now = config.now ?? (() => new Date());
   const caller = createMiddleware<{ Variables: { caller: Caller } }>(async (c, next) => {
     const user = readTokenUser(c.get("jwtPayload"));
     const accessToken = readBearerToken(c.req.header("Authorization"));
@@ -52,7 +55,6 @@ export function createApp(config: { auth: AuthConfig; store: Store }) {
         const { status, body } = failureResponse(outcome.failure);
         return c.json(body, status);
       }
-      if (outcome.value === null) return c.json({ error: "not_found" }, 404);
       return c.json(outcome.value, 200);
     })
     .put(
@@ -80,6 +82,28 @@ export function createApp(config: { auth: AuthConfig; store: Store }) {
       }
       return c.json({ activeSession: outcome.value }, 200);
     })
+    .get(
+      "/sessions/week",
+      auth,
+      caller,
+      zValidator(
+        "query",
+        weekQuerySchema.refine((query) => isTimeZone(query.tz)),
+        invalidInput,
+      ),
+      async (c) => {
+        const { tz } = c.req.valid("query");
+        const at = now();
+        const { weekStart, today } = currentWeek(at, tz);
+        const since = new Date(at.getTime() - WEEK_LOOKBACK_MS).toISOString();
+        const outcome = await config.store.forUser(c.get("caller")).listSessionStarts(since);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        return c.json({ weekStart, today, days: sessionDays(outcome.value, tz, weekStart) }, 200);
+      },
+    )
     .post(
       "/sessions",
       auth,
