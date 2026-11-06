@@ -1,7 +1,12 @@
+import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
-import { composerInputStyle, sendButtonStyle } from "@/components/chat-composer-style";
+import {
+  composerInputStyle,
+  composerLines,
+  sendButtonStyle,
+} from "@/components/chat-composer-style";
 import { Icon } from "@/components/icon";
 import { motion, size, spacing, strokeWidth } from "@/constants/theme";
 import { pressedScale, type PressMotion } from "@/utils/chat-motion";
@@ -26,7 +31,8 @@ export function ChatComposer({
   busy?: boolean;
   press: PressMotion | null;
 }) {
-  const input = composerInputStyle({ locked });
+  const [lines, setLines] = useState(1);
+  const input = composerInputStyle({ locked, lines });
   const enabled = canSend(value, locked, busy);
   return (
     <View style={styles.row}>
@@ -39,6 +45,11 @@ export function ChatComposer({
         editable={!locked}
         maxLength={MAX_MESSAGE_LENGTH}
         accessibilityLabel="Message"
+        multiline
+        submitBehavior="newline"
+        // INFO: the height is the layout's and the count a pure function; the input grows by
+        // itself up to its max height and scrolls inside after it.
+        onLayout={(event) => setLines(composerLines(event.nativeEvent.layout.height))}
       />
       <SendButton enabled={enabled} onSend={onSend} press={press} />
     </View>
@@ -101,7 +112,7 @@ function SendButton({
 const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     gap: spacing.cluster,
     paddingTop: spacing.group,
     paddingHorizontal: spacing.md,
