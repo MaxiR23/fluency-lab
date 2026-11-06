@@ -13,12 +13,14 @@ import { spacing } from "@/constants/theme";
 import {
   hasFieldErrors,
   normalizeEmail,
-  validateCredentials,
+  normalizeName,
+  validateSignUp,
   type FieldErrors,
 } from "@/utils/auth-form";
 import { authFailureView, signUpPendingMessage, type FailureView } from "@/utils/auth-message";
 
 export default function CreateAccount() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [running, setRunning] = useState(false);
@@ -27,12 +29,16 @@ export default function CreateAccount() {
   const [pending, setPending] = useState(false);
 
   async function submit() {
-    const errors = validateCredentials({ email, password });
+    const errors = validateSignUp({ name, email, password });
     setFieldErrors(errors);
     if (hasFieldErrors(errors)) return;
     setFailure(undefined);
     setRunning(true);
-    const outcome = await auth.signUpWithEmail({ email: normalizeEmail(email), password });
+    const outcome = await auth.signUpWithEmail({
+      email: normalizeEmail(email),
+      password,
+      name: normalizeName(name),
+    });
     setRunning(false);
     if (!outcome.ok) {
       setFailure(authFailureView(outcome));
@@ -56,6 +62,16 @@ export default function CreateAccount() {
         <Text variant="subtitle">{signUpPendingMessage}</Text>
       ) : (
         <View style={styles.form}>
+          <TextField
+            label="Name"
+            placeholder="Your name"
+            value={name}
+            onChangeText={setName}
+            error={fieldErrors.name}
+            autoCapitalize="words"
+            autoComplete="name"
+            textContentType="name"
+          />
           <EmailField value={email} onChangeText={setEmail} error={fieldErrors.email} />
           <TextField
             label="Password"

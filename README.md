@@ -8,8 +8,8 @@ plan is optional; free practice is the default.
 ## Status
 
 Expo project in a pnpm monorepo. The design layer exists (tokens and
-base components); email sign-in, sign-up, password reset and a Home
-placeholder are built, the other screens are not. The screen map, the
+base components); email sign-in, sign-up, password reset, onboarding and a
+Home placeholder are built, the other screens are not. The screen map, the
 palette and the Home design are decided.
 
 ## Decided
@@ -29,7 +29,8 @@ palette and the Home design are decided.
   `node --test` (repo scripts), pgTAP (database, `supabase/tests/`)
 - App layout in `apps/mobile/src/`: `app/` (routes), `auth/` (the auth
   port and its adapter), `components/`, `constants/` (theme tokens),
-  `data/` (the data port and its adapter), `hooks/`, `utils/` (pure functions)
+  `data/` (the data port and its adapter), `hooks/`, `keys/` (the key port
+  and its secure-store adapter), `utils/` (pure functions)
 - App identifier: `com.maxirebolo.fluencylab`
 
 ## Pending

@@ -26,7 +26,7 @@ export const spacing = {
   screenTop: 72,
 } as const;
 export const radius = { control: 18, badge: 12 } as const;
-export const size = { control: 52, badge: 40, icon: 22 } as const;
+export const size = { control: 52, badge: 40, icon: 22, progressBar: 4 } as const;
 export const strokeWidth = { icon: 1.8 } as const;
 export const borderWidth = { thin: 1 } as const;
 export const fontSize = { caption: 13, small: 14, body: 15, brand: 17, title: 28 } as const;

@@ -72,6 +72,7 @@ function fakeClient(overrides: Partial<Omit<SupabaseAuthClient, "onAuthStateChan
 }
 
 const credentials = { email: "a@example.com", password: generatedSecret("password") };
+const signUpInput = { ...credentials, name: "Ana Ruiz" };
 const reset = {
   email: "a@example.com",
   code: "123456",
@@ -120,23 +121,27 @@ describe("signInWithEmail", () => {
 });
 
 describe("signUpWithEmail", () => {
-  it("returns the session of a new account", async () => {
+  it("returns the session and sends the name as full_name metadata", async () => {
     const { auth, client } = fakeClient();
 
-    expect(await auth.signUpWithEmail(credentials)).toEqual({ ok: true, value: session });
-    expect(client.signUp).toHaveBeenCalledWith(credentials);
+    expect(await auth.signUpWithEmail(signUpInput)).toEqual({ ok: true, value: session });
+    expect(client.signUp).toHaveBeenCalledWith({
+      email: credentials.email,
+      password: credentials.password,
+      options: { data: { full_name: signUpInput.name } },
+    });
   });
 
   it("returns a null session when the account needs confirmation", async () => {
     const { auth } = fakeClient({ signUp: async () => noSession });
 
-    expect(await auth.signUpWithEmail(credentials)).toEqual({ ok: true, value: null });
+    expect(await auth.signUpWithEmail(signUpInput)).toEqual({ ok: true, value: null });
   });
 
   it("returns email_taken for a duplicate email", async () => {
     const { auth } = fakeClient({ signUp: async () => apiError("user_already_exists") });
 
-    expect(await auth.signUpWithEmail(credentials)).toEqual({
+    expect(await auth.signUpWithEmail(signUpInput)).toEqual({
       ok: false,
       failure: "email_taken",
       cause: apiCause,
@@ -146,7 +151,7 @@ describe("signUpWithEmail", () => {
   it("returns weak_password for a short password", async () => {
     const { auth } = fakeClient({ signUp: async () => apiError("weak_password") });
 
-    expect(await auth.signUpWithEmail(credentials)).toEqual({
+    expect(await auth.signUpWithEmail(signUpInput)).toEqual({
       ok: false,
       failure: "weak_password",
       cause: apiCause,
@@ -156,7 +161,7 @@ describe("signUpWithEmail", () => {
   it("returns network when sign-up cannot reach the server", async () => {
     const { auth } = fakeClient({ signUp: async () => failed(networkError) });
 
-    expect(await auth.signUpWithEmail(credentials)).toEqual({
+    expect(await auth.signUpWithEmail(signUpInput)).toEqual({
       ok: false,
       failure: "network",
       cause: networkCause,
@@ -611,7 +616,7 @@ describe("a client that rejects", () => {
     (auth: AuthPort) => Promise<unknown>,
   ][] = [
     ["signInWithEmail", { signInWithPassword: boom }, (a) => a.signInWithEmail(credentials)],
-    ["signUpWithEmail", { signUp: boom }, (a) => a.signUpWithEmail(credentials)],
+    ["signUpWithEmail", { signUp: boom }, (a) => a.signUpWithEmail(signUpInput)],
     [
       "requestPasswordReset",
       { resetPasswordForEmail: boom },

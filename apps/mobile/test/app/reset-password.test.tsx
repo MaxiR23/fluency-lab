@@ -28,12 +28,20 @@ import {
 } from "@/utils/auth-message";
 import { emitSession, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { generatedSecret } from "../helpers/generated-secret";
+import { resetFakeData } from "../helpers/fake-data";
+import { resetFakeKeys } from "../helpers/fake-keys";
 import { renderApp } from "../helpers/render-app";
 
 jest.mock("expo-font", () => ({ useFonts: jest.fn(() => [true, null]) }));
 jest.mock("expo-splash-screen", () => ({
   preventAutoHideAsync: jest.fn(),
   hide: jest.fn(),
+}));
+jest.mock("@/data", () => ({
+  data: jest.requireActual<typeof import("../helpers/fake-data")>("../helpers/fake-data").fakeData,
+}));
+jest.mock("@/keys", () => ({
+  keys: jest.requireActual<typeof import("../helpers/fake-keys")>("../helpers/fake-keys").fakeKeys,
 }));
 jest.mock("@/auth", () => {
   const fake = jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth");
@@ -69,6 +77,8 @@ const causeLine =
 describe("Reset password screen", () => {
   beforeEach(() => {
     resetFakeAuth();
+    resetFakeData();
+    resetFakeKeys();
   });
 
   it("draws its texts and the form", async () => {
