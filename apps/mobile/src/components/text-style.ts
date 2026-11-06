@@ -14,7 +14,22 @@ export type TextVariant =
   | "error"
   | "body"
   | "muted"
-  | "link";
+  | "link"
+  | "heading"
+  | "heroTitle"
+  | "heroText"
+  | "action"
+  | "section"
+  | "labelStrong"
+  | "bodyStrong"
+  | "cardTitle"
+  | "tag"
+  | "day"
+  | "dayToday"
+  | "why"
+  | "avatar"
+  | "tab"
+  | "tabActive";
 
 const variants: Record<TextVariant, TextStyle> = {
   title: {
@@ -79,6 +94,88 @@ const variants: Record<TextVariant, TextStyle> = {
   link: {
     fontFamily: fontFamily.regular,
     fontSize: fontSize.body,
+    color: colors.accent,
+  },
+  heading: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.heading,
+    color: colors.text,
+    lineHeight: lineHeight.heading,
+    letterSpacing: letterSpacing.heading,
+  },
+  heroTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.hero,
+    color: colors.text,
+    letterSpacing: letterSpacing.hero,
+  },
+  heroText: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+    lineHeight: lineHeight.heroText,
+  },
+  action: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.small,
+    color: colors.text,
+  },
+  section: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+    letterSpacing: letterSpacing.section,
+    textTransform: "uppercase",
+  },
+  labelStrong: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.caption,
+    color: colors.text,
+  },
+  bodyStrong: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.body,
+    color: colors.text,
+  },
+  cardTitle: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.body,
+    color: colors.text,
+    lineHeight: lineHeight.cardTitle,
+  },
+  tag: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.micro,
+    color: colors.accent,
+  },
+  day: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.micro,
+    color: colors.textMuted,
+  },
+  dayToday: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.micro,
+    color: colors.text,
+  },
+  why: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.xsmall,
+    color: colors.textMuted,
+  },
+  avatar: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.avatar,
+    color: colors.accent,
+  },
+  tab: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.xsmall,
+    color: colors.textMuted,
+  },
+  tabActive: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.xsmall,
     color: colors.accent,
   },
 };

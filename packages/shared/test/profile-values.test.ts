@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The levels, goals, providers, session statuses and message roles
+// - The goal labels
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -13,7 +14,15 @@
 // SEE: packages/shared/src/profile-values.ts
 
 import { describe, expect, it } from "vitest";
-import { GOALS, LEVELS, MESSAGE_ROLES, PROVIDERS, SESSION_STATUSES } from "../src/profile-values";
+import {
+  GOALS,
+  GOAL_LABELS,
+  LEVELS,
+  MESSAGE_ROLES,
+  PROVIDERS,
+  SESSION_STATUSES,
+  goalLabel,
+} from "../src/profile-values";
 
 describe("profile values", () => {
   it("lists the three levels", () => {
@@ -31,5 +40,16 @@ describe("profile values", () => {
   it("lists the session statuses and message roles", () => {
     expect(SESSION_STATUSES).toEqual(["active", "ended"]);
     expect(MESSAGE_ROLES).toEqual(["user", "tutor"]);
+  });
+
+  it("labels every goal", () => {
+    expect(goalLabel("work")).toBe("Work");
+    expect(goalLabel("travel")).toBe("Travel");
+    expect(goalLabel("exams")).toBe("Exams");
+    expect(goalLabel("conversation")).toBe("Everyday conversation");
+  });
+
+  it("has a label for each goal and no other", () => {
+    expect(Object.keys(GOAL_LABELS)).toEqual([...GOALS]);
   });
 });

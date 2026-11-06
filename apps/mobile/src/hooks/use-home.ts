@@ -2,10 +2,15 @@ import { useIsFocused } from "expo-router";
 import { useEffect, useReducer } from "react";
 
 import { data } from "@/data";
+import { deviceTimeZone } from "@/utils/time-zone";
 import { homeReducer, initialHome, type HomeState } from "@/utils/home-state";
 
 function readHome() {
-  return Promise.all([data.getProfile(), data.getActiveSession()]);
+  return Promise.all([
+    data.getProfile(),
+    data.getActiveSession(),
+    data.getSessionWeek(deviceTimeZone()),
+  ]);
 }
 
 export function useHome(): { state: HomeState; retry: () => Promise<void> } {
@@ -16,9 +21,9 @@ export function useHome(): { state: HomeState; retry: () => Promise<void> } {
   useEffect(() => {
     if (!focused) return;
     let live = true;
-    void readHome().then(([profile, active]) => {
+    void readHome().then(([profile, active, week]) => {
       // INFO: a read that ends after Home unmounts is dropped.
-      if (live) dispatch({ type: "loaded", profile, active, loadedAt: Date.now() });
+      if (live) dispatch({ type: "loaded", profile, active, week, loadedAt: Date.now() });
     });
     return () => {
       live = false;
@@ -27,8 +32,8 @@ export function useHome(): { state: HomeState; retry: () => Promise<void> } {
 
   async function retry(): Promise<void> {
     dispatch({ type: "load_started" });
-    const [profile, active] = await readHome();
-    dispatch({ type: "loaded", profile, active, loadedAt: Date.now() });
+    const [profile, active, week] = await readHome();
+    dispatch({ type: "loaded", profile, active, week, loadedAt: Date.now() });
   }
 
   return { state, retry };

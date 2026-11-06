@@ -8,7 +8,7 @@
 // - the typed client sees /health (typecheck fails if AppType loses it)
 // - GET /me answers the user for a valid token, 401 for any bad one and 500
 //   when the signing keys cannot be loaded
-// - GET/PUT /profile, GET/POST /sessions and GET /sessions/:id/messages: 401
+// - GET/PUT /profile, GET/POST /sessions, GET /sessions/week and GET /sessions/:id/messages: 401
 //   without a valid token, 400 on invalid input, 404, 503, and the typed client
 //
 // What is covered:
@@ -48,6 +48,7 @@ const fake = createFakeStore();
 const app = createApp({
   auth: { issuer, loadKeys: async () => keysOutcome },
   store: fake.store,
+  now: () => new Date("2026-11-05T12:00:00Z"),
 });
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -256,6 +257,7 @@ const routes: { name: string; path: string; method: string; body?: unknown }[] =
   { name: "GET /profile", path: "/profile", method: "GET" },
   { name: "PUT /profile", path: "/profile", method: "PUT", body: { level: "beginner" } },
   { name: "GET /sessions/active", path: "/sessions/active", method: "GET" },
+  { name: "GET /sessions/week", path: "/sessions/week?tz=UTC", method: "GET" },
   { name: "POST /sessions", path: "/sessions", method: "POST", body: { topicId: null } },
   { name: "GET /sessions/:id/messages", path: `/sessions/${sessionId}/messages`, method: "GET" },
 ];
@@ -313,15 +315,6 @@ describe("GET /profile", () => {
     expect(fake.callers).toEqual([
       { id: "user-1", accessToken: headers.Authorization.replace("Bearer ", "") },
     ]);
-  });
-
-  it("responds 404 when the store has no profile", async () => {
-    fake.user.getProfile.mockResolvedValue({ ok: true, value: null });
-
-    const res = await app.request("/profile", { headers: await authed() });
-
-    expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ error: "not_found" });
   });
 
   it("responds 503 when the store is unavailable", async () => {
@@ -429,6 +422,86 @@ describe("GET /sessions/active", () => {
   });
 });
 
+describe("GET /sessions/week", () => {
+  async function week(query: string) {
+    return app.request(`/sessions/week${query}`, { headers: await authed() });
+  }
+
+  it("responds 200 with the week and no days when there are no sessions", async () => {
+    fake.user.listSessionStarts.mockResolvedValue({ ok: true, value: [] });
+
+    const res = await week("?tz=UTC");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ weekStart: "2026-11-02", today: "2026-11-05", days: [] });
+  });
+
+  it("responds 200 with the days that have a session", async () => {
+    fake.user.listSessionStarts.mockResolvedValue({
+      ok: true,
+      value: [
+        "2026-11-02T09:00:00+00:00",
+        "2026-11-04T09:00:00+00:00",
+        "2026-11-04T19:00:00+00:00",
+      ],
+    });
+
+    const res = await week("?tz=UTC");
+
+    expect(await res.json()).toEqual({
+      weekStart: "2026-11-02",
+      today: "2026-11-05",
+      days: ["2026-11-02", "2026-11-04"],
+    });
+  });
+
+  it("reads the sessions since eight days before now", async () => {
+    fake.user.listSessionStarts.mockResolvedValue({ ok: true, value: [] });
+
+    await week("?tz=UTC");
+
+    expect(fake.user.listSessionStarts).toHaveBeenCalledWith("2026-10-28T12:00:00.000Z");
+  });
+
+  it("uses the time zone of the query", async () => {
+    fake.user.listSessionStarts.mockResolvedValue({
+      ok: true,
+      value: ["2026-11-05T02:00:00+00:00"],
+    });
+
+    const res = await week("?tz=America%2FArgentina%2FBuenos_Aires");
+
+    expect(await res.json()).toEqual({
+      weekStart: "2026-11-02",
+      today: "2026-11-05",
+      days: ["2026-11-04"],
+    });
+  });
+
+  it("responds 400 for an unknown time zone", async () => {
+    const res = await week("?tz=Mars%2FOlympus");
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_input" });
+  });
+
+  it("responds 400 without tz", async () => {
+    expect((await week("")).status).toBe(400);
+  });
+
+  it("responds 401 when the store reports unauthorized", async () => {
+    fake.user.listSessionStarts.mockResolvedValue({ ok: false, failure: "unauthorized" });
+
+    expect((await week("?tz=UTC")).status).toBe(401);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.listSessionStarts.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    expect((await week("?tz=UTC")).status).toBe(503);
+  });
+});
+
 describe("POST /sessions", () => {
   async function post(body: string) {
     return app.request("/sessions", { method: "POST", headers: await authed(jsonType), body });
@@ -526,7 +599,11 @@ describe("typed client (data routes)", () => {
     const profileRes = await client.profile.$get();
     const activeRes = await client.sessions.active.$get();
 
+    fake.user.listSessionStarts.mockResolvedValue({ ok: true, value: [] });
+    const weekRes = await client.sessions.week.$get({ query: { tz: "UTC" } });
+
     expect(profileRes.status).toBe(200);
     expect(await activeRes.json()).toEqual({ activeSession: null });
+    expect(weekRes.status).toBe(200);
   });
 });

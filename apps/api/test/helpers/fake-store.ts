@@ -12,6 +12,7 @@ export function createFakeStore() {
     getActiveSession: vi.fn<UserStore["getActiveSession"]>(),
     createSession: vi.fn<UserStore["createSession"]>(),
     listMessages: vi.fn<UserStore["listMessages"]>(),
+    listSessionStarts: vi.fn<UserStore["listSessionStarts"]>(),
   };
   const store: Store = {
     forUser(caller) {

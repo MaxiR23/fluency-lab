@@ -73,11 +73,20 @@ export const activeSessionResponseSchema = z.object({
   activeSession: activeSessionSchema.nullable(),
 });
 
+export const sessionWeekSchema = z.object({
+  weekStart: z.iso.date(),
+  today: z.iso.date(),
+  days: z.array(z.iso.date()),
+});
+
+export const weekQuerySchema = z.object({ tz: z.string().min(1).max(100) });
+
 export const messagesResponseSchema = z.object({ messages: z.array(messageSchema) });
 
 export type Profile = z.infer<typeof profileSchema>;
 export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
 export type Session = z.infer<typeof sessionSchema>;
 export type SessionCreate = z.infer<typeof sessionCreateSchema>;
+export type SessionWeek = z.infer<typeof sessionWeekSchema>;
 export type Message = z.infer<typeof messageSchema>;
 export type ActiveSession = z.infer<typeof activeSessionSchema>;

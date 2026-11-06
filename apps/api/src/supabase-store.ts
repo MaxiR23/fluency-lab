@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Message } from "@fluency-lab/shared";
-import { toMessage, toProfile, toProfilePatch, toSession } from "./rows";
+import { toMessage, toProfile, toProfilePatch, toSession, toSessionStart } from "./rows";
 import type { Caller, Store, StoreOutcome, UserStore } from "./store";
 
 export type StoreConfig = {
@@ -88,7 +88,12 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
             .select("*")
             .eq("id", caller.id)
             .maybeSingle();
-          return mapRow(result, toProfile);
+          const found = mapRow(result, toProfile);
+          if (!found.ok) return found;
+          if (found.value !== null) return { ok: true, value: found.value };
+          const created = mapRow(await client.rpc("ensure_profile").maybeSingle(), toProfile);
+          if (!created.ok) return created;
+          return created.value === null ? unavailable : { ok: true, value: created.value };
         },
 
         async updateProfile(update) {
@@ -126,6 +131,21 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           const mapped = mapRow(result, toSession);
           if (!mapped.ok) return mapped;
           return mapped.value === null ? unavailable : { ok: true, value: mapped.value };
+        },
+
+        async listSessionStarts(since) {
+          const result = await client
+            .from("sessions")
+            .select("created_at")
+            .gte("created_at", since)
+            .order("created_at", { ascending: true });
+          const failed = failureOf(result);
+          if (failed !== null) return failed;
+          if (!Array.isArray(result.data)) return unavailable;
+          const starts = result.data.map(toSessionStart);
+          return starts.every((start) => start !== null)
+            ? { ok: true, value: starts }
+            : unavailable;
         },
 
         async listMessages(sessionId) {

@@ -340,3 +340,47 @@ describe("listMessages", () => {
     expect(await data.listMessages(id)).toEqual({ ok: false, failure: "bad_response" });
   });
 });
+
+describe("getSessionWeek", () => {
+  const week = { weekStart: "2026-11-02", today: "2026-11-05", days: ["2026-11-02"] };
+
+  it("sends the time zone and returns the parsed week", async () => {
+    const { data, seen } = setup(reply(week));
+
+    expect(await data.getSessionWeek("America/Argentina/Buenos_Aires")).toEqual({
+      ok: true,
+      value: week,
+    });
+    expect(seen[0].url).toBe("http://api.test/sessions/week?tz=America%2FArgentina%2FBuenos_Aires");
+    expect(seen[0].method).toBe("GET");
+  });
+
+  it("returns a week with no days as a success", async () => {
+    const empty = { ...week, days: [] };
+    const { data } = setup(reply(empty));
+    expect(await data.getSessionWeek("UTC")).toEqual({ ok: true, value: empty });
+  });
+
+  it("returns invalid_input on 400", async () => {
+    const { data } = setup(reply({ error: "invalid_input" }, 400));
+    expect(await data.getSessionWeek("Mars/Olympus")).toEqual({
+      ok: false,
+      failure: "invalid_input",
+    });
+  });
+
+  it("returns unauthorized on 401", async () => {
+    const { data } = setup(reply({ error: "unauthorized" }, 401));
+    expect(await data.getSessionWeek("UTC")).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("network down"));
+    expect(await data.getSessionWeek("UTC")).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ weekStart: "2026-11-02" }));
+    expect(await data.getSessionWeek("UTC")).toEqual({ ok: false, failure: "bad_response" });
+  });
+});

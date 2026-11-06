@@ -4,7 +4,7 @@
 //
 // Tested:
 // - The README palette, accent-pressed and error
-// - Radius, spacing scale and font faces
+// - Radius, spacing scale, sizes, tints, the raised shadow and font faces
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -22,6 +22,7 @@ import {
   letterSpacing,
   lineHeight,
   radius,
+  shadow,
   size,
   spacing,
   strokeWidth,
@@ -73,21 +74,75 @@ describe("theme", () => {
   });
 
   it("holds the badge radius beside the control radius", () => {
-    expect(radius).toEqual({ control: 18, badge: 12 });
+    expect(radius).toEqual({
+      control: 18,
+      badge: 12,
+      hero: 22,
+      pill: 999,
+      badgeSmall: 11,
+      bubble: 12,
+      bubbleTail: 4,
+    });
   });
 
   it("holds the design's control, badge, icon and progress bar sizes", () => {
-    expect(size).toEqual({ control: 52, badge: 40, icon: 22, progressBar: 4 });
-    expect(strokeWidth.icon).toBe(1.8);
+    expect(size).toEqual({
+      control: 52,
+      badge: 40,
+      icon: 22,
+      progressBar: 4,
+      iconCheck: 14,
+      iconAction: 16,
+      iconCard: 18,
+      iconBadge: 20,
+      iconTab: 24,
+      dayCircle: 30,
+      badgeSmall: 36,
+      pill: 40,
+      avatar: 44,
+      touch: 44,
+      tabItem: 64,
+      suggestionCard: 200,
+      heroArtWidth: 56,
+      heroArtHeight: 48,
+      bubbleLargeWidth: 38,
+      bubbleLargeHeight: 28,
+      bubbleSmallWidth: 34,
+      bubbleSmallHeight: 24,
+    });
+    expect(strokeWidth).toEqual({ icon: 1.8, action: 2, check: 2.4 });
   });
 
   it("holds the design's font sizes", () => {
-    expect(fontSize).toEqual({ caption: 13, small: 14, body: 15, brand: 17, title: 28 });
+    expect(fontSize).toEqual({
+      micro: 11,
+      xsmall: 12,
+      caption: 13,
+      small: 14,
+      body: 15,
+      avatar: 16,
+      brand: 17,
+      hero: 19,
+      heading: 26,
+      title: 28,
+    });
   });
 
   it("holds the design's line heights and letter spacings in pixels", () => {
-    expect(lineHeight).toEqual({ body: 22.5, title: 33.6 });
-    expect(letterSpacing).toEqual({ brand: -0.17, title: -0.56 });
+    expect(lineHeight).toEqual({
+      body: 22.5,
+      title: 33.6,
+      heading: 31.2,
+      heroText: 20.3,
+      cardTitle: 19.5,
+    });
+    expect(letterSpacing).toEqual({
+      brand: -0.17,
+      title: -0.56,
+      heading: -0.52,
+      hero: -0.19,
+      section: 1.04,
+    });
   });
 
   it("holds the layout spacings the design names by role", () => {
@@ -98,6 +153,14 @@ describe("theme", () => {
       screenSide: spacing.screenSide,
       screenBottom: spacing.screenBottom,
       screenTop: spacing.screenTop,
+      hair: spacing.hair,
+      stack: spacing.stack,
+      cluster: spacing.cluster,
+      card: spacing.card,
+      hero: spacing.hero,
+      section: spacing.section,
+      tabBarBottom: spacing.tabBarBottom,
+      screenTopShort: spacing.screenTopShort,
     }).toEqual({
       linkVertical: 6,
       logoGap: 10,
@@ -105,6 +168,45 @@ describe("theme", () => {
       screenSide: 20,
       screenBottom: 40,
       screenTop: 72,
+      hair: 3,
+      stack: 6,
+      cluster: 10,
+      card: 14,
+      hero: 18,
+      section: 22,
+      tabBarBottom: 28,
+      screenTopShort: 56,
+    });
+  });
+
+  it("holds the Home tints and the sunken surface", () => {
+    expect({
+      surfaceSunken: colors.surfaceSunken,
+      accentSoft: colors.accentSoft,
+      accentTag: colors.accentTag,
+      accentBubble: colors.accentBubble,
+      accentBubbleLine: colors.accentBubbleLine,
+    }).toEqual({
+      surfaceSunken: "#0A0A0A",
+      accentSoft: "rgba(109,165,192,0.12)",
+      accentTag: "rgba(109,165,192,0.16)",
+      accentBubble: "rgba(109,165,192,0.18)",
+      accentBubbleLine: "rgba(109,165,192,0.35)",
+    });
+  });
+
+  it("holds the strong border for future days", () => {
+    expect(colors.borderStrong).toBe("#404040");
+  });
+
+  it("holds one raised shadow with iOS shadow props and Android elevation", () => {
+    expect(colors.shadow).toBe("#000000");
+    expect(shadow.raised).toEqual({
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.6,
+      shadowRadius: 12,
+      elevation: 12,
     });
   });
 

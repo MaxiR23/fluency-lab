@@ -94,6 +94,127 @@ describe("textStyle", () => {
     });
   });
 
+  it("draws heading in bold with its line height and letter spacing", () => {
+    expect(textStyle("heading")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.heading,
+      color: colors.text,
+      lineHeight: lineHeight.heading,
+      letterSpacing: letterSpacing.heading,
+    });
+  });
+
+  it("draws heroTitle in bold with its letter spacing", () => {
+    expect(textStyle("heroTitle")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.hero,
+      color: colors.text,
+      letterSpacing: letterSpacing.hero,
+    });
+  });
+
+  it("draws heroText muted with its line height", () => {
+    expect(textStyle("heroText")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.small,
+      color: colors.textMuted,
+      lineHeight: lineHeight.heroText,
+    });
+  });
+
+  it("draws action in semibold text color at the small size", () => {
+    expect(textStyle("action")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.small,
+      color: colors.text,
+    });
+  });
+
+  it("draws section in uppercase semibold with its letter spacing", () => {
+    expect(textStyle("section")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.caption,
+      color: colors.textMuted,
+      letterSpacing: letterSpacing.section,
+      textTransform: "uppercase",
+    });
+  });
+
+  it("draws labelStrong in semibold text color at the caption size", () => {
+    expect(textStyle("labelStrong")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.caption,
+      color: colors.text,
+    });
+  });
+
+  it("draws bodyStrong in semibold text color at the body size", () => {
+    expect(textStyle("bodyStrong")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.body,
+      color: colors.text,
+    });
+  });
+
+  it("draws cardTitle in semibold with its line height", () => {
+    expect(textStyle("cardTitle")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.body,
+      color: colors.text,
+      lineHeight: lineHeight.cardTitle,
+    });
+  });
+
+  it("draws tag in semibold accent at the micro size", () => {
+    expect(textStyle("tag")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.micro,
+      color: colors.accent,
+    });
+  });
+
+  it("draws day muted and dayToday bold in the text color, both at the micro size", () => {
+    expect(textStyle("day")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.micro,
+      color: colors.textMuted,
+    });
+    expect(textStyle("dayToday")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.micro,
+      color: colors.text,
+    });
+  });
+
+  it("draws why muted at the xsmall size", () => {
+    expect(textStyle("why")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.xsmall,
+      color: colors.textMuted,
+    });
+  });
+
+  it("draws avatar in bold accent at the avatar size", () => {
+    expect(textStyle("avatar")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.avatar,
+      color: colors.accent,
+    });
+  });
+
+  it("draws tab muted and tabActive semibold accent, both at the xsmall size", () => {
+    expect(textStyle("tab")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.xsmall,
+      color: colors.textMuted,
+    });
+    expect(textStyle("tabActive")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.xsmall,
+      color: colors.accent,
+    });
+  });
+
   it("uses a Plus Jakarta Sans face in every variant", () => {
     const variants: TextVariant[] = [
       "title",
@@ -108,6 +229,21 @@ describe("textStyle", () => {
       "body",
       "muted",
       "link",
+      "heading",
+      "heroTitle",
+      "heroText",
+      "action",
+      "section",
+      "labelStrong",
+      "bodyStrong",
+      "cardTitle",
+      "tag",
+      "day",
+      "dayToday",
+      "why",
+      "avatar",
+      "tab",
+      "tabActive",
     ];
     for (const variant of variants) {
       expect(Object.values(fontFamily)).toContain(textStyle(variant).fontFamily);

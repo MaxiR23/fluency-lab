@@ -1,7 +1,9 @@
 export const colors = {
   background: "#000000",
   surface: "#141414",
+  surfaceSunken: "#0A0A0A",
   border: "#262626",
+  borderStrong: "#404040",
   text: "#F5F5F5",
   textMuted: "#A3A3A3",
   textPlaceholder: "#737373",
@@ -9,15 +11,28 @@ export const colors = {
   accentDeep: "#072E33",
   accentLine: "#0C4A50",
   accentPressed: "#0C7075",
+  accentSoft: "rgba(109,165,192,0.12)",
+  accentTag: "rgba(109,165,192,0.16)",
+  accentBubble: "rgba(109,165,192,0.18)",
+  accentBubbleLine: "rgba(109,165,192,0.35)",
+  shadow: "#000000",
   error: "#F87171",
 } as const;
 
 export const spacing = {
+  hair: 3,
   xs: 4,
   sm: 8,
   md: 16,
   lg: 24,
   xl: 32,
+  stack: 6,
+  cluster: 10,
+  card: 14,
+  hero: 18,
+  section: 22,
+  tabBarBottom: 28,
+  screenTopShort: 56,
   linkVertical: 6,
   logoGap: 10,
   group: 12,
@@ -25,14 +40,79 @@ export const spacing = {
   screenBottom: 40,
   screenTop: 72,
 } as const;
-export const radius = { control: 18, badge: 12 } as const;
-export const size = { control: 52, badge: 40, icon: 22, progressBar: 4 } as const;
-export const strokeWidth = { icon: 1.8 } as const;
+export const radius = {
+  control: 18,
+  badge: 12,
+  hero: 22,
+  pill: 999,
+  badgeSmall: 11,
+  bubble: 12,
+  bubbleTail: 4,
+} as const;
+export const size = {
+  control: 52,
+  badge: 40,
+  icon: 22,
+  progressBar: 4,
+  iconCheck: 14,
+  iconAction: 16,
+  iconCard: 18,
+  iconBadge: 20,
+  iconTab: 24,
+  dayCircle: 30,
+  badgeSmall: 36,
+  pill: 40,
+  avatar: 44,
+  touch: 44,
+  tabItem: 64,
+  suggestionCard: 200,
+  heroArtWidth: 56,
+  heroArtHeight: 48,
+  bubbleLargeWidth: 38,
+  bubbleLargeHeight: 28,
+  bubbleSmallWidth: 34,
+  bubbleSmallHeight: 24,
+} as const;
+export const strokeWidth = { icon: 1.8, action: 2, check: 2.4 } as const;
 export const borderWidth = { thin: 1 } as const;
-export const fontSize = { caption: 13, small: 14, body: 15, brand: 17, title: 28 } as const;
+export const fontSize = {
+  micro: 11,
+  xsmall: 12,
+  caption: 13,
+  small: 14,
+  body: 15,
+  avatar: 16,
+  brand: 17,
+  hero: 19,
+  heading: 26,
+  title: 28,
+} as const;
 // INFO: React Native takes these in pixels; the design gives them as ratios and em.
-export const lineHeight = { body: 22.5, title: 33.6 } as const;
-export const letterSpacing = { brand: -0.17, title: -0.56 } as const;
+export const lineHeight = {
+  body: 22.5,
+  title: 33.6,
+  heading: 31.2,
+  heroText: 20.3,
+  cardTitle: 19.5,
+} as const;
+export const letterSpacing = {
+  brand: -0.17,
+  title: -0.56,
+  heading: -0.52,
+  hero: -0.19,
+  section: 1.04,
+} as const;
+// INFO: iOS reads the shadow props and Android reads elevation. The CSS blur of 24 is
+// shadowRadius 12 (half the blur); the design's inset highlight has no equivalent.
+export const shadow = {
+  raised: {
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+} as const;
 export const fontFamily = {
   regular: "PlusJakartaSans_400Regular",
   semibold: "PlusJakartaSans_600SemiBold",

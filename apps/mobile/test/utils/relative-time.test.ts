@@ -23,12 +23,12 @@ function ago(seconds: number): string {
 }
 
 describe("relativeTime", () => {
-  it("says Just now under a minute", () => {
-    expect(relativeTime(ago(59), now)).toBe("Just now");
+  it("says just now under a minute", () => {
+    expect(relativeTime(ago(59), now)).toBe("just now");
   });
 
-  it("says Just now for a future date", () => {
-    expect(relativeTime(ago(-300), now)).toBe("Just now");
+  it("says just now for a future date", () => {
+    expect(relativeTime(ago(-300), now)).toBe("just now");
   });
 
   it("says 1 min ago at exactly 60 seconds", () => {
@@ -43,8 +43,8 @@ describe("relativeTime", () => {
     expect(relativeTime(ago(3600), now)).toBe("1 h ago");
   });
 
-  it("says Yesterday at exactly 24 hours", () => {
-    expect(relativeTime(ago(24 * 3600), now)).toBe("Yesterday");
+  it("says yesterday at exactly 24 hours", () => {
+    expect(relativeTime(ago(24 * 3600), now)).toBe("yesterday");
   });
 
   it("says 2 days ago at exactly 48 hours", () => {

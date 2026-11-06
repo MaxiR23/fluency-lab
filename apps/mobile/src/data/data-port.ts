@@ -5,6 +5,7 @@ import type {
   ProfileUpdate,
   Session,
   SessionCreate,
+  SessionWeek,
 } from "@fluency-lab/shared";
 
 export type DataFailure =
@@ -19,4 +20,6 @@ export type DataPort = {
   getActiveSession(): Promise<DataOutcome<ActiveSession | null>>;
   createSession(input: SessionCreate): Promise<DataOutcome<Session>>;
   listMessages(sessionId: string): Promise<DataOutcome<Message[]>>;
+  // INFO: a week with no days is the expected empty: no session this week.
+  getSessionWeek(timeZone: string): Promise<DataOutcome<SessionWeek>>;
 };

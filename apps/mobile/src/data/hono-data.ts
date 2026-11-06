@@ -5,6 +5,7 @@ import {
   messagesResponseSchema,
   profileSchema,
   sessionSchema,
+  sessionWeekSchema,
 } from "@fluency-lab/shared";
 // INFO: type-only, so Metro never bundles the server.
 import type { AppType } from "api";
@@ -104,6 +105,8 @@ export function createHonoData(config: HonoDataConfig): DataPort {
     },
     createSession: (input) =>
       call((client) => client.sessions.$post({ json: input }), sessionSchema),
+    getSessionWeek: (timeZone) =>
+      call((client) => client.sessions.week.$get({ query: { tz: timeZone } }), sessionWeekSchema),
     async listMessages(sessionId) {
       const outcome = await call(
         (client) => client.sessions[":id"].messages.$get({ param: { id: sessionId } }),

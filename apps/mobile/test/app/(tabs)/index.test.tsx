@@ -3,10 +3,10 @@
 // Tests for Home and the tab bar around it.
 //
 // Tested:
-// - Loading, with data, no active session and error states
-// - The greeting, Continue and the suggestions of the profile
-// - Free chat, Continue and a suggestion open Chat
-// - The tab bar: Home is the current tab and not a link to itself
+// - Loading, with data, expected empty (no Continue, empty week) and error states
+// - The greeting, the avatar, the week, Free chat, Continue and the suggestions
+// - Free chat, Continue and a suggestion open Chat, and See all opens the list
+// - The tab bar: Home is the current tab and not a link or a button
 // - Signed out users cannot reach Home
 //
 // What is covered:
@@ -18,12 +18,19 @@
 
 import { suggestTopics } from "@fluency-lab/shared";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { act, fireEvent, screen } from "@testing-library/react-native";
+import { act, fireEvent, screen, within } from "@testing-library/react-native";
 import { router } from "expo-router";
 
 import { dataFailureMessage } from "@/utils/data-message";
+import { greeting } from "@/utils/home";
 import { fakeSession, resetFakeAuth } from "../../helpers/fake-auth";
-import { activeSessionWith, fakeData, profileWith, resetFakeData } from "../../helpers/fake-data";
+import {
+  activeSessionWith,
+  fakeData,
+  profileWith,
+  resetFakeData,
+  weekWith,
+} from "../../helpers/fake-data";
 import { resetFakeKeys } from "../../helpers/fake-keys";
 import { renderApp } from "../../helpers/render-app";
 
@@ -81,61 +88,79 @@ describe("Home", () => {
     expect(screen.queryByTestId("home-loading")).toBeNull();
   });
 
-  it("greets by display name and draws Free chat, Continue and the suggestions", async () => {
+  it("draws the greeting, the avatar, the week, Free chat, Continue and the suggestions", async () => {
     fakeData.getProfile.mockResolvedValue({ ok: true, value: maxi });
+    fakeData.getSessionWeek.mockResolvedValue({
+      ok: true,
+      value: weekWith(["2026-11-02", "2026-11-04", "2026-11-05"]),
+    });
     fakeData.getActiveSession.mockResolvedValue({
       ok: true,
       value: activeSessionWith(
-        { title: "Weekend plans" },
-        {
-          text: "Where do you want to go?",
-          createdAt: new Date(Date.now() - 5 * 60_000).toISOString(),
-        },
+        { topicId: "job_interviews", title: "Weekend plans" },
+        { createdAt: new Date(Date.now() - 24 * 60 * 60_000).toISOString() },
       ),
     });
     await renderApp("/", fakeSession());
-    expect(screen.getByText("Hi, Maxi")).toBeTruthy();
-    expect(screen.getByText("What do you want to practice today?")).toBeTruthy();
+    expect(screen.getByText(greeting("Maxi", new Date()))).toBeTruthy();
+    expect(screen.getByText("Ready to practice?")).toBeTruthy();
+    expect(
+      within(screen.getByTestId("avatar", { includeHiddenElements: true })).getByText("M", {
+        includeHiddenElements: true,
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText("This week")).toBeTruthy();
+    expect(screen.getByText("3 of 7 days")).toBeTruthy();
+    expect(screen.getByLabelText("Monday, practiced")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Free chat" })).toBeTruthy();
+    expect(screen.getByText("Talk about anything. Get corrections as you go.")).toBeTruthy();
     expect(screen.getByText("Continue")).toBeTruthy();
     expect(screen.getByText("Weekend plans")).toBeTruthy();
-    expect(screen.getByText("Where do you want to go?")).toBeTruthy();
-    expect(screen.getByText("5 min ago")).toBeTruthy();
+    expect(screen.getByText("Job interviews · yesterday")).toBeTruthy();
+    expect(screen.getByText("Resume")).toBeTruthy();
     expect(screen.getByText("Suggested for you")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "See all" })).toBeTruthy();
     for (const suggestion of suggestTopics(maxi)) {
       expect(screen.getByRole("button", { name: suggestion.title })).toBeTruthy();
+      expect(screen.getAllByText(suggestion.tag).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(suggestion.why).length).toBeGreaterThan(0);
     }
   });
 
-  it("says Hi without a display name", async () => {
+  it("draws the person icon and no name without a display name", async () => {
     await renderApp("/", fakeSession());
-    expect(screen.getByText("Hi")).toBeTruthy();
+    expect(screen.getByText(greeting(null, new Date()))).toBeTruthy();
+    expect(screen.getByTestId("icon-person", { includeHiddenElements: true })).toBeTruthy();
   });
 
-  it("draws no Continue when there is no active session", async () => {
+  it("draws the expected empty state: no Continue and an empty week", async () => {
     await renderApp("/", fakeSession());
+    expect(screen.getByText("0 of 7 days")).toBeTruthy();
     expect(screen.queryByText("Continue")).toBeNull();
-    expect(screen.queryByText("Weekend plans")).toBeNull();
     expect(screen.getByText("Suggested for you")).toBeTruthy();
   });
 
-  it.each([
-    ["music", "books"],
-    ["books", "music"],
-  ] as const)("draws the suggestions of the %s topic and not those of %s", async (own, other) => {
-    const profile = profileWith({ topics: [own], onboardingCompletedAt: completedAt });
-    fakeData.getProfile.mockResolvedValue({ ok: true, value: profile });
-    await renderApp("/", fakeSession());
-    const drawn = suggestTopics(profile);
-    expect(drawn.length).toBeGreaterThan(0);
-    for (const suggestion of drawn) {
-      expect(screen.getByRole("button", { name: suggestion.title })).toBeTruthy();
-    }
-    const others = suggestTopics(profileWith({ topics: [other] }));
-    for (const suggestion of others) {
-      expect(screen.queryByRole("button", { name: suggestion.title })).toBeNull();
-    }
-  });
+  it.each(["music", "books"] as const)(
+    "draws the %s topic as an interest and the rest as new topics",
+    async (own) => {
+      const profile = profileWith({
+        topics: [own],
+        level: "intermediate",
+        onboardingCompletedAt: completedAt,
+      });
+      fakeData.getProfile.mockResolvedValue({ ok: true, value: profile });
+      await renderApp("/", fakeSession());
+      const drawn = suggestTopics(profile);
+      expect(drawn.length).toBeGreaterThan(0);
+      for (const suggestion of drawn) {
+        expect(screen.getByRole("button", { name: suggestion.title })).toBeTruthy();
+      }
+      expect(drawn[0]).toMatchObject({ topicId: own, tag: "Your interests" });
+      for (const suggestion of drawn.filter((entry) => entry.topicId !== own)) {
+        expect(suggestion.tag).toBe("New topic");
+      }
+    },
+  );
 
   it("draws the failure and reads again on Try again", async () => {
     fakeData.getProfile
@@ -145,7 +170,7 @@ describe("Home", () => {
     expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
     fakeData.getProfile.mockResolvedValue({ ok: true, value: maxi });
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
-    expect(screen.getByText("Hi, Maxi")).toBeTruthy();
+    expect(screen.getByText("Ready to practice?")).toBeTruthy();
     expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
   });
 
@@ -161,6 +186,13 @@ describe("Home", () => {
     fakeData.getActiveSession.mockResolvedValue({ ok: false, failure: "unavailable" });
     await renderApp("/", fakeSession());
     expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
+  });
+
+  it("draws the failure when the week read fails", async () => {
+    fakeData.getSessionWeek.mockResolvedValue({ ok: false, failure: "unavailable" });
+    await renderApp("/", fakeSession());
+    expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
+    expect(screen.queryByText("This week")).toBeNull();
   });
 
   it("opens Chat from Free chat", async () => {
@@ -187,6 +219,12 @@ describe("Home", () => {
     expect(screen).toHavePathname("/chat");
   });
 
+  it("opens the list of every suggestion from See all", async () => {
+    await renderApp("/", fakeSession());
+    await fireEvent.press(screen.getByRole("link", { name: "See all" }));
+    expect(screen).toHavePathname("/suggestions");
+  });
+
   it("marks Home as the current tab and stays on Home when it is pressed", async () => {
     await renderApp("/", fakeSession());
     expect(screen.getByTestId("tab-home").props.accessibilityState).toMatchObject({
@@ -196,6 +234,13 @@ describe("Home", () => {
     await fireEvent.press(screen.getByTestId("tab-home"));
     expect(screen).toHavePathname("/");
     expect(fakeData.getProfile).toHaveBeenCalledTimes(reads);
+  });
+
+  it("draws Home as the current tab, not as a link or a button", async () => {
+    await renderApp("/", fakeSession());
+    expect(screen.queryByRole("link", { name: "Home" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Home" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Home" })).toBeTruthy();
   });
 
   it("opens Progress and Settings from the tab bar", async () => {
@@ -211,13 +256,13 @@ describe("Home", () => {
   it("lands on Login when signed out at Home", async () => {
     await renderApp("/", null);
     expect(screen).toHavePathname("/sign-in");
-    expect(screen.queryByText("Hi")).toBeNull();
+    expect(screen.queryByText("Ready to practice?")).toBeNull();
   });
 
   it("does not show Home when pushed there while signed out", async () => {
     await renderApp("/sign-in", null);
     await act(async () => router.push("/"));
     expect(screen).toHavePathname("/sign-in");
-    expect(screen.queryByText("Hi")).toBeNull();
+    expect(screen.queryByText("Ready to practice?")).toBeNull();
   });
 });
