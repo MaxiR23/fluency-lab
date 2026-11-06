@@ -2,16 +2,15 @@ import { TOPICS } from "@fluency-lab/shared";
 import { useReducer, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
+import { AiStepFields } from "@/components/ai-step-fields";
 import { Button } from "@/components/button";
 import { Chip } from "@/components/chip";
 import { FailureMessage } from "@/components/failure-message";
 import { OptionCard } from "@/components/option-card";
 import { Screen } from "@/components/screen";
-import { SegmentedControl } from "@/components/segmented-control";
 import { SignOutButton } from "@/components/sign-out-button";
 import { StepScreen } from "@/components/step-screen";
 import { Text } from "@/components/text";
-import { TextField } from "@/components/text-field";
 import { TextLink } from "@/components/text-link";
 import { colors, spacing } from "@/constants/theme";
 import { useOnboarding } from "@/hooks/use-onboarding";
@@ -35,12 +34,9 @@ import {
   type AiStepErrors,
 } from "@/utils/onboarding-form";
 import {
-  apiKeyNote,
   goalOptions,
   levelOptions,
-  monthlyLimitNote,
   ONBOARDING_STEPS,
-  providerOptions,
   stepTitles,
 } from "@/utils/onboarding-options";
 
@@ -197,40 +193,17 @@ function Steps() {
         </View>
       ) : null}
       {step === 4 ? (
-        <View style={styles.list}>
-          <SegmentedControl
-            label="Provider"
-            options={providerOptions}
-            value={draft.provider}
-            onChange={(provider) => dispatch({ type: "provider_picked", provider })}
-          />
-          <View style={styles.field}>
-            <TextField
-              label="API key"
-              value={draft.apiKey}
-              onChangeText={(apiKey) => dispatch({ type: "api_key_changed", apiKey })}
-              error={errors.apiKey}
-              secure
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="off"
-              textContentType="none"
-            />
-            <Text variant="caption">{apiKeyNote}</Text>
-          </View>
-          <View style={styles.field}>
-            <TextField
-              label="Monthly limit (USD)"
-              value={draft.monthlyLimit}
-              onChangeText={(monthlyLimit) =>
-                dispatch({ type: "monthly_limit_changed", monthlyLimit })
-              }
-              error={errors.monthlyLimit}
-              keyboardType="decimal-pad"
-            />
-            <Text variant="caption">{monthlyLimitNote}</Text>
-          </View>
-        </View>
+        <AiStepFields
+          provider={draft.provider}
+          apiKey={draft.apiKey}
+          monthlyLimit={draft.monthlyLimit}
+          errors={errors}
+          onProviderChange={(provider) => dispatch({ type: "provider_picked", provider })}
+          onApiKeyChange={(apiKey) => dispatch({ type: "api_key_changed", apiKey })}
+          onMonthlyLimitChange={(monthlyLimit) =>
+            dispatch({ type: "monthly_limit_changed", monthlyLimit })
+          }
+        />
       ) : null}
     </StepScreen>
   );
@@ -241,6 +214,5 @@ const styles = StyleSheet.create({
   content: { padding: spacing.screenSide, gap: spacing.md },
   list: { gap: spacing.group },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  field: { gap: spacing.sm },
   skip: { alignItems: "center" },
 });

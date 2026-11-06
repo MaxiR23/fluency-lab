@@ -55,4 +55,10 @@ describe("StepScreen", () => {
     await render(<StepScreen step={1} total={4} title="Level" footer={null} />);
     expect(screen.queryByText("Back")).toBeNull();
   });
+
+  it("draws no step label when step and total are not given", async () => {
+    await render(<StepScreen title="Your AI" footer={null} />);
+    expect(screen.getByText("Your AI")).toBeTruthy();
+    expect(screen.queryByText(/^Step /)).toBeNull();
+  });
 });

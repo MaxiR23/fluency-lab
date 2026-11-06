@@ -113,10 +113,15 @@ export function normalizeApiKey(key: string): string {
   return key.trim();
 }
 
-export function validateAiStep(input: { apiKey: string; monthlyLimit: string }): AiStepErrors {
+// INFO: the key step has no skip, so its empty-key message does not offer one.
+export function validateAiStep(
+  input: { apiKey: string; monthlyLimit: string },
+  variant: "onboarding" | "key" = "onboarding",
+): AiStepErrors {
   const errors: AiStepErrors = {};
   if (normalizeApiKey(input.apiKey) === "") {
-    errors.apiKey = "Enter your API key, or skip for now.";
+    errors.apiKey =
+      variant === "key" ? "Enter your API key." : "Enter your API key, or skip for now.";
   }
   if (input.monthlyLimit.trim() === "") {
     errors.monthlyLimit = "Enter an amount in USD.";
@@ -143,4 +148,11 @@ export function onboardingUpdate(draft: OnboardingDraft, mode: "finish" | "skip"
     provider: draft.provider,
     ...(limit === null ? {} : { monthlyLimitUsd: limit }),
   };
+}
+
+// INFO: the key step saves the provider and the limit. It takes no apiKey, so the
+// key cannot reach the data port, like onboardingUpdate.
+export function aiStepUpdate(input: { provider: Provider; monthlyLimit: string }): ProfileUpdate {
+  const limit = parseMonthlyLimit(input.monthlyLimit);
+  return { provider: input.provider, ...(limit === null ? {} : { monthlyLimitUsd: limit }) };
 }

@@ -10,6 +10,7 @@ import type { KeyPort } from "@/keys/key-port";
 export const fakeKeys = {
   saveApiKey: jest.fn<KeyPort["saveApiKey"]>(),
   deleteApiKey: jest.fn<KeyPort["deleteApiKey"]>(),
+  hasApiKey: jest.fn<KeyPort["hasApiKey"]>(),
 } satisfies KeyPort;
 
 export function resetFakeKeys(): void {
@@ -17,4 +18,6 @@ export function resetFakeKeys(): void {
   fakeKeys.saveApiKey.mockResolvedValue({ ok: true, value: null });
   fakeKeys.deleteApiKey.mockReset();
   fakeKeys.deleteApiKey.mockResolvedValue({ ok: true, value: null });
+  fakeKeys.hasApiKey.mockReset();
+  fakeKeys.hasApiKey.mockResolvedValue({ ok: true, value: false });
 }

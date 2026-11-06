@@ -3,12 +3,18 @@
 // "expo-splash-screen" and "@/auth" itself, as jest.mock only hoists there.
 
 import { act } from "@testing-library/react-native";
+import { type Href, router } from "expo-router";
 import { renderRouter } from "expo-router/testing-library";
 
 import RootLayout from "@/app/_layout";
+import ApiKey from "@/app/api-key";
+import Chat from "@/app/chat";
 import CreateAccount from "@/app/create-account";
 import ForgotPassword from "@/app/forgot-password";
-import Home from "@/app/index";
+import Home from "@/app/(tabs)/index";
+import Progress from "@/app/(tabs)/progress";
+import Settings from "@/app/(tabs)/settings";
+import TabsLayout from "@/app/(tabs)/_layout";
 import Onboarding from "@/app/onboarding";
 import ResetPassword from "@/app/reset-password";
 import SignIn from "@/app/sign-in";
@@ -19,7 +25,12 @@ export async function renderApp(initialUrl: string, session: AuthSession | null)
   const result = await renderRouter(
     {
       _layout: RootLayout,
-      index: Home,
+      "(tabs)/_layout": TabsLayout,
+      "(tabs)/index": Home,
+      "(tabs)/progress": Progress,
+      "(tabs)/settings": Settings,
+      chat: Chat,
+      "api-key": ApiKey,
       onboarding: Onboarding,
       "sign-in": SignIn,
       "create-account": CreateAccount,
@@ -29,5 +40,13 @@ export async function renderApp(initialUrl: string, session: AuthSession | null)
     { initialUrl },
   );
   await act(async () => emitSession(session));
+  return result;
+}
+
+// INFO: the session arrives after the first render, and a route behind a guard is
+// denied until it does. So a signed in test lands on Home first, then goes to the path.
+export async function renderAppAt(path: Href, session: AuthSession) {
+  const result = await renderApp("/", session);
+  await act(async () => router.push(path));
   return result;
 }
