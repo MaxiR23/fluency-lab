@@ -2,18 +2,26 @@ import { PlusJakartaSans_400Regular } from "@expo-google-fonts/plus-jakarta-sans
 import { PlusJakartaSans_600SemiBold } from "@expo-google-fonts/plus-jakarta-sans/600SemiBold";
 import { PlusJakartaSans_700Bold } from "@expo-google-fonts/plus-jakarta-sans/700Bold";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
 
 import { OnboardingProvider, useOnboarding } from "@/hooks/use-onboarding";
 import { SessionProvider, useSession } from "@/hooks/use-session";
 import { appEntry } from "@/utils/onboarding-gate";
 import { isFontLoadSettled } from "@/utils/font-load";
+import { darkNavigationTheme } from "@/utils/navigation-theme";
 import { isAppReady } from "@/utils/session-state";
 import { colors, fontFamily } from "@/constants/theme";
 
 SplashScreen.preventAutoHideAsync();
+
+// INFO: the native stack paints its container with the navigation theme's background
+// during transitions, and the root view sits behind it; both default to light.
+SystemUI.setBackgroundColorAsync(colors.background);
+
+const navigationTheme = darkNavigationTheme(DarkTheme);
 
 function RootNavigator({ fontsSettled }: { fontsSettled: boolean }) {
   const { state } = useSession();
@@ -65,10 +73,12 @@ export default function RootLayout() {
   });
 
   return (
-    <SessionProvider>
-      <OnboardingProvider>
-        <RootNavigator fontsSettled={isFontLoadSettled(loaded, error)} />
-      </OnboardingProvider>
-    </SessionProvider>
+    <ThemeProvider value={navigationTheme}>
+      <SessionProvider>
+        <OnboardingProvider>
+          <RootNavigator fontsSettled={isFontLoadSettled(loaded, error)} />
+        </OnboardingProvider>
+      </SessionProvider>
+    </ThemeProvider>
   );
 }
