@@ -24,6 +24,8 @@ export const colors = {
   surfaceDisabled: "#0F0F0F",
   borderDisabled: "#1F1F1F",
   textDisabled: "#525252",
+  surfaceFloating: "rgba(20,20,20,0.94)",
+  accentGlow: "rgba(109,165,192,0.22)",
 } as const;
 
 export const spacing = {
@@ -38,7 +40,7 @@ export const spacing = {
   card: 14,
   hero: 18,
   section: 22,
-  tabBarBottom: 28,
+  tabBarBottom: 30,
   screenTopShort: 56,
   linkVertical: 6,
   logoGap: 10,
@@ -51,6 +53,7 @@ export const spacing = {
   composerKeyboard: 18,
   typingDot: 5,
   panel: 28,
+  tabBarSide: 40,
 } as const;
 export const radius = {
   control: 18,
@@ -74,14 +77,12 @@ export const size = {
   iconAction: 16,
   iconCard: 18,
   iconBadge: 20,
-  iconTab: 24,
   dayCircle: 30,
   badgeSmall: 36,
   pill: 40,
   avatar: 44,
   touch: 44,
   swipeAction: 66,
-  tabItem: 64,
   suggestionCard: 200,
   heroArtWidth: 56,
   heroArtHeight: 48,
@@ -133,7 +134,8 @@ export const letterSpacing = {
 // INFO: iOS reads the shadow props and Android reads elevation. The CSS blur of 24 is
 // shadowRadius 12 (half the blur); the design's inset highlight has no equivalent. The chat's
 // blur of 20 is shadowRadius 10. The glow is iOS only, because Android elevation draws one
-// black shadow.
+// black shadow. The tab bar's blur of 28 is shadowRadius 14; the pill glow of 14 is
+// shadowRadius 7 and iOS only.
 export const shadow = {
   raised: {
     shadowColor: colors.shadow,
@@ -155,10 +157,25 @@ export const shadow = {
     shadowOpacity: 1,
     shadowRadius: 8,
   },
+  tabBar: {
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.8,
+    shadowRadius: 14,
+    elevation: 14,
+  },
+  pillGlow: {
+    shadowColor: colors.accentGlow,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 7,
+  },
 } as const;
 // INFO: the durations follow the issue (200 to 250 ms); the offset, scale and dot keyframes
 // follow chat-typing.html; the beziers are CSS ease-out and ease-in-out. Times are in ms,
-// the dot peak and settle points are shares of one dot cycle.
+// the dot peak and settle points are shares of one dot cycle. The pill spring's 280 is
+// Reanimated's perceptual duration, 1.5 times that (420 ms) is the design's slide; a damping
+// ratio of 1 does not overshoot, like its curve.
 export const motion = {
   enterDuration: 240,
   enterOffset: 12,
@@ -171,6 +188,8 @@ export const motion = {
   dotSettleAt: 0.6,
   dotLift: 4,
   dotRestOpacity: 0.3,
+  pillDuration: 280,
+  pillDampingRatio: 1,
   easeOut: [0, 0, 0.58, 1],
   easeInOut: [0.42, 0, 0.58, 1],
 } as const;

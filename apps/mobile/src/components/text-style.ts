@@ -30,6 +30,7 @@ export type TextVariant =
   | "avatar"
   | "tab"
   | "tabActive"
+  | "tabSelected"
   | "message"
   | "correction"
   | "struck"
@@ -181,14 +182,19 @@ const variants: Record<TextVariant, TextStyle> = {
     color: colors.accent,
   },
   tab: {
-    fontFamily: fontFamily.regular,
-    fontSize: fontSize.xsmall,
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.micro,
     color: colors.textMuted,
   },
   tabActive: {
     fontFamily: fontFamily.semibold,
     fontSize: fontSize.xsmall,
     color: colors.accent,
+  },
+  tabSelected: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.micro,
+    color: colors.text,
   },
   message: {
     fontFamily: fontFamily.regular,

@@ -3,7 +3,8 @@
 // Tests for the tab bar style.
 //
 // Tested:
-// - tabBarStyle pads the bottom with the larger of the inset and the design's 28
+// - tabBarStyle floats the bar from tokens at tabBarLayout's bottom
+// - tabPillStyle sizes the pill and draws the jump only when asked
 //
 // What is covered:
 // - Normal case, edges
@@ -14,32 +15,52 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { tabBarStyle } from "@/components/tab-bar-style";
-import { borderWidth, colors, spacing } from "@/constants/theme";
+import { tabBarStyle, tabPillStyle } from "@/components/tab-bar-style";
+import { borderWidth, colors, radius, shadow, spacing } from "@/constants/theme";
 
 describe("tabBarStyle", () => {
-  it("pads the bottom by 28 with no inset", () => {
-    expect(tabBarStyle(0).paddingBottom).toBe(spacing.tabBarBottom);
-  });
-
-  it("pads the bottom by the inset when it is larger than 28", () => {
-    expect(tabBarStyle(34).paddingBottom).toBe(34);
-  });
-
-  it("pads the bottom by 28 when the inset is 28", () => {
-    expect(tabBarStyle(28).paddingBottom).toBe(28);
-  });
-
-  it("takes the top, the sides and the border from tokens", () => {
-    expect(tabBarStyle(0)).toMatchObject({
-      paddingTop: spacing.cluster,
-      paddingHorizontal: spacing.group,
-      backgroundColor: colors.background,
-      borderTopWidth: borderWidth.thin,
-      borderTopColor: colors.border,
-      flexDirection: "row",
-      justifyContent: "space-around",
-      alignItems: "center",
+  it("floats the bar 40 from each side with the translucent surface, the border and the bar shadow", () => {
+    expect(tabBarStyle(0)).toEqual({
+      position: "absolute",
+      left: spacing.tabBarSide,
+      right: spacing.tabBarSide,
+      bottom: 30,
+      padding: spacing.stack,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceFloating,
+      borderWidth: borderWidth.thin,
+      borderColor: colors.border,
+      ...shadow.tabBar,
     });
+  });
+
+  it("puts the bar on the bottom inset when it is larger than 30", () => {
+    expect(tabBarStyle(34).bottom).toBe(34);
+  });
+});
+
+describe("tabPillStyle", () => {
+  it("sizes the pill to its tab with the accent fill, border and glow", () => {
+    expect(tabPillStyle(100, null)).toEqual({
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      left: 0,
+      width: 100,
+      borderRadius: radius.pill,
+      backgroundColor: colors.accentLine,
+      borderWidth: borderWidth.thin,
+      borderColor: colors.accentPressed,
+      ...shadow.pillGlow,
+    });
+    expect(tabPillStyle(100, null).transform).toBeUndefined();
+  });
+
+  it("draws the pill at the given offset when it jumps", () => {
+    expect(tabPillStyle(100, 200).transform).toEqual([{ translateX: 200 }]);
+  });
+
+  it("gives the pill no width before the row is measured", () => {
+    expect(tabPillStyle(0, null).width).toBe(0);
   });
 });

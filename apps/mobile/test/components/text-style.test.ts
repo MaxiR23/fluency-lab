@@ -202,12 +202,20 @@ describe("textStyle", () => {
     });
   });
 
-  it("draws tab muted and tabActive semibold accent, both at the xsmall size", () => {
+  it("draws tab muted and tabSelected in the text color, both semibold at the micro size", () => {
     expect(textStyle("tab")).toEqual({
-      fontFamily: fontFamily.regular,
-      fontSize: fontSize.xsmall,
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.micro,
       color: colors.textMuted,
     });
+    expect(textStyle("tabSelected")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.micro,
+      color: colors.text,
+    });
+  });
+
+  it("keeps tabActive semibold accent at the xsmall size for the corrections label", () => {
     expect(textStyle("tabActive")).toEqual({
       fontFamily: fontFamily.semibold,
       fontSize: fontSize.xsmall,
@@ -315,6 +323,7 @@ describe("textStyle", () => {
       "avatar",
       "tab",
       "tabActive",
+      "tabSelected",
       "message",
       "correction",
       "struck",

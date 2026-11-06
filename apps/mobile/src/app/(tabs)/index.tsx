@@ -14,6 +14,7 @@ import { Text } from "@/components/text";
 import { WeekStrip } from "@/components/week-strip";
 import { colors, spacing } from "@/constants/theme";
 import { useHome } from "@/hooks/use-home";
+import { useTabScreenPadding } from "@/hooks/use-tab-screen-padding";
 import { dataFailureMessage } from "@/utils/data-message";
 import { avatarInitial, continueCard, greeting, seeAllLabel } from "@/utils/home";
 
@@ -31,6 +32,7 @@ function openChats() {
 
 export default function Home() {
   const { state, retry } = useHome();
+  const padding = useTabScreenPadding();
 
   if (state.kind === "loading") {
     return (
@@ -58,7 +60,7 @@ export default function Home() {
   const seeAll = seeAllLabel(state.openCount);
   return (
     <Screen edges={["left", "right"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView testID="home-content" contentContainerStyle={[styles.content, padding]}>
         <View style={styles.header}>
           <View style={styles.headerTexts}>
             <Text variant="footer">{greeting(profile.displayName, new Date(state.loadedAt))}</Text>
@@ -115,7 +117,6 @@ const styles = StyleSheet.create({
   failure: { padding: spacing.screenSide, gap: spacing.lg },
   content: {
     paddingTop: spacing.screenTopShort,
-    paddingBottom: spacing.md,
     gap: spacing.section,
   },
   header: {

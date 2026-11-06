@@ -4,6 +4,7 @@
 //
 // Tested:
 // - Settings draws Sign out
+// - The end of Settings is padded by the tab bar clearance
 // - Sign out returns to Login, and its failures show their message
 // - The failure is drawn through FailureMessage, with its cause in development only
 //
@@ -20,6 +21,7 @@ import { StyleSheet } from "react-native";
 
 import { textStyle } from "@/components/text-style";
 import { authFailureMessage } from "@/utils/auth-message";
+import { tabBarLayout } from "@/utils/tab-bar";
 import { emitSession, fakeAuth, fakeSession, resetFakeAuth } from "../../helpers/fake-auth";
 import { resetFakeData } from "../../helpers/fake-data";
 import { resetFakeKeys } from "../../helpers/fake-keys";
@@ -65,6 +67,12 @@ describe("Settings placeholder", () => {
 
   afterEach(() => {
     setDev(savedDev);
+  });
+
+  it("pads the end of Settings by the tab bar clearance", async () => {
+    await renderAppAt("/settings", fakeSession());
+    const style = StyleSheet.flatten(screen.getByTestId("settings-content").props.style);
+    expect(style.paddingBottom).toBe(tabBarLayout(0).clearance);
   });
 
   it("draws Settings with Sign out", async () => {

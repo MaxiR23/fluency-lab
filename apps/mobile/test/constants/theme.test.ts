@@ -5,6 +5,7 @@
 // Tested:
 // - The README palette, accent-pressed and error
 // - Radius, spacing scale, sizes, tints, the raised shadow and font faces
+// - The floating tab bar tokens and the tab pill spring
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -100,14 +101,12 @@ describe("theme", () => {
       iconAction: 16,
       iconCard: 18,
       iconBadge: 20,
-      iconTab: 24,
       dayCircle: 30,
       badgeSmall: 36,
       pill: 40,
       avatar: 44,
       touch: 44,
       swipeAction: 66,
-      tabItem: 64,
       suggestionCard: 200,
       heroArtWidth: 56,
       heroArtHeight: 48,
@@ -191,7 +190,7 @@ describe("theme", () => {
       card: 14,
       hero: 18,
       section: 22,
-      tabBarBottom: 28,
+      tabBarBottom: 30,
       screenTopShort: 56,
     });
   });
@@ -263,7 +262,7 @@ describe("theme", () => {
     expect(size.typingDot).toBe(7);
   });
 
-  it("holds the chat motion: enter, fade, press and the dot loop", () => {
+  it("holds the motion: the chat's enter, fade, press and dot loop, and the tab pill spring", () => {
     expect(motion).toEqual({
       enterDuration: 240,
       enterOffset: 12,
@@ -276,6 +275,8 @@ describe("theme", () => {
       dotSettleAt: 0.6,
       dotLift: 4,
       dotRestOpacity: 0.3,
+      pillDuration: 280,
+      pillDampingRatio: 1,
       easeOut: [0, 0, 0.58, 1],
       easeInOut: [0.42, 0, 0.58, 1],
     });
@@ -308,6 +309,25 @@ describe("theme", () => {
       regular: "PlusJakartaSans_400Regular",
       semibold: "PlusJakartaSans_600SemiBold",
       bold: "PlusJakartaSans_700Bold",
+    });
+  });
+
+  it("holds the floating tab bar tokens: side inset, translucent surface, shadow and pill glow", () => {
+    expect(spacing.tabBarSide).toBe(40);
+    expect(colors.surfaceFloating).toBe("rgba(20,20,20,0.94)");
+    expect(colors.accentGlow).toBe("rgba(109,165,192,0.22)");
+    expect(shadow.tabBar).toEqual({
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.8,
+      shadowRadius: 14,
+      elevation: 14,
+    });
+    expect(shadow.pillGlow).toEqual({
+      shadowColor: colors.accentGlow,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 7,
     });
   });
 
