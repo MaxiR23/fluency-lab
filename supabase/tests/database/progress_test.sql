@@ -8,7 +8,9 @@
 -- - progress_history lists ended sessions newest first with message and correction counts, one page at a time
 -- - progress_mistakes groups by rule ignoring case and spaces, puts rule-less corrections in one null group,
 --   orders by count then latest, and keeps the latest example
--- - progress_words lists each word once at its first appearance, newest first, with its message text
+-- - progress_words lists each word once at its first appearance, newest first, with its message text,
+--   words of a thread included with the thread row's text
+-- - a withdrawn correction is left out of the month and history totals and of the mistakes
 -- - another user's sessions, corrections and words never appear
 -- - anon cannot execute the functions; a signed-in user can
 --
@@ -18,10 +20,11 @@
 -- Run with: pnpm supabase test db
 --
 -- SEE: supabase/migrations/20261106100000_progress.sql
+-- SEE: supabase/migrations/20261106120000_correction_threads.sql
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(26);
+select plan(28);
 
 create temp table t_ids (k text primary key, id uuid not null);
 insert into t_ids values
@@ -56,8 +59,11 @@ insert into public.messages (session_id, role, text, corrections, new_words, cre
     '{"items":[{"rule":"Present Perfect","original":"a3","corrected":"b3"}],"explanation":null}',
     '[" itinerary ", "catchy"]', '2026-11-05T15:01:00+00'),
   ((select id from t_ids where k = 'sa2'), 'user', 'third',
-    '{"items":[{"rule":"Spelling","original":"o7","corrected":"c7"}],"explanation":null}',
+    '{"items":[{"rule":"Spelling","original":"o7","corrected":"c7"},{"rule":"Spelling","original":"o8","corrected":"c8","withdrawn":true}],"explanation":null}',
     null, '2026-11-05T15:02:00+00'),
+  ((select id from t_ids where k = 'sa2'), 'user', 'fifth',
+    '{"items":[{"rule":"Gerunds","original":"w1","corrected":"z1","withdrawn":true}],"explanation":null}',
+    null, '2026-11-05T15:06:00+00'),
   ((select id from t_ids where k = 'sa2'), 'tutor', 'tutor message', null, '"not an array"', '2026-11-05T15:03:00+00'),
   ((select id from t_ids where k = 'sa2'), 'user', 'fourth', '{"items":"x","explanation":null}', '["  "]', '2026-11-05T15:04:00+00'),
   ((select id from t_ids where k = 'sa1'), 'user', 'first of november',
@@ -69,6 +75,12 @@ insert into public.messages (session_id, role, text, corrections, new_words, cre
   ((select id from t_ids where k = 'sb1'), 'user', 'b message',
     '{"items":[{"rule":"Gerunds","original":"bo","corrected":"bc"}],"explanation":null}',
     '["zebra"]', '2026-11-10T12:00:00+00');
+
+-- Thread rows: A's learner question on the second message teaches laid-back and catchy (catchy was
+-- first seen on the message itself); B's thread teaches xylophone.
+insert into public.thread_messages (message_id, role, text, new_words, created_at) values
+  ((select id from public.messages where text = 'second'), 'user', 'Is laid-back right?', '["laid-back", "catchy"]', '2026-11-05T15:05:00+00'),
+  ((select id from public.messages where text = 'b message'), 'user', 'What is xylophone?', '["xylophone"]', '2026-11-10T12:01:00+00');
 
 set local role authenticated;
 
@@ -103,7 +115,7 @@ select results_eq(
 
 select results_eq(
   $$select title, message_count, correction_count from public.progress_history(0, 2)$$,
-  $$values ('Nov five'::text, 4::bigint, 2::bigint), ('Nov one'::text, 1::bigint, 2::bigint)$$,
+  $$values ('Nov five'::text, 5::bigint, 2::bigint), ('Nov one'::text, 1::bigint, 2::bigint)$$,
   'history is ended sessions newest first with message and correction counts'
 );
 select results_eq(
@@ -127,10 +139,21 @@ select results_eq(
   'mistakes group by rule ignoring case and spaces, keep the null group and the latest example, ordered by count then latest'
 );
 
+select is(
+  (select count(*) from public.progress_mistakes(0, 50) where rule = 'Gerunds'),
+  0::bigint,
+  'a withdrawn correction makes no mistake group'
+);
+select is(
+  (select original from public.progress_mistakes(0, 50) where rule = 'Spelling'),
+  'o7',
+  'a withdrawn correction is not the latest example of its rule'
+);
+
 select results_eq(
   $$select word, sentence from public.progress_words(0, 50)$$,
-  $$values ('december'::text, 'dec msg'::text), ('catchy'::text, 'second'::text), ('Itinerary'::text, 'I goed home'::text)$$,
-  'each word appears once at its first appearance, newest first, with its message text'
+  $$values ('december'::text, 'dec msg'::text), ('laid-back'::text, 'Is laid-back right?'::text), ('catchy'::text, 'second'::text), ('Itinerary'::text, 'I goed home'::text)$$,
+  'each word appears once at its first appearance, newest first, with its message text or its thread text'
 );
 select results_eq(
   $$select word from public.progress_words(0, 1)$$,
@@ -143,7 +166,7 @@ select is(
   (
     (select count(*) from public.progress_history(0, 50) where title = 'B chat')
     + (select count(*) from public.progress_mistakes(0, 50) where rule = 'Gerunds')
-    + (select count(*) from public.progress_words(0, 50) where word = 'zebra')
+    + (select count(*) from public.progress_words(0, 50) where word in ('zebra', 'xylophone'))
   ),
   0::bigint,
   'another user sessions, corrections and words never appear'
@@ -167,8 +190,8 @@ select results_eq(
   'as B the mistakes have only B rules'
 );
 select results_eq(
-  $$select word from public.progress_words(0, 50)$$,
-  $$values ('zebra'::text)$$,
+  $$select word from public.progress_words(0, 50) order by word$$,
+  $$values ('xylophone'::text), ('zebra'::text)$$,
   'as B the words have only B words'
 );
 

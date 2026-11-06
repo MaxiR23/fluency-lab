@@ -3,7 +3,7 @@
 // Tests for ChatHeader.
 //
 // Tested:
-// - The title, the provider line, Back and the optional End action
+// - The title, the provider line, Back (with its own label when given) and the optional End action
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -30,6 +30,21 @@ describe("ChatHeader", () => {
     const onBack = jest.fn();
     await render(<ChatHeader title="Free chat" subtitle="Claude" onBack={onBack} />);
     await fireEvent.press(screen.getByRole("button", { name: "Back to Home" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes the back label it is given", async () => {
+    const onBack = jest.fn();
+    await render(
+      <ChatHeader
+        title="Correction"
+        subtitle="Travel"
+        onBack={onBack}
+        backLabel="Back to the chat"
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Back to Home" })).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Back to the chat" }));
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 

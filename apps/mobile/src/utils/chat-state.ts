@@ -18,6 +18,8 @@ import {
 import {
   sendState,
   startConversation,
+  type ContextEvent,
+  type ContextFields,
   type Conversation,
   type ConversationEvent,
 } from "@/utils/chat-conversation";
@@ -90,7 +92,7 @@ export function contextRefresh(input: {
   key: KeyPresenceOutcome;
   profile: DataOutcome<Profile>;
   spend: DataOutcome<MonthSpend>;
-}): { kind: "no_key" } | { kind: "event"; event: ConversationEvent } {
+}): { kind: "no_key" } | { kind: "event"; event: ContextEvent } {
   const { key, profile, spend } = input;
   if (!key.ok) {
     const failure = { source: "ai", failure: "key_unreadable", cause: key.cause } as const;
@@ -116,6 +118,15 @@ export function contextRefresh(input: {
   };
 }
 
+// INFO: coming back from a thread re-reads the session, to update the corrections and the
+// reply counts of the messages the chat already has. A failure stays in the conversation.
+export function threadsRefresh(opened: DataOutcome<SessionWithMessages>): ConversationEvent {
+  if (!opened.ok) {
+    return { type: "context_failed", failure: { source: "data", failure: opened.failure } };
+  }
+  return { type: "threads_refreshed", opened: opened.value };
+}
+
 export type ChatNotice =
   | { kind: "failure"; view: ChatFailureView }
   | { kind: "unsupported"; message: string }
@@ -124,7 +135,7 @@ export type ChatNotice =
   | null;
 
 // INFO: at most one notice shows above the input; a failure comes first.
-export function chatNotice(c: Conversation): ChatNotice {
+export function chatNotice(c: ContextFields): ChatNotice {
   if (c.failure !== null) return { kind: "failure", view: chatFailureView(c.failure) };
   const { notice } = sendState(c);
   if (notice === "unsupported") return { kind: "unsupported", message: unsupportedProviderMessage };

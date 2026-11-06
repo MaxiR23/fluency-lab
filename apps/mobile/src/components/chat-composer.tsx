@@ -23,6 +23,8 @@ export function ChatComposer({
   busy,
   press,
   replying,
+  label = "Message",
+  belowChips,
 }: {
   value: string;
   onChangeText: (text: string) => void;
@@ -34,12 +36,16 @@ export function ChatComposer({
   press: PressMotion | null;
   // INFO: a reply preview shows above the composer, which tightens the row's top padding.
   replying?: boolean;
+  // INFO: the input's accessibility label; the thread names what it asks about.
+  label?: string;
+  // INFO: the quick-ask chips of a thread sit above the composer, which tightens its top padding.
+  belowChips?: boolean;
 }) {
   const [lines, setLines] = useState(1);
   const input = composerInputStyle({ locked, lines });
   const enabled = canSend(value, locked, busy);
   return (
-    <View style={composerRowStyle(replying === true)}>
+    <View style={composerRowStyle(replying === true, belowChips === true)}>
       <TextInput
         style={input.input}
         value={value}
@@ -48,7 +54,7 @@ export function ChatComposer({
         placeholderTextColor={input.placeholderColor}
         editable={!locked}
         maxLength={MAX_MESSAGE_LENGTH}
-        accessibilityLabel="Message"
+        accessibilityLabel={label}
         multiline
         submitBehavior="newline"
         // INFO: the height is the layout's and the count a pure function; the input grows by

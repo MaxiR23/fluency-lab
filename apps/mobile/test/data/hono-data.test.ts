@@ -12,6 +12,7 @@
 // - getSessionSummary
 // - getProfileStats and deleteAccount
 // - getMonthProgress, listHistory, listMistakes and listWords
+// - openThread, addThreadMessage and withdrawCorrections; openSession carries the thread reply counts
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -22,7 +23,7 @@
 
 import { describe, expect, it, jest } from "@jest/globals";
 
-import type { MessageCreate } from "@fluency-lab/shared";
+import type { MessageCreate, ThreadMessageCreate } from "@fluency-lab/shared";
 
 import { createHonoData } from "@/data/hono-data";
 import type { TokenRead } from "@/utils/data-token";
@@ -396,19 +397,22 @@ describe("createSession with a starter", () => {
 
 describe("openSession", () => {
   it("returns the session and its messages", async () => {
-    const { data, seen } = setup(reply({ session, messages: [message] }));
+    const { data, seen } = setup(reply({ session, messages: [message], threadReplies: [] }));
 
     expect(await data.openSession(id)).toEqual({
       ok: true,
-      value: { session, messages: [message] },
+      value: { session, messages: [message], threadReplies: [] },
     });
     expect(seen[0].method).toBe("GET");
     expect(seen[0].url).toBe(`http://api.test/sessions/${id}/messages`);
   });
 
   it("returns a session with no messages as a success", async () => {
-    const { data } = setup(reply({ session, messages: [] }));
-    expect(await data.openSession(id)).toEqual({ ok: true, value: { session, messages: [] } });
+    const { data } = setup(reply({ session, messages: [], threadReplies: [] }));
+    expect(await data.openSession(id)).toEqual({
+      ok: true,
+      value: { session, messages: [], threadReplies: [] },
+    });
   });
 
   it("returns saved corrections and new words", async () => {
@@ -417,11 +421,25 @@ describe("openSession", () => {
       corrections: { items: [{ original: "a", corrected: "b" }], explanation: "Because." },
       newWords: ["word"],
     };
-    const { data } = setup(reply({ session, messages: [saved] }));
+    const { data } = setup(reply({ session, messages: [saved], threadReplies: [] }));
     expect(await data.openSession(id)).toEqual({
       ok: true,
-      value: { session, messages: [saved] },
+      value: { session, messages: [saved], threadReplies: [] },
     });
+  });
+
+  it("returns the thread reply counts and no counts as a success", async () => {
+    const counts = [{ messageId: id, count: 2 }];
+    const { data } = setup(reply({ session, messages: [message], threadReplies: counts }));
+    expect(await data.openSession(id)).toMatchObject({
+      ok: true,
+      value: { threadReplies: counts },
+    });
+  });
+
+  it("returns bad_response when the thread reply counts are missing", async () => {
+    const { data } = setup(reply({ session, messages: [] }));
+    expect(await data.openSession(id)).toEqual({ ok: false, failure: "bad_response" });
   });
 
   it("returns not_found on 404", async () => {
@@ -969,5 +987,147 @@ describe("listWords", () => {
   it("returns bad_response for a body of the wrong shape", async () => {
     const { data } = setup(reply({ items: [{ word: 1 }], nextOffset: null }));
     expect(await data.listWords("UTC", 0)).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+const threadRow = {
+  id,
+  messageId: id,
+  role: "user",
+  text: "Why?",
+  newWords: null,
+  createdAt: stamp,
+};
+
+describe("openThread", () => {
+  const corrected = {
+    ...message,
+    corrections: {
+      items: [{ original: "a", corrected: "b", withdrawn: true }],
+      explanation: null,
+    },
+  };
+
+  it("returns the message, its session and the thread in order", async () => {
+    const { data, seen } = setup(reply({ session, message: corrected, messages: [threadRow] }));
+
+    expect(await data.openThread(id)).toEqual({
+      ok: true,
+      value: { session, message: corrected, messages: [threadRow] },
+    });
+    expect(seen[0].method).toBe("GET");
+    expect(seen[0].url).toBe(`http://api.test/messages/${id}/thread`);
+  });
+
+  it("returns a thread with no messages as a success", async () => {
+    const { data } = setup(reply({ session, message: corrected, messages: [] }));
+    expect(await data.openThread(id)).toMatchObject({ ok: true, value: { messages: [] } });
+  });
+
+  it("returns not_found on 404 and unauthorized on 401", async () => {
+    expect(await setup(reply({ error: "not_found" }, 404)).data.openThread(id)).toEqual({
+      ok: false,
+      failure: "not_found",
+    });
+    expect(await setup(reply({ error: "unauthorized" }, 401)).data.openThread(id)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("Network request failed"));
+    expect(await data.openThread(id)).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ session }));
+    expect(await data.openThread(id)).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("addThreadMessage", () => {
+  const input: ThreadMessageCreate = { role: "user", text: "Why?", newWords: ["word"] };
+
+  it("posts the row and returns the saved one", async () => {
+    const { data, seen } = setup(reply({ ...threadRow, newWords: ["word"] }, 201));
+
+    expect(await data.addThreadMessage(id, input)).toEqual({
+      ok: true,
+      value: { ...threadRow, newWords: ["word"] },
+    });
+    expect(seen[0].method).toBe("POST");
+    expect(seen[0].url).toBe(`http://api.test/messages/${id}/thread`);
+    expect(JSON.parse(seen[0].body ?? "null")).toEqual(input);
+  });
+
+  it("posts a row with no new words", async () => {
+    const { data, seen } = setup(reply(threadRow, 201));
+    await data.addThreadMessage(id, { role: "user", text: "Why?" });
+    expect(JSON.parse(seen[0].body ?? "null")).toEqual({ role: "user", text: "Why?" });
+  });
+
+  it("returns invalid_input on 400 and not_found on 404", async () => {
+    expect(
+      await setup(reply({ error: "invalid_input" }, 400)).data.addThreadMessage(id, input),
+    ).toEqual({ ok: false, failure: "invalid_input" });
+    expect(
+      await setup(reply({ error: "not_found" }, 404)).data.addThreadMessage(id, input),
+    ).toEqual({ ok: false, failure: "not_found" });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("Network request failed"));
+    expect(await data.addThreadMessage(id, input)).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ id }, 201));
+    expect(await data.addThreadMessage(id, input)).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("withdrawCorrections", () => {
+  const withdrawn = {
+    ...message,
+    corrections: {
+      items: [{ original: "a", corrected: "b", withdrawn: true }],
+      explanation: null,
+    },
+  };
+
+  it("posts the indexes and returns the message with the correction withdrawn", async () => {
+    const { data, seen } = setup(reply(withdrawn));
+
+    expect(await data.withdrawCorrections(id, [0])).toEqual({ ok: true, value: withdrawn });
+    expect(seen[0].method).toBe("POST");
+    expect(seen[0].url).toBe(`http://api.test/messages/${id}/withdraw`);
+    expect(JSON.parse(seen[0].body ?? "null")).toEqual({ items: [0] });
+  });
+
+  it("returns invalid_input on 400 for no indexes", async () => {
+    const { data } = setup(reply({ error: "invalid_input" }, 400));
+    expect(await data.withdrawCorrections(id, [])).toEqual({
+      ok: false,
+      failure: "invalid_input",
+    });
+  });
+
+  it("returns not_found on 404", async () => {
+    const { data } = setup(reply({ error: "not_found" }, 404));
+    expect(await data.withdrawCorrections(id, [0])).toEqual({ ok: false, failure: "not_found" });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("Network request failed"));
+    expect(await data.withdrawCorrections(id, [0])).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ id }));
+    expect(await data.withdrawCorrections(id, [0])).toEqual({
+      ok: false,
+      failure: "bad_response",
+    });
   });
 });

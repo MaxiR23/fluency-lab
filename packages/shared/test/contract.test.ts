@@ -12,6 +12,7 @@
 // - The session week response and its query
 // - The profile stats response and the account deleted response
 // - The progress responses and their page queries
+// - The thread schemas: the stored correction with its withdrawn flag, the thread rows, the withdraw body, the reply counts and the thread reply payload
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -25,11 +26,13 @@ import {
   accountDeletedSchema,
   activeSessionResponseSchema,
   correctionSchema,
+  correctionThreadSchema,
   historyPageSchema,
   mistakePageSchema,
   mistakesQuerySchema,
   messageCorrectionsSchema,
   messageCreateSchema,
+  messageIdParamSchema,
   messageSchema,
   monthProgressSchema,
   monthSpendSchema,
@@ -45,8 +48,14 @@ import {
   sessionSummarySchema,
   sessionUsageSchema,
   sessionWeekSchema,
+  storedCorrectionSchema,
+  threadMessageCreateSchema,
+  threadMessageSchema,
+  threadReplySchema,
+  threadRepliesSchema,
   tutorReplySchema,
   weekQuerySchema,
+  withdrawSchema,
   wordPageSchema,
 } from "../src/contract";
 import { TUTOR_MODEL } from "../src/model-price";
@@ -273,7 +282,7 @@ describe("response schemas", () => {
   });
 
   it("parses a session body with no messages", () => {
-    const body = { session, messages: [] };
+    const body = { session, messages: [], threadReplies: [] };
     expect(sessionMessagesResponseSchema.parse(body)).toEqual(body);
   });
 
@@ -286,7 +295,7 @@ describe("response schemas", () => {
       },
       newWords: ["definitely"],
     };
-    const body = { session, messages: [saved] };
+    const body = { session, messages: [saved], threadReplies: [] };
     expect(sessionMessagesResponseSchema.parse(body)).toEqual(body);
     expect(messageSchema.safeParse({ ...message, corrections: "x" }).success).toBe(false);
   });
@@ -691,5 +700,111 @@ describe("wordPageSchema", () => {
   it("parses an empty page", () => {
     const body = { items: [], nextOffset: null };
     expect(wordPageSchema.parse(body)).toEqual(body);
+  });
+});
+
+describe("storedCorrectionSchema", () => {
+  const item = { original: "the next year", corrected: "next year" };
+
+  it("accepts an item with withdrawn true and one without it", () => {
+    expect(storedCorrectionSchema.safeParse({ ...item, withdrawn: true }).success).toBe(true);
+    expect(storedCorrectionSchema.safeParse(item).success).toBe(true);
+  });
+
+  it("rejects withdrawn false and an unknown key", () => {
+    expect(storedCorrectionSchema.safeParse({ ...item, withdrawn: false }).success).toBe(false);
+    expect(storedCorrectionSchema.safeParse({ ...item, apiKey: "x" }).success).toBe(false);
+  });
+
+  it("lets a message be read with a withdrawn correction", () => {
+    const withdrawn = {
+      ...message,
+      corrections: { items: [{ ...item, withdrawn: true }], explanation: null },
+    };
+    expect(messageSchema.parse(withdrawn)).toEqual(withdrawn);
+  });
+
+  it("does not let a client create a message with a withdrawn correction", () => {
+    const created = {
+      role: "user",
+      text: "Hello",
+      corrections: { items: [{ ...item, withdrawn: true }], explanation: null },
+    };
+    expect(messageCreateSchema.safeParse(created).success).toBe(false);
+  });
+});
+
+describe("thread schemas", () => {
+  it("accepts a user and a tutor row with and without new words", () => {
+    expect(threadMessageCreateSchema.safeParse({ role: "user", text: "Why?" }).success).toBe(true);
+    expect(
+      threadMessageCreateSchema.safeParse({ role: "tutor", text: "Because", newWords: ["a"] })
+        .success,
+    ).toBe(true);
+  });
+
+  it("rejects empty text, 4001 characters, 11 words and an unknown key", () => {
+    expect(threadMessageCreateSchema.safeParse({ role: "user", text: " " }).success).toBe(false);
+    expect(
+      threadMessageCreateSchema.safeParse({ role: "user", text: "a".repeat(4001) }).success,
+    ).toBe(false);
+    expect(
+      threadMessageCreateSchema.safeParse({
+        role: "user",
+        text: "x",
+        newWords: Array.from({ length: 11 }, (_, i) => `w${i}`),
+      }).success,
+    ).toBe(false);
+    expect(threadMessageCreateSchema.safeParse({ role: "user", text: "x", extra: 1 }).success).toBe(
+      false,
+    );
+  });
+
+  it("accepts the indexes to withdraw", () => {
+    expect(withdrawSchema.safeParse({ items: [0] }).success).toBe(true);
+    expect(withdrawSchema.safeParse({ items: [0, 9] }).success).toBe(true);
+  });
+
+  it("rejects empty, out of range, negative, fractional, repeated and 11 indexes", () => {
+    for (const items of [[], [10], [-1], [1.5], [1, 1], Array.from({ length: 11 }, (_, i) => i)]) {
+      expect(withdrawSchema.safeParse({ items }).success).toBe(false);
+    }
+  });
+
+  it("accepts a uuid as the message id and rejects anything else", () => {
+    expect(messageIdParamSchema.safeParse({ id: uuid }).success).toBe(true);
+    expect(messageIdParamSchema.safeParse({ id: "x" }).success).toBe(false);
+  });
+
+  it("parses a thread row and a thread with and without messages", () => {
+    const row = {
+      id: uuid,
+      messageId: uuid,
+      role: "user",
+      text: "Why?",
+      newWords: null,
+      createdAt: stamp,
+    };
+    expect(threadMessageSchema.parse(row)).toEqual(row);
+    const full = { session, message, messages: [row] };
+    expect(correctionThreadSchema.parse(full)).toEqual(full);
+    const empty = { session, message, messages: [] };
+    expect(correctionThreadSchema.parse(empty)).toEqual(empty);
+  });
+
+  it("requires the reply counts and accepts none", () => {
+    const body = { session, messages: [], threadReplies: [{ messageId: uuid, count: 2 }] };
+    expect(sessionMessagesResponseSchema.parse(body)).toEqual(body);
+    expect(
+      sessionMessagesResponseSchema.parse({ ...body, threadReplies: [] }).threadReplies,
+    ).toEqual([]);
+    expect(sessionMessagesResponseSchema.safeParse({ session, messages: [] }).success).toBe(false);
+    expect(threadRepliesSchema.safeParse([{ messageId: uuid, count: 0 }]).success).toBe(false);
+  });
+
+  it("parses the thread reply payload and rejects a missing withdrawn", () => {
+    const payload = { reply: "Yes", newWords: [], withdrawn: [1] };
+    expect(threadReplySchema.parse(payload)).toEqual(payload);
+    expect(threadReplySchema.safeParse({ reply: "Yes", newWords: [] }).success).toBe(false);
   });
 });

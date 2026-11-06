@@ -22,6 +22,7 @@ import Profile from "@/app/profile";
 import ResetPassword from "@/app/reset-password";
 import SignIn from "@/app/sign-in";
 import Suggestions from "@/app/suggestions";
+import Thread from "@/app/thread";
 import Summary from "@/app/summary";
 import type { AuthSession } from "@/auth/auth-port";
 import { emitSession } from "./fake-auth";
@@ -40,6 +41,7 @@ export async function renderApp(initialUrl: string, session: AuthSession | null)
       "edit-profile": EditProfile,
       suggestions: Suggestions,
       summary: Summary,
+      thread: Thread,
       "api-key": ApiKey,
       onboarding: Onboarding,
       "sign-in": SignIn,

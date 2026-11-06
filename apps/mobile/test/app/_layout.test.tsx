@@ -96,12 +96,13 @@ describe("RootLayout", () => {
     expect(Stack).toHaveBeenCalled();
   });
 
-  it("loads the three faces under the names the theme uses", async () => {
+  it("loads the four faces under the names the theme uses", async () => {
     jest.mocked(useFonts).mockReturnValue([true, null]);
     await render(<RootLayout />);
     expect(useFonts).toHaveBeenCalledWith(
       expect.objectContaining({
         [fontFamily.regular]: expect.anything(),
+        [fontFamily.medium]: expect.anything(),
         [fontFamily.semibold]: expect.anything(),
         [fontFamily.bold]: expect.anything(),
       }),

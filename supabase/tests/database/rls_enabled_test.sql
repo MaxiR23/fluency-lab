@@ -1,9 +1,9 @@
 -- supabase/tests/database/rls_enabled_test.sql
 --
--- Tests for row level security and the grants on the three tables.
+-- Tests for row level security and the grants on the tables.
 --
 -- Tested:
--- - RLS is on for profiles, sessions, messages and deleted_session_costs
+-- - RLS is on for profiles, sessions, messages, deleted_session_costs and thread_messages
 -- - anon has no privilege on them; authenticated has only what the API uses
 --
 -- What is covered:
@@ -12,10 +12,11 @@
 -- Run with: pnpm supabase test db
 --
 -- SEE: supabase/migrations/20261106000211_create_profiles_sessions_messages.sql
+-- SEE: supabase/migrations/20261106120000_correction_threads.sql
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(20);
 
 select results_eq($$select relrowsecurity from pg_class where oid = 'public.profiles'::regclass$$, array[true], 'RLS is on for profiles');
 select results_eq($$select relrowsecurity from pg_class where oid = 'public.sessions'::regclass$$, array[true], 'RLS is on for sessions');
@@ -37,6 +38,8 @@ select ok(has_table_privilege('authenticated', 'public.sessions', 'select'), 'au
 select results_eq($$select relrowsecurity from pg_class where oid = 'public.deleted_session_costs'::regclass$$, array[true], 'RLS is on for deleted_session_costs');
 select ok(not has_table_privilege('anon', 'public.deleted_session_costs', 'select, insert, update, delete'), 'anon has no privilege on deleted_session_costs');
 select ok(has_table_privilege('authenticated', 'public.deleted_session_costs', 'select') and not has_table_privilege('authenticated', 'public.deleted_session_costs', 'insert, update, delete'), 'authenticated only selects deleted_session_costs');
+select results_eq($$select relrowsecurity from pg_class where oid = 'public.thread_messages'::regclass$$, array[true], 'RLS is on for thread_messages');
+select ok(not has_table_privilege('anon', 'public.thread_messages', 'select, insert, update, delete'), 'anon has no privilege on thread_messages');
 
 select * from finish();
 rollback;

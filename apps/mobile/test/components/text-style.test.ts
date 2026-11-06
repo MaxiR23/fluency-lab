@@ -275,6 +275,24 @@ describe("textStyle", () => {
     });
   });
 
+  it("draws replyCount muted at the caption size in the medium face", () => {
+    expect(textStyle("replyCount")).toEqual({
+      fontFamily: fontFamily.medium,
+      fontSize: fontSize.caption,
+      color: colors.textMuted,
+    });
+  });
+
+  it("draws withdrawn in the placeholder color with a line through and the small line height", () => {
+    expect(textStyle("withdrawn")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.small,
+      color: colors.textPlaceholder,
+      lineHeight: lineHeight.small,
+      textDecorationLine: "line-through",
+    });
+  });
+
   it("draws explanation muted at the caption size with the explanation line height", () => {
     expect(textStyle("explanation")).toEqual({
       fontFamily: fontFamily.regular,

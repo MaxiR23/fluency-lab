@@ -14,7 +14,7 @@ import {
   type ConversationEvent,
 } from "@/utils/chat-conversation";
 import type { ChatOrigin } from "@/utils/chat-opening";
-import { chatView, contextRefresh, type ChatView } from "@/utils/chat-state";
+import { chatView, contextRefresh, threadsRefresh, type ChatView } from "@/utils/chat-state";
 import { hasText } from "@/utils/has-text";
 import { deviceTimeZone } from "@/utils/time-zone";
 
@@ -62,8 +62,9 @@ export function useChat(chatOrigin: ChatOrigin): {
     setView({ kind: "ready", conversation: next });
   }
 
-  // INFO: read on every focus. A ready chat only re-reads its context, so the draft and the
-  // messages survive the key step; any other view reads everything again.
+  // INFO: read on every focus. A ready chat only re-reads its context, and its session when it has
+  // one (a thread may have changed its corrections and reply counts), so the draft and the
+  // messages survive the key step and a thread; any other view reads everything again.
   useEffect(() => {
     if (!focused) return;
     let live = true;
@@ -74,15 +75,21 @@ export function useChat(chatOrigin: ChatOrigin): {
       });
     } else {
       void (async () => {
-        const [key, profile, spend] = await Promise.all([
+        const session = current.current?.session ?? null;
+        const [key, profile, spend, opened] = await Promise.all([
           keys.hasApiKey(),
           data.getProfile(),
           data.getMonthSpend(deviceTimeZone()),
+          session === null ? null : data.openSession(session.id),
         ]);
         if (!live) return;
         const refresh = contextRefresh({ key, profile, spend });
-        if (refresh.kind === "no_key") show({ kind: "no_key" });
-        else dispatch(refresh.event);
+        if (refresh.kind === "no_key") {
+          show({ kind: "no_key" });
+          return;
+        }
+        dispatch(refresh.event);
+        if (opened !== null) dispatch(threadsRefresh(opened));
       })();
     }
     return () => {

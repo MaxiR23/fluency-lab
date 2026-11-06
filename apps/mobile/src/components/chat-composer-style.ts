@@ -24,12 +24,13 @@ export function composerLines(height: number): number {
 
 // INFO: chat-reply.html draws the form with 10 on top under a reply preview; the other chat
 // designs draw 12.
-export function composerRowStyle(replying: boolean): ViewStyle {
+// A thread draws the composer 4 below its quick-ask chips, which carry their own 10.
+export function composerRowStyle(replying: boolean, belowChips = false): ViewStyle {
   return {
     flexDirection: "row",
     alignItems: "flex-end",
     gap: spacing.cluster,
-    paddingTop: replying ? spacing.cluster : spacing.group,
+    paddingTop: belowChips ? spacing.xs : replying ? spacing.cluster : spacing.group,
     paddingHorizontal: spacing.md,
   };
 }

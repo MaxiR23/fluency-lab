@@ -51,7 +51,9 @@ export type TextVariant =
   | "bodyDanger"
   | "actionMuted"
   | "word"
-  | "quote";
+  | "quote"
+  | "replyCount"
+  | "withdrawn";
 
 const variants: Record<TextVariant, TextStyle> = {
   title: {
@@ -318,6 +320,18 @@ const variants: Record<TextVariant, TextStyle> = {
     fontSize: fontSize.caption,
     color: colors.textMuted,
     lineHeight: lineHeight.quote,
+  },
+  replyCount: {
+    fontFamily: fontFamily.medium,
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+  },
+  withdrawn: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.small,
+    color: colors.textPlaceholder,
+    lineHeight: lineHeight.small,
+    textDecorationLine: "line-through",
   },
 };
 

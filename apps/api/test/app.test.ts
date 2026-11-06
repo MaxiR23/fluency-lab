@@ -10,8 +10,9 @@
 //   when the signing keys cannot be loaded
 // - GET/PUT /profile, GET/POST /sessions, GET /sessions/open, DELETE /sessions/:id, GET /sessions/week, GET /sessions/spend,
 //   GET /profile/stats, GET /progress/month, /progress/history, /progress/mistakes and /progress/words, DELETE /account,
-//   GET/POST /sessions/:id/messages, GET /sessions/:id/summary, POST /sessions/:id/usage and POST /sessions/:id/end:
+//   GET/POST /sessions/:id/messages, GET/POST /messages/:id/thread, POST /messages/:id/withdraw, GET /sessions/:id/summary, POST /sessions/:id/usage and POST /sessions/:id/end:
 //   401 without a valid token, 400 on invalid input, 404, 503, and the typed client
+// - GET /sessions/:id/messages carries the thread reply counts
 // - GET /sessions/:id/summary counts the messages and collects the corrections and new words
 // - GET /sessions/spend still counts the cost of a deleted session
 // - the usage route prices the tokens, and the routes reject an apiKey field
@@ -309,6 +310,19 @@ const routes: { name: string; path: string; method: string; body?: unknown }[] =
     },
   },
   { name: "POST /sessions/:id/end", path: `/sessions/${sessionId}/end`, method: "POST" },
+  { name: "GET /messages/:id/thread", path: `/messages/${message.id}/thread`, method: "GET" },
+  {
+    name: "POST /messages/:id/thread",
+    path: `/messages/${message.id}/thread`,
+    method: "POST",
+    body: { role: "user", text: "Why?" },
+  },
+  {
+    name: "POST /messages/:id/withdraw",
+    path: `/messages/${message.id}/withdraw`,
+    method: "POST",
+    body: { items: [0] },
+  },
 ];
 
 describe("authentication of the data routes", () => {
@@ -919,11 +933,12 @@ describe("GET /sessions/:id/messages", () => {
       ok: true,
       value: { session, messages: [message] },
     });
+    fake.user.listThreadCounts.mockResolvedValue({ ok: true, value: [] });
 
     const res = await list(sessionId);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ session, messages: [message] });
+    expect(await res.json()).toEqual({ session, messages: [message], threadReplies: [] });
     expect(fake.user.getSessionWithMessages).toHaveBeenCalledWith(sessionId);
   });
 
@@ -932,11 +947,50 @@ describe("GET /sessions/:id/messages", () => {
       ok: true,
       value: { session, messages: [] },
     });
+    fake.user.listThreadCounts.mockResolvedValue({ ok: true, value: [] });
 
     const res = await list(sessionId);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ session, messages: [] });
+    expect(await res.json()).toEqual({ session, messages: [], threadReplies: [] });
+  });
+
+  it("carries the reply count of each message that has a thread", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [message] },
+    });
+    fake.user.listThreadCounts.mockResolvedValue({
+      ok: true,
+      value: [{ messageId: message.id, count: 2 }],
+    });
+
+    const res = await list(sessionId);
+
+    expect(await res.json()).toMatchObject({
+      threadReplies: [{ messageId: message.id, count: 2 }],
+    });
+    expect(fake.user.listThreadCounts).toHaveBeenCalledWith(sessionId);
+  });
+
+  it("responds 503 when the thread counts fail", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [message] },
+    });
+    fake.user.listThreadCounts.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    expect((await list(sessionId)).status).toBe(503);
+  });
+
+  it("responds 401 when the thread counts report unauthorized", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [message] },
+    });
+    fake.user.listThreadCounts.mockResolvedValue({ ok: false, failure: "unauthorized" });
+
+    expect((await list(sessionId)).status).toBe(401);
   });
 
   it("responds 400 for an id that is not a uuid", async () => {
@@ -1230,7 +1284,157 @@ describe("POST /sessions/:id/end", () => {
   });
 });
 
+const threadRow = {
+  id: "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ee1",
+  messageId: message.id,
+  role: "user" as const,
+  text: "Why?",
+  newWords: null,
+  createdAt: stamp,
+};
+
+describe("GET /messages/:id/thread", () => {
+  async function read(id: string) {
+    return app.request(`/messages/${id}/thread`, { headers: await authed() });
+  }
+
+  it("responds 200 with the session, the message and the thread", async () => {
+    fake.user.getThread.mockResolvedValue({
+      ok: true,
+      value: { session, message, messages: [threadRow] },
+    });
+
+    const res = await read(message.id);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ session, message, messages: [threadRow] });
+    expect(fake.user.getThread).toHaveBeenCalledWith(message.id);
+  });
+
+  it("responds 200 with an empty thread", async () => {
+    fake.user.getThread.mockResolvedValue({ ok: true, value: { session, message, messages: [] } });
+
+    const res = await read(message.id);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ session, message, messages: [] });
+  });
+
+  it("responds 400 for an id that is not a uuid", async () => {
+    expect((await read("abc")).status).toBe(400);
+    expect(fake.user.getThread).not.toHaveBeenCalled();
+  });
+
+  it("responds 404 when the message is not visible", async () => {
+    fake.user.getThread.mockResolvedValue({ ok: true, value: null });
+    expect((await read(message.id)).status).toBe(404);
+  });
+
+  it("responds 401 and 503 from the store", async () => {
+    fake.user.getThread.mockResolvedValue({ ok: false, failure: "unauthorized" });
+    expect((await read(message.id)).status).toBe(401);
+    fake.user.getThread.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await read(message.id)).status).toBe(503);
+  });
+});
+
+describe("POST /messages/:id/thread", () => {
+  async function write(id: string, body: unknown) {
+    return app.request(`/messages/${id}/thread`, {
+      method: "POST",
+      headers: await authed(jsonType),
+      body: json(body),
+    });
+  }
+
+  it("responds 201 with the saved row", async () => {
+    fake.user.addThreadMessage.mockResolvedValue({ ok: true, value: threadRow });
+
+    const res = await write(message.id, { role: "user", text: "Why?" });
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual(threadRow);
+    expect(fake.user.addThreadMessage).toHaveBeenCalledWith(message.id, {
+      role: "user",
+      text: "Why?",
+    });
+  });
+
+  it("responds 400 for empty text and for an unknown key", async () => {
+    expect((await write(message.id, { role: "user", text: " " })).status).toBe(400);
+    expect((await write(message.id, { role: "user", text: "x", apiKey: "k" })).status).toBe(400);
+    expect(fake.user.addThreadMessage).not.toHaveBeenCalled();
+  });
+
+  it("responds 404 when the message is not visible", async () => {
+    fake.user.addThreadMessage.mockResolvedValue({ ok: true, value: null });
+    expect((await write(message.id, { role: "user", text: "Why?" })).status).toBe(404);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.addThreadMessage.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await write(message.id, { role: "user", text: "Why?" })).status).toBe(503);
+  });
+});
+
+describe("POST /messages/:id/withdraw", () => {
+  async function withdraw(id: string, body: unknown) {
+    return app.request(`/messages/${id}/withdraw`, {
+      method: "POST",
+      headers: await authed(jsonType),
+      body: json(body),
+    });
+  }
+
+  it("responds 200 with the message", async () => {
+    fake.user.withdrawCorrections.mockResolvedValue({ ok: true, value: message });
+
+    const res = await withdraw(message.id, { items: [1] });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(message);
+    expect(fake.user.withdrawCorrections).toHaveBeenCalledWith(message.id, [1]);
+  });
+
+  it("responds 400 for no indexes and for an index above 9", async () => {
+    expect((await withdraw(message.id, { items: [] })).status).toBe(400);
+    expect((await withdraw(message.id, { items: [10] })).status).toBe(400);
+    expect(fake.user.withdrawCorrections).not.toHaveBeenCalled();
+  });
+
+  it("responds 404 when the message is not the caller's", async () => {
+    fake.user.withdrawCorrections.mockResolvedValue({ ok: true, value: null });
+    expect((await withdraw(message.id, { items: [0] })).status).toBe(404);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.withdrawCorrections.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await withdraw(message.id, { items: [0] })).status).toBe(503);
+  });
+});
+
 describe("typed client (data routes)", () => {
+  it("exposes the thread routes through AppType", async () => {
+    fake.user.getThread.mockResolvedValue({ ok: true, value: { session, message, messages: [] } });
+    fake.user.addThreadMessage.mockResolvedValue({ ok: true, value: threadRow });
+    fake.user.withdrawCorrections.mockResolvedValue({ ok: true, value: message });
+    const client = testClient(app, undefined, undefined, { headers: await authed() });
+
+    const readRes = await client.messages[":id"].thread.$get({ param: { id: message.id } });
+    const writeRes = await client.messages[":id"].thread.$post({
+      param: { id: message.id },
+      json: { role: "user", text: "Why?" },
+    });
+    const withdrawRes = await client.messages[":id"].withdraw.$post({
+      param: { id: message.id },
+      json: { items: [0] },
+    });
+
+    expect(readRes.status).toBe(200);
+    expect(writeRes.status).toBe(201);
+    expect(withdrawRes.status).toBe(200);
+  });
+
   it("exposes the profile and session routes through AppType", async () => {
     fake.user.getProfile.mockResolvedValue({ ok: true, value: profile });
     fake.user.getActiveSession.mockResolvedValue({ ok: true, value: null });

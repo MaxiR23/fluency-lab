@@ -5,6 +5,7 @@
 // Tested:
 // - chatView, originTitle, providerLine, noKeyProviderLine, canSend
 // - endPromptTitle, endPromptButtons
+// - chatNotice accepts any state that has the context fields; threadsRefresh turns a session read into an event
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -31,6 +32,7 @@ import {
   noKeyProviderLine,
   originTitle,
   providerLine,
+  threadsRefresh,
 } from "@/utils/chat-state";
 import { endedSessionMessage, unsupportedProviderMessage } from "@/utils/chat-failure";
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
@@ -58,6 +60,7 @@ const opened = (
       createdAt: "2026-11-05T09:00:00Z",
       updatedAt: "2026-11-05T09:00:00Z",
     },
+    threadReplies: [],
     messages: Array.from({ length: messages }, (_, n) => ({
       id: `m${n}`,
       sessionId: "s1",
@@ -321,6 +324,32 @@ describe("chatNotice", () => {
         message: "Your API key was not accepted. Update it to keep chatting.",
         action: "update_key",
       },
+    });
+  });
+});
+
+describe("chatNotice for any state with the context fields", () => {
+  it("accepts a plain context", () => {
+    const context = { failure: null, provider: "claude", limitUsd: 10, spentUsd: 8 } as const;
+    expect(chatNotice(context)).toEqual({ kind: "warning", message: spendWarningText });
+    expect(chatNotice({ ...context, spentUsd: 10 })).toMatchObject({ kind: "limit" });
+    expect(chatNotice({ ...context, provider: "openai" })).toMatchObject({ kind: "unsupported" });
+    expect(chatNotice({ ...context, spentUsd: 0 })).toBeNull();
+  });
+});
+
+describe("threadsRefresh", () => {
+  it("turns a session read into threads_refreshed", () => {
+    expect(threadsRefresh(opened("active", 1))).toEqual({
+      type: "threads_refreshed",
+      opened: opened("active", 1).value,
+    });
+  });
+
+  it("turns a failure into a context failure with the data failure", () => {
+    expect(threadsRefresh({ ok: false, failure: "network" })).toEqual({
+      type: "context_failed",
+      failure: { source: "data", failure: "network" },
     });
   });
 });

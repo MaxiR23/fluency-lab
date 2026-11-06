@@ -44,6 +44,38 @@ const messageBody = {
   createdAt: stamp,
 };
 
+const threadMessageBody = {
+  ...messageBody,
+  corrections: {
+    items: [{ original: "I never been", corrected: "I've never been", rule: "Present perfect" }],
+    explanation: null,
+  },
+};
+const threadRowBody = {
+  id: "thread-row-1",
+  messageId: "message-1",
+  role: "user",
+  text: "x",
+  newWords: null,
+  createdAt: stamp,
+};
+
+function providerBody(payload: unknown): Response {
+  return new Response(
+    JSON.stringify({
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: JSON.stringify(payload) }],
+      usage: { input_tokens: 700, output_tokens: 150 },
+    }),
+    { status: 200 },
+  );
+}
+
+// INFO: the provider's answer to a thread question.
+export function providerThreadSuccess(): Response {
+  return providerBody({ reply: "Because of the tense.", newWords: [], withdrawn: [] });
+}
+
 export function providerSuccess(): Response {
   return new Response(
     JSON.stringify({
@@ -76,6 +108,11 @@ function json(body: unknown, status = 200): Response {
 }
 
 function apiAnswer(method: string, pathname: string): Response {
+  if (pathname.endsWith("/thread") && method === "GET") {
+    return json({ session: sessionBody, message: threadMessageBody, messages: [] });
+  }
+  if (pathname.endsWith("/thread") && method === "POST") return json(threadRowBody, 201);
+  if (pathname.endsWith("/withdraw")) return json(threadMessageBody);
   if (pathname === "/profile") {
     return json({
       id: "user-1",

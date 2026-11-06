@@ -5,6 +5,7 @@
 // Tested:
 // - The input, open or locked, and its placeholder color
 // - The row's top padding, 12 without a reply preview and 10 under one
+// - The row's top padding is 4 when told so (below the chips)
 // - The send button: enabled, pressed, disabled
 // - The line count from the input height, the five-line cap and the radius at one line or more
 //
@@ -191,6 +192,17 @@ describe("composerRowStyle", () => {
       paddingHorizontal: spacing.md,
     });
     expect(spacing.group).toBe(12);
+  });
+
+  it("gives 4 on top below the quick-ask chips", () => {
+    expect(composerRowStyle(false, true).paddingTop).toBe(spacing.xs);
+    expect(spacing.xs).toBe(4);
+    expect(composerRowStyle(false, true).paddingHorizontal).toBe(spacing.md);
+  });
+
+  it("keeps the 12 and the 10 when not below the chips", () => {
+    expect(composerRowStyle(false, false).paddingTop).toBe(12);
+    expect(composerRowStyle(true, false).paddingTop).toBe(10);
   });
 
   it("tightens the top padding to 10 under a reply preview", () => {

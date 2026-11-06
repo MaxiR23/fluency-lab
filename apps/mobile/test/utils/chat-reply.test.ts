@@ -44,6 +44,7 @@ function chatMessage(
     corrections: [],
     explanation: null,
     newWords: [],
+    threadReplies: 0,
     replyTo: null,
     savedId: null,
     ...extra,

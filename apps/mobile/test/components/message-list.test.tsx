@@ -6,6 +6,7 @@
 // - The items in order, the typing indicator and the newest kept in view
 // - The newest message stays in view when the list shrinks for a taller input
 // - The keyboard lift offset, the still dots with reduce motion on and items added after mount
+// - A learner row with a thread asks about it through onAsk, and the thread layout
 // - A tutor row swipes to reply, a learner row does not, and a quote scrolls to its original row
 //
 // What is covered:
@@ -37,6 +38,7 @@ const items: ChatItem[] = [
     corrections: [{ original: "goed", corrected: "went" }],
     explanation: "Go is irregular.",
     quote: null,
+    thread: null,
   },
   { kind: "new_word", id: "3", word: "itinerary" },
 ];
@@ -44,7 +46,12 @@ const items: ChatItem[] = [
 function list(
   listItems: ChatItem[],
   motion: ChatMotion = chatMotion(false),
-  handlers: { onReply?: (id: string) => void; onArm?: () => void } = {},
+  handlers: {
+    onReply?: (id: string) => void;
+    onArm?: () => void;
+    onAsk?: (messageId: string) => void;
+    layout?: "chat" | "thread";
+  } = {},
 ) {
   return (
     <GestureHandlerRootView>
@@ -69,6 +76,7 @@ const quoted: ChatItem[] = [
     corrections: [],
     explanation: null,
     quote: { targetId: "1", author: "Claude", text: "Where did you go?" },
+    thread: null,
   },
 ];
 
@@ -225,5 +233,53 @@ describe("MessageList", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Go to the quoted message" }));
 
     expect(ScrollView.prototype.scrollTo).not.toHaveBeenCalled();
+  });
+});
+
+describe("MessageList and threads", () => {
+  const withThread: ChatItem[] = [
+    {
+      kind: "user",
+      id: "2",
+      text: "I goed to Rome",
+      corrections: [{ original: "goed", corrected: "went" }],
+      explanation: null,
+      quote: null,
+      thread: { messageId: "db-2", replies: "2 replies" },
+    },
+  ];
+
+  it("draws Ask about this with the count and calls onAsk with the saved id", async () => {
+    const onAsk = jest.fn();
+    await render(list(withThread, chatMotion(false), { onAsk }));
+    expect(screen.getByText("2 replies")).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Ask about this, 2 replies" }));
+    expect(onAsk).toHaveBeenCalledWith("db-2");
+  });
+
+  it("draws no ask row without onAsk", async () => {
+    await render(list(withThread));
+    expect(screen.queryByText("Ask about this")).toBeNull();
+  });
+
+  it("draws no ask row for a message that cannot open a thread", async () => {
+    await render(list(items, chatMotion(false), { onAsk: () => {} }));
+    expect(screen.queryByText("Ask about this")).toBeNull();
+  });
+
+  it("uses the thread layout when asked", async () => {
+    await render(list(items, chatMotion(false), { layout: "thread" }));
+    const style = StyleSheet.flatten(
+      screen.getByTestId("message-list").props.contentContainerStyle,
+    );
+    expect(style).toMatchObject({ flexGrow: 1, justifyContent: "flex-end", gap: spacing.group });
+  });
+
+  it("uses the chat layout by default", async () => {
+    await render(list(items));
+    const style = StyleSheet.flatten(
+      screen.getByTestId("message-list").props.contentContainerStyle,
+    );
+    expect(style).toMatchObject({ gap: spacing.card, paddingVertical: spacing.screenSide });
   });
 });

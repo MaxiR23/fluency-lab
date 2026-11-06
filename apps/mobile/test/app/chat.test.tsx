@@ -16,6 +16,8 @@
 // - Send plays the send haptic, and nothing plays when haptics are off
 // - Swiping a tutor message opens the reply preview with one reply haptic; its X cancels it
 // - A sent reply draws the quote, a resumed chat draws it again, a learner message or a locked chat cannot be swiped
+// - A saved message with corrections offers Ask about this with its reply count, and opens its thread
+// - Coming back from a thread draws the new count and a withdrawn correction; thread text never shows in the chat
 // - The state updates when the key step goes back to Chat
 // - Signed out users cannot reach Chat
 //
@@ -323,7 +325,11 @@ describe("Chat", () => {
     const tutor = saved("tutor", "Where do you want to go?");
     fakeData.openSession.mockResolvedValue({
       ok: true,
-      value: { session, messages: [tutor, saved("user", "To Rome", { replyToId: tutor.id })] },
+      value: {
+        session,
+        messages: [tutor, saved("user", "To Rome", { replyToId: tutor.id })],
+        threadReplies: [],
+      },
     });
     await renderAppAt({ pathname: "/chat", params: { session: "session-1" } }, fakeSession());
 
@@ -406,6 +412,7 @@ describe("Chat", () => {
             newWords: ["itinerary"],
           }),
         ],
+        threadReplies: [],
       },
     });
     await renderAppAt({ pathname: "/chat", params: { session: "session-1" } }, fakeSession());
@@ -419,11 +426,158 @@ describe("Chat", () => {
     expect(screen.getByText("itinerary")).toBeTruthy();
   });
 
+  describe("threads", () => {
+    const corrected = (extra: Partial<Message> = {}) =>
+      saved("user", "I goed to Rome", {
+        corrections: {
+          items: [{ original: "goed", corrected: "went" }],
+          explanation: "Go is irregular.",
+        },
+        ...extra,
+      });
+    const resumed = { pathname: "/chat", params: { session: "session-1" } } as const;
+
+    function openWith(
+      messages: Message[],
+      threadReplies: { messageId: string; count: number }[] = [],
+    ) {
+      fakeData.openSession.mockResolvedValue({
+        ok: true,
+        value: { session, messages, threadReplies },
+      });
+    }
+
+    it("a resumed session draws Ask about this with 2 replies under the corrections", async () => {
+      withKey();
+      const message = corrected();
+      openWith([saved("tutor", "Where?"), message], [{ messageId: message.id, count: 2 }]);
+      await renderAppAt(resumed, fakeSession());
+
+      expect(screen.getByText("Ask about this")).toBeTruthy();
+      expect(screen.getByText("2 replies")).toBeTruthy();
+    });
+
+    it("draws the row without a count when the thread has no messages", async () => {
+      withKey();
+      openWith([corrected()]);
+      await renderAppAt(resumed, fakeSession());
+      expect(screen.getByText("Ask about this")).toBeTruthy();
+      expect(screen.queryByText(/repl(y|ies)$/)).toBeNull();
+    });
+
+    it("draws no row for a message without corrections", async () => {
+      withKey();
+      openWith([saved("tutor", "Where?"), saved("user", "Rome")]);
+      await renderAppAt(resumed, fakeSession());
+      expect(screen.queryByText("Ask about this")).toBeNull();
+    });
+
+    it("draws no row for a message that is still being saved", async () => {
+      withKey();
+      const pending = deferred<Awaited<ReturnType<typeof fakeData.addMessage>>>();
+      // INFO: the opener saves, then the learner's message waits for its write.
+      fakeData.addMessage
+        .mockResolvedValueOnce({ ok: true, value: saved("tutor", "opening") })
+        .mockReturnValue(pending.promise);
+      fakeAi.reply.mockResolvedValue({ ok: true, value: designReply });
+      await renderAppAt("/chat", fakeSession());
+
+      await sendMessage("I never been to Japan, but I want to go the next year.");
+
+      expect(screen.getByText("2 corrections")).toBeTruthy();
+      expect(screen.queryByText("Ask about this")).toBeNull();
+      await act(async () => pending.resolve({ ok: true, value: saved("user", "x") }));
+    });
+
+    it("tapping Ask about this opens the thread of that saved message", async () => {
+      withKey();
+      const message = corrected();
+      openWith([saved("tutor", "Where?"), message]);
+      fakeData.openThread.mockResolvedValue({
+        ok: true,
+        value: {
+          session,
+          message,
+          messages: [],
+        },
+      });
+      await renderAppAt(resumed, fakeSession());
+
+      await fireEvent.press(screen.getByRole("button", { name: "Ask about this" }));
+
+      expect(screen).toHavePathname("/thread");
+      expect(screen).toHaveSearchParams({ message: message.id });
+      expect(fakeData.openThread).toHaveBeenCalledWith(message.id);
+      expect(await screen.findByRole("header", { name: "Correction" })).toBeTruthy();
+      expect(screen.getByText("I goed to Rome")).toBeTruthy();
+    });
+
+    it("coming back from a thread draws the new count and the withdrawn correction", async () => {
+      withKey();
+      const message = corrected();
+      openWith([saved("tutor", "Where?"), message]);
+      fakeData.openThread.mockResolvedValue({
+        ok: true,
+        value: { session, message, messages: [] },
+      });
+      await renderAppAt(resumed, fakeSession());
+      await fireEvent.press(screen.getByRole("button", { name: "Ask about this" }));
+      expect(await screen.findByRole("header", { name: "Correction" })).toBeTruthy();
+      expect(screen.queryByText("Withdrawn")).toBeNull();
+
+      openWith(
+        [
+          saved("tutor", "Where?"),
+          corrected({
+            corrections: {
+              items: [{ original: "goed", corrected: "went", withdrawn: true }],
+              explanation: "Go is irregular.",
+            },
+          }),
+        ],
+        [{ messageId: message.id, count: 2 }],
+      );
+      await act(async () => router.back());
+
+      expect(await screen.findByText("2 replies")).toBeTruthy();
+      expect(screen.getByText("Withdrawn")).toBeTruthy();
+      expect(screen.getByText("goed → went")).toBeTruthy();
+    });
+
+    it("draws the count but no thread text in the chat", async () => {
+      withKey();
+      const message = corrected();
+      openWith([message], [{ messageId: message.id, count: 3 }]);
+      fakeData.openThread.mockResolvedValue({
+        ok: true,
+        value: {
+          session,
+          message,
+          messages: [
+            {
+              id: "t1",
+              messageId: message.id,
+              role: "user",
+              text: "Why is it wrong?",
+              newWords: null,
+              createdAt: "2026-11-05T09:10:00Z",
+            },
+          ],
+        },
+      });
+      await renderAppAt(resumed, fakeSession());
+
+      expect(screen.getByText("3 replies")).toBeTruthy();
+      expect(screen.queryByText("Why is it wrong?")).toBeNull();
+      expect(fakeData.openThread).not.toHaveBeenCalled();
+    });
+  });
+
   it("draws the ended message for an ended session", async () => {
     withKey();
     fakeData.openSession.mockResolvedValue({
       ok: true,
-      value: { session: { ...session, status: "ended" }, messages: [] },
+      value: { session: { ...session, status: "ended" }, messages: [], threadReplies: [] },
     });
     await renderAppAt({ pathname: "/chat", params: { session: "session-1" } }, fakeSession());
     expect(screen.getByText("This conversation has ended.")).toBeTruthy();

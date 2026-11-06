@@ -1,5 +1,6 @@
 import type {
   ActiveSession,
+  CorrectionThread,
   HistoryPage,
   Message,
   MessageCreate,
@@ -15,6 +16,8 @@ import type {
   SessionUsage,
   SessionWeek,
   SessionWithMessages,
+  ThreadMessage,
+  ThreadMessageCreate,
   WordPage,
 } from "@fluency-lab/shared";
 
@@ -36,6 +39,14 @@ export type DataPort = {
   addMessage(sessionId: string, input: MessageCreate): Promise<DataOutcome<Message>>;
   addUsage(sessionId: string, usage: SessionUsage): Promise<DataOutcome<Session>>;
   endSession(sessionId: string): Promise<DataOutcome<Session>>;
+  // INFO: a thread with no messages is the expected empty: the learner has not asked yet.
+  openThread(messageId: string): Promise<DataOutcome<CorrectionThread>>;
+  addThreadMessage(
+    messageId: string,
+    input: ThreadMessageCreate,
+  ): Promise<DataOutcome<ThreadMessage>>;
+  // INFO: items are the 0-based indexes of the corrections to withdraw; the answer is the message as saved.
+  withdrawCorrections(messageId: string, items: number[]): Promise<DataOutcome<Message>>;
   // INFO: 0 is the expected empty: nothing spent this month.
   getMonthSpend(timeZone: string): Promise<DataOutcome<MonthSpend>>;
   // INFO: a week with no days is the expected empty: no session this week.

@@ -3,7 +3,7 @@ import type { ViewStyle } from "react-native";
 import type { TextVariant } from "@/components/text-style";
 import { borderWidth, colors, radius, size, spacing } from "@/constants/theme";
 
-export type TagVariant = "tint" | "outline" | "word" | "count";
+export type TagVariant = "tint" | "outline" | "word" | "count" | "withdrawn";
 
 export function tagStyle(variant: TagVariant = "tint"): { box: ViewStyle; label: TextVariant } {
   if (variant === "word") {
@@ -32,6 +32,20 @@ export function tagStyle(variant: TagVariant = "tint"): { box: ViewStyle; label:
         justifyContent: "center",
       },
       label: "tagOutline",
+    };
+  }
+  if (variant === "withdrawn") {
+    return {
+      box: {
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderWidth: borderWidth.thin,
+        borderRadius: radius.badgeSmall,
+        minHeight: size.tagSmall,
+        paddingHorizontal: spacing.sm,
+        justifyContent: "center",
+      },
+      label: "tab",
     };
   }
   return {

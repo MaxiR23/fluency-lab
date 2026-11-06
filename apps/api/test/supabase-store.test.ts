@@ -9,6 +9,7 @@
 // - listSessionCostsSince reads the sessions and deleted_session_costs and returns both
 // - getStats calls profile_stats with the caller's token; deleteAccount deletes the caller through the admin API with the secret key and never the caller's token
 // - getMonthProgress, listEndedSessions, listMistakeGroups and listNewWords call their progress_* function with the caller's token
+// - getThread, addThreadMessage, withdrawCorrections and listThreadCounts read and write the thread table and its functions with the caller's token, and getSessionWithMessages never reads thread rows
 // - Each store call: success, expected empty, 401, transport failure, bad row
 //
 // What is covered:
@@ -18,7 +19,7 @@
 //
 // SEE: apps/api/src/supabase-store.ts
 
-import type { MessageCreate } from "@fluency-lab/shared";
+import type { MessageCreate, ThreadMessageCreate } from "@fluency-lab/shared";
 import { describe, expect, it } from "vitest";
 import { createSupabaseStore, storeConfigFromEnv } from "../src/supabase-store";
 import { generatedSecret } from "./helpers/generated-secret";
@@ -1231,5 +1232,240 @@ describe("listNewWords", () => {
     expect(await offline.listNewWords(0, 21)).toEqual({ ok: false, failure: "unavailable" });
     const bad = setup([ok([{ word: "x", sentence: "y", created_at: "yesterday" }])]).user;
     expect(await bad.listNewWords(0, 21)).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
+const threadRow = (text: string) => ({
+  id: "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ee1",
+  message_id: messageRow(1).id,
+  role: "user",
+  text,
+  new_words: null,
+  created_at: stamp,
+});
+
+describe("getThread", () => {
+  it("reads the message, its session and the thread rows oldest first", async () => {
+    const { user, requests } = setup([
+      ok([messageRow(1)]),
+      ok([sessionRow]),
+      ok([threadRow("one"), threadRow("two")]),
+    ]);
+
+    const outcome = await user.getThread(messageRow(1).id);
+
+    expect(outcome.ok && outcome.value?.message.id).toBe(messageRow(1).id);
+    expect(outcome.ok && outcome.value?.session.id).toBe(sessionId);
+    expect(outcome.ok && outcome.value?.messages.map((m) => m.text)).toEqual(["one", "two"]);
+    expect(requests[2].url.pathname).toBe("/rest/v1/thread_messages");
+    expect(requests[2].url.searchParams.get("order")).toBe("created_at.asc");
+    expect(requests[2].url.searchParams.get("message_id")).toBe(`eq.${messageRow(1).id}`);
+    expect(requests[2].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("returns a message with no thread as no messages", async () => {
+    const { user } = setup([ok([messageRow(1)]), ok([sessionRow]), ok([])]);
+    const outcome = await user.getThread(messageRow(1).id);
+    expect(outcome.ok && outcome.value?.messages).toEqual([]);
+  });
+
+  it("returns null and reads nothing else when the message is not visible", async () => {
+    const { user, requests } = setup([ok([])]);
+    expect(await user.getThread(messageRow(1).id)).toEqual({ ok: true, value: null });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.getThread(messageRow(1).id)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.getThread(messageRow(1).id)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("returns unavailable when the session is missing or a thread row is bad", async () => {
+    const noSession = setup([ok([messageRow(1)]), ok([])]);
+    expect(await noSession.user.getThread(messageRow(1).id)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+    const badRow = setup([ok([messageRow(1)]), ok([sessionRow]), ok([{ id }])]);
+    expect(await badRow.user.getThread(messageRow(1).id)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("returns unavailable when the thread request fails", async () => {
+    const { user } = setup([ok([messageRow(1)]), ok([sessionRow]), failure(500)]);
+    expect(await user.getThread(messageRow(1).id)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+});
+
+describe("addThreadMessage", () => {
+  const input: ThreadMessageCreate = { role: "user", text: "Why?", newWords: ["word"] };
+
+  it("checks the message is visible, then inserts the row", async () => {
+    const { user, requests } = setup([
+      ok([{ id: messageRow(1).id }]),
+      ok({ ...threadRow("Why?"), new_words: ["word"] }, 201),
+    ]);
+
+    const outcome = await user.addThreadMessage(messageRow(1).id, input);
+
+    expect(outcome).toMatchObject({ ok: true, value: { text: "Why?", newWords: ["word"] } });
+    expect(requests[1].method).toBe("POST");
+    expect(requests[1].url.pathname).toBe("/rest/v1/thread_messages");
+    expect(JSON.parse(requests[1].body ?? "null")).toEqual({
+      message_id: messageRow(1).id,
+      role: "user",
+      text: "Why?",
+      new_words: ["word"],
+    });
+  });
+
+  it("inserts null new words when there are none", async () => {
+    const { user, requests } = setup([ok([{ id: messageRow(1).id }]), ok(threadRow("Why?"), 201)]);
+    await user.addThreadMessage(messageRow(1).id, { role: "user", text: "Why?" });
+    expect(JSON.parse(requests[1].body ?? "null")).toMatchObject({ new_words: null });
+  });
+
+  it("returns null without inserting when the message is not visible", async () => {
+    const { user, requests } = setup([ok([])]);
+    expect(await user.addThreadMessage(messageRow(1).id, input)).toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.addThreadMessage(messageRow(1).id, input)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns unavailable when fetch rejects and for a bad row", async () => {
+    const offline = setup([new TypeError("network down")]).user;
+    expect(await offline.addThreadMessage(messageRow(1).id, input)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+    const bad = setup([ok([{ id: messageRow(1).id }]), ok({ id }, 201)]).user;
+    expect(await bad.addThreadMessage(messageRow(1).id, input)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+});
+
+describe("withdrawCorrections", () => {
+  const withdrawn = {
+    ...messageRow(1),
+    corrections: {
+      items: [{ original: "a", corrected: "b", withdrawn: true }],
+      explanation: null,
+    },
+  };
+
+  it("calls withdraw_corrections and returns the message", async () => {
+    const { user, requests } = setup([ok([withdrawn])]);
+
+    const outcome = await user.withdrawCorrections(messageRow(1).id, [0]);
+
+    expect(outcome.ok && outcome.value?.corrections?.items[0].withdrawn).toBe(true);
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url.pathname).toBe("/rest/v1/rpc/withdraw_corrections");
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({
+      message_id: messageRow(1).id,
+      item_indexes: [0],
+    });
+    expect(requests[0].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("returns null when the message is not the caller's", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.withdrawCorrections(messageRow(1).id, [0])).toEqual({
+      ok: true,
+      value: null,
+    });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.withdrawCorrections(messageRow(1).id, [0])).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns unavailable when fetch rejects and for a bad row", async () => {
+    const offline = setup([new TypeError("network down")]).user;
+    expect(await offline.withdrawCorrections(messageRow(1).id, [0])).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+    const bad = setup([ok([{ id }])]).user;
+    expect(await bad.withdrawCorrections(messageRow(1).id, [0])).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+});
+
+describe("listThreadCounts", () => {
+  it("calls thread_counts with the session and maps the counts", async () => {
+    const { user, requests } = setup([ok([{ message_id: messageRow(1).id, reply_count: 2 }])]);
+
+    const outcome = await user.listThreadCounts(sessionId);
+
+    expect(outcome).toEqual({ ok: true, value: [{ messageId: messageRow(1).id, count: 2 }] });
+    expect(requests[0].url.pathname).toBe("/rest/v1/rpc/thread_counts");
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({ session_id: sessionId });
+    expect(requests[0].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("returns an empty list as a success", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.listThreadCounts(sessionId)).toEqual({ ok: true, value: [] });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.listThreadCounts(sessionId)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns unavailable when fetch rejects and for a bad row", async () => {
+    const offline = setup([new TypeError("network down")]).user;
+    expect(await offline.listThreadCounts(sessionId)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+    const bad = setup([ok([{ message_id: "x", reply_count: "2" }])]).user;
+    expect(await bad.listThreadCounts(sessionId)).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
+describe("getSessionWithMessages and threads", () => {
+  it("reads only the session and its messages, never a thread table", async () => {
+    const { user, requests } = setup([ok([sessionRow]), ok([messageRow(1)])]);
+    await user.getSessionWithMessages(sessionId);
+    expect(requests.map((r) => r.url.pathname)).toEqual(["/rest/v1/sessions", "/rest/v1/messages"]);
   });
 });

@@ -11,16 +11,19 @@ export function ChatHeader({
   onBack,
   onEnd,
   endDisabled,
+  backLabel,
 }: {
   title: string;
   subtitle: string;
   onBack: () => void;
   onEnd?: () => void;
   endDisabled?: boolean;
+  // INFO: the thread goes back to the chat, not to Home.
+  backLabel?: string;
 }) {
   return (
     <View style={styles.row}>
-      <BackButton onPress={onBack} />
+      <BackButton onPress={onBack} label={backLabel} />
       <View style={styles.texts}>
         <Text variant="chatTitle" accessibilityRole="header">
           {title}

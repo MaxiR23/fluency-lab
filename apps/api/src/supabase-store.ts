@@ -12,6 +12,8 @@ import {
   toSession,
   toSessionCost,
   toSessionStart,
+  toThreadCount,
+  toThreadMessage,
   toWordRow,
 } from "./rows";
 import type { Caller, Store, StoreOutcome, UserStore } from "./store";
@@ -259,6 +261,71 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           const mapped = mapRow(result, toMessage);
           if (!mapped.ok) return mapped;
           return mapped.value === null ? unavailable : { ok: true, value: mapped.value };
+        },
+
+        async getThread(messageId) {
+          const found = mapRow(
+            await client.from("messages").select("*").eq("id", messageId).maybeSingle(),
+            toMessage,
+          );
+          if (!found.ok) return found;
+          if (found.value === null) return { ok: true, value: null };
+          const message = found.value;
+          const owner = mapRow(
+            await client.from("sessions").select("*").eq("id", message.sessionId).maybeSingle(),
+            toSession,
+          );
+          if (!owner.ok) return owner;
+          // INFO: a message the caller can see always has its session visible.
+          if (owner.value === null) return unavailable;
+          const rows = readPage(
+            await client
+              .from("thread_messages")
+              .select("*")
+              .eq("message_id", messageId)
+              .order("created_at", { ascending: true }),
+            toThreadMessage,
+          );
+          if (!rows.ok) return rows;
+          return { ok: true, value: { session: owner.value, message, messages: rows.value } };
+        },
+
+        async addThreadMessage(messageId, input) {
+          const visible = await client
+            .from("messages")
+            .select("id")
+            .eq("id", messageId)
+            .maybeSingle();
+          const visibleFailure = failureOf(visible);
+          if (visibleFailure !== null) return visibleFailure;
+          if (visible.data === null) return { ok: true, value: null };
+          const result = await client
+            .from("thread_messages")
+            .insert({
+              message_id: messageId,
+              role: input.role,
+              text: input.text,
+              new_words: input.newWords ?? null,
+            })
+            .select("*")
+            .single();
+          const mapped = mapRow(result, toThreadMessage);
+          if (!mapped.ok) return mapped;
+          return mapped.value === null ? unavailable : { ok: true, value: mapped.value };
+        },
+
+        async withdrawCorrections(messageId, items) {
+          const result = await client
+            .rpc("withdraw_corrections", { message_id: messageId, item_indexes: items })
+            .maybeSingle();
+          return mapRow(result, toMessage);
+        },
+
+        async listThreadCounts(sessionId) {
+          return readPage(
+            await client.rpc("thread_counts", { session_id: sessionId }),
+            toThreadCount,
+          );
         },
 
         async addSessionCost(sessionId, amountUsd) {
