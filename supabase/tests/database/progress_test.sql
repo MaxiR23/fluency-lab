@@ -4,7 +4,9 @@
 --
 -- Tested:
 -- - a user with no data gets zeros and no rows from each function
--- - progress_month counts sessions, correction items and first-seen words inside the local month only
+-- - progress_month counts sessions, correction items and first-seen words inside the local month only,
+--   words of a thread included, a word in both the chat and a thread counted once in the month it first appeared
+-- - the Profile new words and each month's new words match the Words list for the same data
 -- - progress_history lists ended sessions newest first with message and correction counts, one page at a time
 -- - progress_mistakes groups by rule ignoring case and spaces, puts rule-less corrections in one null group,
 --   orders by count then latest, and keeps the latest example
@@ -20,11 +22,13 @@
 -- Run with: pnpm supabase test db
 --
 -- SEE: supabase/migrations/20261106100000_progress.sql
+-- SEE: supabase/migrations/20261106090000_profile_stats.sql
 -- SEE: supabase/migrations/20261106120000_correction_threads.sql
+-- SEE: supabase/migrations/20261106130000_thread_word_totals.sql
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(32);
 
 create temp table t_ids (k text primary key, id uuid not null);
 insert into t_ids values
@@ -35,13 +39,17 @@ insert into t_ids values
   ('sa2', gen_random_uuid()),
   ('sa3', gen_random_uuid()),
   ('sa4', gen_random_uuid()),
-  ('sb1', gen_random_uuid());
+  ('sb1', gen_random_uuid()),
+  ('e0d', gen_random_uuid()),
+  ('sd1', gen_random_uuid()),
+  ('sd2', gen_random_uuid());
 grant select on t_ids to authenticated;
 
 insert into auth.users (id, email) values
   ((select id from t_ids where k = 'e0a'), 'a@test.com'),
   ((select id from t_ids where k = 'e0b'), 'b@test.com'),
-  ((select id from t_ids where k = 'e0c'), 'c@test.com');
+  ((select id from t_ids where k = 'e0c'), 'c@test.com'),
+  ((select id from t_ids where k = 'e0d'), 'd@test.com');
 
 -- sa1 at 02:30Z on November 1 is still October 31 in Buenos Aires; sa4 is active and in December.
 insert into public.sessions (id, user_id, title, status, created_at) values
@@ -49,7 +57,9 @@ insert into public.sessions (id, user_id, title, status, created_at) values
   ((select id from t_ids where k = 'sa2'), (select id from t_ids where k = 'e0a'), 'Nov five', 'ended', '2026-11-05T15:00:00+00'),
   ((select id from t_ids where k = 'sa3'), (select id from t_ids where k = 'e0a'), 'Oct twenty', 'ended', '2026-10-20T12:00:00+00'),
   ((select id from t_ids where k = 'sa4'), (select id from t_ids where k = 'e0a'), 'December active', 'active', '2026-12-01T12:00:00+00'),
-  ((select id from t_ids where k = 'sb1'), (select id from t_ids where k = 'e0b'), 'B chat', 'ended', '2026-11-10T12:00:00+00');
+  ((select id from t_ids where k = 'sb1'), (select id from t_ids where k = 'e0b'), 'B chat', 'ended', '2026-11-10T12:00:00+00'),
+  ((select id from t_ids where k = 'sd1'), (select id from t_ids where k = 'e0d'), 'D October', 'ended', '2026-10-20T12:00:00+00'),
+  ((select id from t_ids where k = 'sd2'), (select id from t_ids where k = 'e0d'), 'D November', 'ended', '2026-11-05T12:00:00+00');
 
 insert into public.messages (session_id, role, text, corrections, new_words, created_at) values
   ((select id from t_ids where k = 'sa3'), 'user', 'I goed home',
@@ -74,13 +84,21 @@ insert into public.messages (session_id, role, text, corrections, new_words, cre
     '["december"]', '2026-12-01T12:00:00+00'),
   ((select id from t_ids where k = 'sb1'), 'user', 'b message',
     '{"items":[{"rule":"Gerunds","original":"bo","corrected":"bc"}],"explanation":null}',
-    '["zebra"]', '2026-11-10T12:00:00+00');
+    '["zebra"]', '2026-11-10T12:00:00+00'),
+  ((select id from t_ids where k = 'sd1'), 'user', 'd october', null, null, '2026-10-20T12:00:00+00'),
+  ((select id from t_ids where k = 'sd2'), 'user', 'd november', null, '[" wanderlust ", "serendipity"]', '2026-11-05T12:00:00+00');
 
 -- Thread rows: A's learner question on the second message teaches laid-back and catchy (catchy was
--- first seen on the message itself); B's thread teaches xylophone.
+-- first seen on the message itself); B's thread teaches xylophone. D first meets wanderlust in an
+-- October thread and repeats it in a November message; serendipity is in a November message and
+-- again in a later thread.
 insert into public.thread_messages (message_id, role, text, new_words, created_at) values
   ((select id from public.messages where text = 'second'), 'user', 'Is laid-back right?', '["laid-back", "catchy"]', '2026-11-05T15:05:00+00'),
-  ((select id from public.messages where text = 'b message'), 'user', 'What is xylophone?', '["xylophone"]', '2026-11-10T12:01:00+00');
+  ((select id from public.messages where text = 'b message'), 'user', 'What is xylophone?', '["xylophone"]', '2026-11-10T12:01:00+00'),
+  ((select id from public.messages where text = 'd october'), 'user', 'What is wanderlust?', '["Wanderlust"]', '2026-10-20T12:05:00+00'),
+  ((select id from public.messages where text = 'd november'), 'tutor', 'serendipity again', '["SERENDIPITY", "  "]', '2026-11-05T12:05:00+00'),
+  ((select id from public.messages where text = 'd november'), 'user', 'odd row', '"not an array"', '2026-11-05T12:06:00+00'),
+  ((select id from public.messages where text = 'd november'), 'user', 'null row', null, '2026-11-05T12:07:00+00');
 
 set local role authenticated;
 
@@ -99,12 +117,12 @@ select is_empty($$select * from public.progress_words(0, 21)$$, 'a user with no 
 select set_config('request.jwt.claim.sub', (select id::text from t_ids where k = 'e0a'), true);
 select results_eq(
   $$select session_count, correction_count, new_word_count from public.progress_month('UTC', '2026-11-01')$$,
-  $$values (2::bigint, 4::bigint, 1::bigint)$$,
-  'November in UTC counts its sessions, its correction items and the words first seen in it, and not December'
+  $$values (2::bigint, 4::bigint, 2::bigint)$$,
+  'November in UTC counts its sessions, its correction items and the words first seen in it, thread words included and catchy once, and not December or another user thread words'
 );
 select results_eq(
   $$select session_count, correction_count, new_word_count from public.progress_month('America/Argentina/Buenos_Aires', '2026-11-01')$$,
-  $$values (1::bigint, 2::bigint, 1::bigint)$$,
+  $$values (1::bigint, 2::bigint, 2::bigint)$$,
   'a session at 02:30Z on November 1 is not in November in Buenos Aires'
 );
 select results_eq(
@@ -171,13 +189,23 @@ select is(
   0::bigint,
   'another user sessions, corrections and words never appear'
 );
+select is(
+  (select new_words from public.profile_stats('UTC')),
+  (select count(*) from public.progress_words(0, 50)),
+  'the Profile new words match the Words list'
+);
+select is(
+  (select new_word_count from public.progress_month('UTC', '2026-11-01')),
+  (select count(*) from public.progress_words(0, 50) w where (w.created_at at time zone 'UTC')::date >= '2026-11-01' and (w.created_at at time zone 'UTC')::date < '2026-12-01'),
+  'the month new words match the Words list first seen in that month'
+);
 
 -- User B.
 select set_config('request.jwt.claim.sub', (select id::text from t_ids where k = 'e0b'), true);
 select results_eq(
   $$select session_count, correction_count, new_word_count from public.progress_month('UTC', '2026-11-01')$$,
-  $$values (1::bigint, 1::bigint, 1::bigint)$$,
-  'as B the month counts only B rows'
+  $$values (1::bigint, 1::bigint, 2::bigint)$$,
+  'as B the month counts only B rows, B thread words included'
 );
 select results_eq(
   $$select title from public.progress_history(0, 50)$$,
@@ -193,6 +221,19 @@ select results_eq(
   $$select word from public.progress_words(0, 50) order by word$$,
   $$values ('xylophone'::text), ('zebra'::text)$$,
   'as B the words have only B words'
+);
+
+-- User D.
+select set_config('request.jwt.claim.sub', (select id::text from t_ids where k = 'e0d'), true);
+select results_eq(
+  $$select (select new_word_count from public.progress_month('UTC', '2026-10-01')), (select new_word_count from public.progress_month('UTC', '2026-11-01'))$$,
+  $$values (1::bigint, 1::bigint)$$,
+  'a word first seen in a thread counts in that month and not again when a later message repeats it; blank, null and non-array thread words are skipped'
+);
+select is(
+  (select new_words from public.profile_stats('UTC')),
+  (select count(*) from public.progress_words(0, 50)),
+  'the Profile new words match the Words list across months'
 );
 
 reset role;
