@@ -26,6 +26,9 @@ with **pgTAP** through `pnpm supabase test db`, which needs the local stack.
   `vitest` in `packages/shared` and `apps/api`.
 - `render`, `fireEvent` and `act` from Testing Library are async and
   are awaited.
+- Tests never contain literal values that look like secrets (passwords,
+  keys, tokens, ids next to jwt or auth settings); they are generated at
+  run time.
 
 ## File location
 

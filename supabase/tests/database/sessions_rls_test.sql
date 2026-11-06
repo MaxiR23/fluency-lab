@@ -18,23 +18,31 @@ begin;
 create extension if not exists pgtap with schema extensions;
 select plan(7);
 
+create temp table t_ids (k text primary key, id uuid not null);
+insert into t_ids values
+  ('e0a', gen_random_uuid()),
+  ('e0b', gen_random_uuid()),
+  ('ea1', gen_random_uuid()),
+  ('eb1', gen_random_uuid());
+grant select on t_ids to authenticated;
+
 insert into auth.users (id, email) values
-  ('6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e0a', 'a@test.com'),
-  ('6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e0b', 'b@test.com');
+  ((select id from t_ids where k = 'e0a'), 'a@test.com'),
+  ((select id from t_ids where k = 'e0b'), 'b@test.com');
 insert into public.sessions (id, user_id, title) values
-  ('6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ea1', '6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e0a', 'Free chat'),
-  ('6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5eb1', '6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e0b', 'Free chat');
+  ((select id from t_ids where k = 'ea1'), (select id from t_ids where k = 'e0a'), 'Free chat'),
+  ((select id from t_ids where k = 'eb1'), (select id from t_ids where k = 'e0b'), 'Free chat');
 
 set local role authenticated;
-set local request.jwt.claim.sub = '6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e0a';
+select set_config('request.jwt.claim.sub', (select id::text from t_ids where k = 'e0a'), true);
 
 select results_eq($$select count(*) from public.sessions$$, array[1::bigint], 'a user sees only their own sessions');
-select is_empty($$select 1 from public.sessions where id = '6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5eb1'$$, 'another user session by id is empty');
-select throws_ok($$insert into public.sessions (user_id, title) values ('6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e0b', 'Free chat')$$, '42501', null, 'creating a session for another user is not allowed');
-select results_eq($$insert into public.sessions (user_id, title) values ('6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e0a', 'Food') returning status, cost_usd$$, $$values ('active'::text, 0::numeric)$$, 'a new session is active and costs 0');
-select throws_ok($$insert into public.sessions (user_id, title, status) values ('6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e0a', 'Food', 'ended')$$, '42501', null, 'setting the status on insert is not allowed');
-select throws_ok($$update public.sessions set title = 'x' where id = '6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ea1'$$, '42501', null, 'updating their own session is not allowed');
-select throws_ok($$update public.sessions set title = 'x' where id = '6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5eb1'$$, '42501', null, 'updating another user session is not allowed');
+select is_empty($$select 1 from public.sessions where id = (select id from t_ids where k = 'eb1')$$, 'another user session by id is empty');
+select throws_ok($$insert into public.sessions (user_id, title) values ((select id from t_ids where k = 'e0b'), 'Free chat')$$, '42501', null, 'creating a session for another user is not allowed');
+select results_eq($$insert into public.sessions (user_id, title) values ((select id from t_ids where k = 'e0a'), 'Food') returning status, cost_usd$$, $$values ('active'::text, 0::numeric)$$, 'a new session is active and costs 0');
+select throws_ok($$insert into public.sessions (user_id, title, status) values ((select id from t_ids where k = 'e0a'), 'Food', 'ended')$$, '42501', null, 'setting the status on insert is not allowed');
+select throws_ok($$update public.sessions set title = 'x' where id = (select id from t_ids where k = 'ea1')$$, '42501', null, 'updating their own session is not allowed');
+select throws_ok($$update public.sessions set title = 'x' where id = (select id from t_ids where k = 'eb1')$$, '42501', null, 'updating another user session is not allowed');
 
 select * from finish();
 rollback;
