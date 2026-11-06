@@ -223,6 +223,31 @@ describe("textStyle", () => {
     });
   });
 
+  it("draws actionMuted as the action variant in the muted color", () => {
+    expect(textStyle("actionMuted")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.small,
+      color: colors.textMuted,
+    });
+  });
+
+  it("draws word in bold accent at the avatar size", () => {
+    expect(textStyle("word")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.avatar,
+      color: colors.accent,
+    });
+  });
+
+  it("draws quote muted at the caption size with the quote line height", () => {
+    expect(textStyle("quote")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.caption,
+      color: colors.textMuted,
+      lineHeight: lineHeight.quote,
+    });
+  });
+
   it("draws message in regular body text with the body line height", () => {
     expect(textStyle("message")).toEqual({
       fontFamily: fontFamily.regular,

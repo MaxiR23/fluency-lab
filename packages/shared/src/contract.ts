@@ -155,6 +155,59 @@ export const profileStatsSchema = z.object({
   newWords: z.int().min(0),
 });
 
+const pageOffset = z
+  .string()
+  .regex(/^(0|[1-9]\d{0,5})$/)
+  .transform(Number);
+
+export const progressPageQuerySchema = z.object({
+  tz: z.string().min(1).max(100),
+  offset: pageOffset.optional(),
+});
+
+export const mistakesQuerySchema = z.object({ offset: pageOffset.optional() });
+
+export const monthProgressSchema = z.object({
+  monthStart: z.iso.date(),
+  sessions: z.int().min(0),
+  corrections: z.int().min(0),
+  newWords: z.int().min(0),
+});
+
+export const historyItemSchema = z.object({
+  session: sessionSchema,
+  day: z.iso.date(),
+  messageCount: z.int().min(0),
+  correctionCount: z.int().min(0),
+});
+
+export const historyPageSchema = z.object({
+  items: z.array(historyItemSchema),
+  nextOffset: z.int().min(1).nullable(),
+});
+
+export const mistakeGroupSchema = z.object({
+  rule: z.string().nullable(),
+  times: z.int().min(1),
+  latest: z.object({ original: z.string(), corrected: z.string() }),
+});
+
+export const mistakePageSchema = z.object({
+  items: z.array(mistakeGroupSchema),
+  nextOffset: z.int().min(1).nullable(),
+});
+
+export const newWordItemSchema = z.object({
+  word: z.string(),
+  sentence: z.string(),
+  day: z.iso.date(),
+});
+
+export const wordPageSchema = z.object({
+  items: z.array(newWordItemSchema),
+  nextOffset: z.int().min(1).nullable(),
+});
+
 export const accountDeletedSchema = z.object({ deleted: z.literal(true) });
 
 export type Profile = z.infer<typeof profileSchema>;
@@ -174,3 +227,10 @@ export type SessionWithMessages = z.infer<typeof sessionMessagesResponseSchema>;
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type ProfileStats = z.infer<typeof profileStatsSchema>;
 export type AccountDeleted = z.infer<typeof accountDeletedSchema>;
+export type MonthProgress = z.infer<typeof monthProgressSchema>;
+export type HistoryItem = z.infer<typeof historyItemSchema>;
+export type HistoryPage = z.infer<typeof historyPageSchema>;
+export type MistakeGroup = z.infer<typeof mistakeGroupSchema>;
+export type MistakePage = z.infer<typeof mistakePageSchema>;
+export type NewWordItem = z.infer<typeof newWordItemSchema>;
+export type WordPage = z.infer<typeof wordPageSchema>;

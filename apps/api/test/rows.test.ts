@@ -8,6 +8,7 @@
 // - toSessionStart reads the start time of a session row
 // - toProfileStatsRow reads the session count, the session days and the new words count
 // - toSessionCost reads the start time and the cost of a session row
+// - toMonthProgressRow, toHistoryRow, toMistakeRow and toWordRow read the Progress rows
 // - toProfilePatch renames an update to columns
 //
 // What is covered:
@@ -19,7 +20,10 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  toHistoryRow,
   toMessage,
+  toMistakeRow,
+  toMonthProgressRow,
   toOpenSession,
   toProfile,
   toProfilePatch,
@@ -27,6 +31,7 @@ import {
   toSession,
   toSessionCost,
   toSessionStart,
+  toWordRow,
 } from "../src/rows";
 
 const id = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e6f";
@@ -316,5 +321,76 @@ describe("toProfileStatsRow", () => {
     expect(toProfileStatsRow({ session_count: "1", session_days: [], new_words: 0 })).toBeNull();
     expect(toProfileStatsRow({ session_count: 1, session_days: [] })).toBeNull();
     expect(toProfileStatsRow(null)).toBeNull();
+  });
+});
+
+describe("toMonthProgressRow", () => {
+  it("maps the three counts", () => {
+    expect(
+      toMonthProgressRow({ session_count: 12, correction_count: 31, new_word_count: 48 }),
+    ).toEqual({ sessionCount: 12, correctionCount: 31, newWordCount: 48 });
+  });
+
+  it("maps zeros", () => {
+    expect(
+      toMonthProgressRow({ session_count: 0, correction_count: 0, new_word_count: 0 }),
+    ).toEqual({ sessionCount: 0, correctionCount: 0, newWordCount: 0 });
+  });
+
+  it("rejects a missing count", () => {
+    expect(toMonthProgressRow({ session_count: 1, correction_count: 1 })).toBeNull();
+    expect(toMonthProgressRow(null)).toBeNull();
+  });
+});
+
+describe("toHistoryRow", () => {
+  const counts = { message_count: 14, correction_count: 3 };
+
+  it("maps a session row with its message and correction counts", () => {
+    expect(toHistoryRow({ ...sessionRow, ...counts })).toEqual({
+      session: toSession(sessionRow),
+      messageCount: 14,
+      correctionCount: 3,
+    });
+  });
+
+  it("rejects a row without counts", () => {
+    expect(toHistoryRow(sessionRow)).toBeNull();
+  });
+
+  it("rejects a bad session row", () => {
+    expect(toHistoryRow({ ...without(sessionRow, "title"), ...counts })).toBeNull();
+  });
+});
+
+describe("toMistakeRow", () => {
+  const row = { rule: "Articles", times: 4, original: "a apple", corrected: "an apple" };
+
+  it("maps a rule, times and the latest example", () => {
+    expect(toMistakeRow(row)).toEqual(row);
+  });
+
+  it("maps a null rule", () => {
+    expect(toMistakeRow({ ...row, rule: null })).toEqual({ ...row, rule: null });
+  });
+
+  it("rejects a missing original", () => {
+    expect(toMistakeRow(without(row, "original"))).toBeNull();
+  });
+});
+
+describe("toWordRow", () => {
+  it("maps the word, its message text and the timestamp", () => {
+    expect(toWordRow({ word: "catchy", sentence: "That song.", created_at: stamp })).toEqual({
+      word: "catchy",
+      sentence: "That song.",
+      createdAt: stamp,
+    });
+  });
+
+  it("rejects a timestamp that is not ISO", () => {
+    expect(
+      toWordRow({ word: "catchy", sentence: "That song.", created_at: "yesterday" }),
+    ).toBeNull();
   });
 });

@@ -8,6 +8,7 @@
 // - listOpenSessions reads active sessions newest first with their newest message in one request; deleteSession deletes by id
 // - listSessionCostsSince reads the sessions and deleted_session_costs and returns both
 // - getStats calls profile_stats with the caller's token; deleteAccount deletes the caller through the admin API with the secret key and never the caller's token
+// - getMonthProgress, listEndedSessions, listMistakeGroups and listNewWords call their progress_* function with the caller's token
 // - Each store call: success, expected empty, 401, transport failure, bad row
 //
 // What is covered:
@@ -1009,5 +1010,183 @@ describe("deleteAccount", () => {
       20,
     ).forUser({ id, accessToken });
     expect(await slow.deleteAccount()).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
+describe("getMonthProgress", () => {
+  const monthRow = { session_count: 12, correction_count: 31, new_word_count: 48 };
+
+  it("calls progress_month with the zone, the month start and the caller's token", async () => {
+    const { user, requests } = setup([ok([monthRow])]);
+
+    const outcome = await user.getMonthProgress("America/Argentina/Buenos_Aires", "2026-11-01");
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: { sessionCount: 12, correctionCount: 31, newWordCount: 48 },
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url.pathname).toBe("/rest/v1/rpc/progress_month");
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({
+      time_zone: "America/Argentina/Buenos_Aires",
+      month_start: "2026-11-01",
+    });
+    expect(requests[0].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("returns zeros for a month with nothing", async () => {
+    const zeros = { session_count: 0, correction_count: 0, new_word_count: 0 };
+    const { user } = setup([ok([zeros])]);
+    expect(await user.getMonthProgress("UTC", "2026-11-01")).toEqual({
+      ok: true,
+      value: { sessionCount: 0, correctionCount: 0, newWordCount: 0 },
+    });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.getMonthProgress("UTC", "2026-11-01")).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.getMonthProgress("UTC", "2026-11-01")).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("returns unavailable for a bad row and for no row", async () => {
+    const bad = await setup([ok([{ session_count: "x" }])]).user.getMonthProgress(
+      "UTC",
+      "2026-11-01",
+    );
+    expect(bad).toEqual({ ok: false, failure: "unavailable" });
+    const none = await setup([ok([])]).user.getMonthProgress("UTC", "2026-11-01");
+    expect(none).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
+describe("listEndedSessions", () => {
+  const historyRow = { ...sessionRow, status: "ended", message_count: 14, correction_count: 3 };
+
+  it("calls progress_history with the offset, the limit and the caller's token", async () => {
+    const { user, requests } = setup([ok([historyRow])]);
+
+    const outcome = await user.listEndedSessions(20, 21);
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: [
+        {
+          session: {
+            id: sessionId,
+            topicId: null,
+            title: "Free chat",
+            status: "ended",
+            summary: null,
+            costUsd: 0,
+            createdAt: stamp,
+            updatedAt: stamp,
+          },
+          messageCount: 14,
+          correctionCount: 3,
+        },
+      ],
+    });
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url.pathname).toBe("/rest/v1/rpc/progress_history");
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({ page_offset: 20, page_size: 21 });
+    expect(requests[0].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("returns an empty list as a success", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.listEndedSessions(0, 21)).toEqual({ ok: true, value: [] });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.listEndedSessions(0, 21)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable when fetch rejects and for a bad row", async () => {
+    const offline = setup([new TypeError("network down")]).user;
+    expect(await offline.listEndedSessions(0, 21)).toEqual({ ok: false, failure: "unavailable" });
+    const bad = setup([ok([sessionRow])]).user;
+    expect(await bad.listEndedSessions(0, 21)).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
+describe("listMistakeGroups", () => {
+  const mistakeRow = { rule: null, times: 2, original: "a", corrected: "b" };
+
+  it("calls progress_mistakes with the offset, the limit and the caller's token", async () => {
+    const { user, requests } = setup([ok([mistakeRow])]);
+
+    const outcome = await user.listMistakeGroups(0, 21);
+
+    expect(outcome).toEqual({ ok: true, value: [mistakeRow] });
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url.pathname).toBe("/rest/v1/rpc/progress_mistakes");
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({ page_offset: 0, page_size: 21 });
+    expect(requests[0].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("returns an empty list as a success", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.listMistakeGroups(0, 21)).toEqual({ ok: true, value: [] });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.listMistakeGroups(0, 21)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable when fetch rejects and for a bad row", async () => {
+    const offline = setup([new TypeError("network down")]).user;
+    expect(await offline.listMistakeGroups(0, 21)).toEqual({ ok: false, failure: "unavailable" });
+    const bad = setup([ok([{ rule: "x", times: 1 }])]).user;
+    expect(await bad.listMistakeGroups(0, 21)).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
+describe("listNewWords", () => {
+  const wordRow = { word: "catchy", sentence: "That song.", created_at: stamp };
+
+  it("calls progress_words with the offset, the limit and the caller's token", async () => {
+    const { user, requests } = setup([ok([wordRow])]);
+
+    const outcome = await user.listNewWords(40, 21);
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: [{ word: "catchy", sentence: "That song.", createdAt: stamp }],
+    });
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url.pathname).toBe("/rest/v1/rpc/progress_words");
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({ page_offset: 40, page_size: 21 });
+    expect(requests[0].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("returns an empty list as a success", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.listNewWords(0, 21)).toEqual({ ok: true, value: [] });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.listNewWords(0, 21)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable when fetch rejects and for a bad row", async () => {
+    const offline = setup([new TypeError("network down")]).user;
+    expect(await offline.listNewWords(0, 21)).toEqual({ ok: false, failure: "unavailable" });
+    const bad = setup([ok([{ word: "x", sentence: "y", created_at: "yesterday" }])]).user;
+    expect(await bad.listNewWords(0, 21)).toEqual({ ok: false, failure: "unavailable" });
   });
 });

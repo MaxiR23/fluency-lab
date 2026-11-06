@@ -166,6 +166,7 @@ describe("theme", () => {
       cardTitle: 19.5,
       small: 21,
       explanation: 18.2,
+      quote: 19.5,
     });
     expect(letterSpacing).toEqual({
       brand: -0.17,

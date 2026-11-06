@@ -48,7 +48,10 @@ export type TextVariant =
   | "profileName"
   | "stat"
   | "statSmall"
-  | "bodyDanger";
+  | "bodyDanger"
+  | "actionMuted"
+  | "word"
+  | "quote";
 
 const variants: Record<TextVariant, TextStyle> = {
   title: {
@@ -299,6 +302,22 @@ const variants: Record<TextVariant, TextStyle> = {
     fontFamily: fontFamily.regular,
     fontSize: fontSize.body,
     color: colors.error,
+  },
+  actionMuted: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+  },
+  word: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.avatar,
+    color: colors.accent,
+  },
+  quote: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+    lineHeight: lineHeight.quote,
   },
 };
 

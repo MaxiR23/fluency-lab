@@ -9,7 +9,7 @@
 // - GET /me answers the user for a valid token, 401 for any bad one and 500
 //   when the signing keys cannot be loaded
 // - GET/PUT /profile, GET/POST /sessions, GET /sessions/open, DELETE /sessions/:id, GET /sessions/week, GET /sessions/spend,
-//   GET /profile/stats, DELETE /account,
+//   GET /profile/stats, GET /progress/month, /progress/history, /progress/mistakes and /progress/words, DELETE /account,
 //   GET/POST /sessions/:id/messages, GET /sessions/:id/summary, POST /sessions/:id/usage and POST /sessions/:id/end:
 //   401 without a valid token, 400 on invalid input, 404, 503, and the typed client
 // - GET /sessions/:id/summary counts the messages and collects the corrections and new words
@@ -30,8 +30,12 @@ import {
   STARTERS,
   TUTOR_MODEL,
   accountDeletedSchema,
+  historyPageSchema,
+  mistakePageSchema,
+  monthProgressSchema,
   profileStatsSchema,
   usageCostUsd,
+  wordPageSchema,
   type ActiveSession,
   type Message,
   type Profile,
@@ -272,6 +276,10 @@ const routes: { name: string; path: string; method: string; body?: unknown }[] =
   { name: "GET /profile", path: "/profile", method: "GET" },
   { name: "PUT /profile", path: "/profile", method: "PUT", body: { level: "beginner" } },
   { name: "GET /profile/stats", path: "/profile/stats?tz=UTC", method: "GET" },
+  { name: "GET /progress/month", path: "/progress/month?tz=UTC", method: "GET" },
+  { name: "GET /progress/history", path: "/progress/history?tz=UTC", method: "GET" },
+  { name: "GET /progress/mistakes", path: "/progress/mistakes", method: "GET" },
+  { name: "GET /progress/words", path: "/progress/words?tz=UTC", method: "GET" },
   { name: "DELETE /account", path: "/account", method: "DELETE" },
   { name: "GET /sessions/active", path: "/sessions/active", method: "GET" },
   { name: "GET /sessions/open", path: "/sessions/open", method: "GET" },
@@ -1261,5 +1269,366 @@ describe("typed client (data routes)", () => {
 
     expect(await openRes.json()).toEqual({ sessions: [] });
     expect(deleteRes.status).toBe(200);
+  });
+
+  it("exposes the progress routes through AppType", async () => {
+    fake.user.getMonthProgress.mockResolvedValue({
+      ok: true,
+      value: { sessionCount: 0, correctionCount: 0, newWordCount: 0 },
+    });
+    fake.user.listEndedSessions.mockResolvedValue({ ok: true, value: [] });
+    fake.user.listMistakeGroups.mockResolvedValue({ ok: true, value: [] });
+    fake.user.listNewWords.mockResolvedValue({ ok: true, value: [] });
+    const client = testClient(app, undefined, undefined, { headers: await authed() });
+
+    const monthRes = await client.progress.month.$get({ query: { tz: "UTC" } });
+    const historyRes = await client.progress.history.$get({ query: { tz: "UTC", offset: "0" } });
+    const mistakesRes = await client.progress.mistakes.$get({ query: {} });
+    const wordsRes = await client.progress.words.$get({ query: { tz: "UTC" } });
+
+    expect(monthRes.status).toBe(200);
+    expect(await historyRes.json()).toEqual({ items: [], nextOffset: null });
+    expect(await mistakesRes.json()).toEqual({ items: [], nextOffset: null });
+    expect(await wordsRes.json()).toEqual({ items: [], nextOffset: null });
+  });
+});
+
+describe("GET /progress/month", () => {
+  const zeros = { sessionCount: 0, correctionCount: 0, newWordCount: 0 };
+
+  async function month(query: string, target = app) {
+    return target.request(`/progress/month${query}`, { headers: await authed() });
+  }
+
+  it("answers the month's sessions, corrections and new words in the caller's zone", async () => {
+    fake.user.getMonthProgress.mockResolvedValue({
+      ok: true,
+      value: { sessionCount: 12, correctionCount: 31, newWordCount: 48 },
+    });
+
+    const res = await month("?tz=America%2FArgentina%2FBuenos_Aires");
+
+    expect(res.status).toBe(200);
+    expect(monthProgressSchema.parse(await res.json())).toEqual({
+      monthStart: "2026-11-01",
+      sessions: 12,
+      corrections: 31,
+      newWords: 48,
+    });
+    expect(fake.user.getMonthProgress).toHaveBeenCalledWith(
+      "America/Argentina/Buenos_Aires",
+      "2026-11-01",
+    );
+  });
+
+  it("takes October as the month at 02:00 UTC on November 1 in Buenos Aires", async () => {
+    fake.user.getMonthProgress.mockResolvedValue({ ok: true, value: zeros });
+    const early = createApp({
+      auth: { issuer, loadKeys: async () => keysOutcome },
+      store: fake.store,
+      now: () => new Date("2026-11-01T02:00:00Z"),
+    });
+
+    const res = await month("?tz=America%2FArgentina%2FBuenos_Aires", early);
+
+    expect((await res.json()) as { monthStart: string }).toMatchObject({
+      monthStart: "2026-10-01",
+    });
+    expect(fake.user.getMonthProgress).toHaveBeenCalledWith(
+      "America/Argentina/Buenos_Aires",
+      "2026-10-01",
+    );
+  });
+
+  it("answers zeros for a user with no data", async () => {
+    fake.user.getMonthProgress.mockResolvedValue({ ok: true, value: zeros });
+
+    const res = await month("?tz=UTC");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      monthStart: "2026-11-01",
+      sessions: 0,
+      corrections: 0,
+      newWords: 0,
+    });
+  });
+
+  it("answers 400 for an unknown zone and without tz, and reads nothing", async () => {
+    expect((await month("?tz=Nowhere%2FAtlantis")).status).toBe(400);
+    expect((await month("")).status).toBe(400);
+    expect(fake.user.getMonthProgress).not.toHaveBeenCalled();
+  });
+
+  it("answers 401 when the store is unauthorized and 503 when it is unavailable", async () => {
+    fake.user.getMonthProgress.mockResolvedValueOnce({ ok: false, failure: "unauthorized" });
+    expect((await month("?tz=UTC")).status).toBe(401);
+    fake.user.getMonthProgress.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+    expect((await month("?tz=UTC")).status).toBe(503);
+  });
+
+  it("builds the store for the token's user", async () => {
+    fake.user.getMonthProgress.mockResolvedValue({ ok: true, value: zeros });
+    const headers = await authed();
+
+    await app.request("/progress/month?tz=UTC", { headers });
+
+    expect(fake.callers).toEqual([
+      { id: "user-1", accessToken: headers.Authorization.replace("Bearer ", "") },
+    ]);
+  });
+});
+
+function endedRow(n: number) {
+  return {
+    session: { ...session, id: `session-${n}`, status: "ended" as const },
+    messageCount: 4,
+    correctionCount: 1,
+  };
+}
+
+describe("GET /progress/history", () => {
+  async function history(query: string) {
+    return app.request(`/progress/history${query}`, { headers: await authed() });
+  }
+
+  it("answers a page of ended sessions with local days and counts", async () => {
+    fake.user.listEndedSessions.mockResolvedValue({
+      ok: true,
+      value: [
+        {
+          session: { ...endedRow(1).session, createdAt: "2026-11-01T02:30:00+00:00" },
+          messageCount: 14,
+          correctionCount: 3,
+        },
+      ],
+    });
+
+    const res = await history("?tz=America%2FArgentina%2FBuenos_Aires");
+
+    expect(res.status).toBe(200);
+    const page = historyPageSchema.parse(await res.json());
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      day: "2026-10-31",
+      messageCount: 14,
+      correctionCount: 3,
+    });
+    expect(page.nextOffset).toBeNull();
+    expect(fake.user.listEndedSessions).toHaveBeenCalledWith(0, 21);
+  });
+
+  it("reads from the given offset and points to the next page when a row beyond it comes back", async () => {
+    fake.user.listEndedSessions.mockResolvedValue({
+      ok: true,
+      value: Array.from({ length: 21 }, (_, n) => endedRow(n)),
+    });
+
+    const res = await history("?tz=UTC&offset=20");
+
+    const page = historyPageSchema.parse(await res.json());
+    expect(page.items).toHaveLength(20);
+    expect(page.nextOffset).toBe(40);
+    expect(fake.user.listEndedSessions).toHaveBeenCalledWith(20, 21);
+  });
+
+  it("answers an empty page with no next offset", async () => {
+    fake.user.listEndedSessions.mockResolvedValue({ ok: true, value: [] });
+
+    const res = await history("?tz=UTC");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ items: [], nextOffset: null });
+  });
+
+  it("answers 400 for a bad offset and for an unknown zone, and reads nothing", async () => {
+    for (const query of [
+      "?tz=UTC&offset=-1",
+      "?tz=UTC&offset=abc",
+      "?tz=UTC&offset=01",
+      "?tz=Nowhere%2FAtlantis",
+      "",
+    ]) {
+      expect((await history(query)).status).toBe(400);
+    }
+    expect(fake.user.listEndedSessions).not.toHaveBeenCalled();
+  });
+
+  it("answers 401 when the store is unauthorized and 503 when it is unavailable", async () => {
+    fake.user.listEndedSessions.mockResolvedValueOnce({ ok: false, failure: "unauthorized" });
+    expect((await history("?tz=UTC")).status).toBe(401);
+    fake.user.listEndedSessions.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+    expect((await history("?tz=UTC")).status).toBe(503);
+  });
+
+  it("builds the store for the token's user", async () => {
+    fake.user.listEndedSessions.mockResolvedValue({ ok: true, value: [] });
+    const headers = await authed();
+
+    await app.request("/progress/history?tz=UTC", { headers });
+
+    expect(fake.callers).toEqual([
+      { id: "user-1", accessToken: headers.Authorization.replace("Bearer ", "") },
+    ]);
+  });
+});
+
+describe("GET /progress/mistakes", () => {
+  async function mistakes(query: string) {
+    return app.request(`/progress/mistakes${query}`, { headers: await authed() });
+  }
+
+  it("answers groups with their rule (null for none), times and latest example", async () => {
+    fake.user.listMistakeGroups.mockResolvedValue({
+      ok: true,
+      value: [
+        { rule: "Articles", times: 5, original: "a apple", corrected: "an apple" },
+        { rule: null, times: 1, original: "a", corrected: "b" },
+      ],
+    });
+
+    const res = await mistakes("");
+
+    expect(res.status).toBe(200);
+    expect(mistakePageSchema.parse(await res.json())).toEqual({
+      items: [
+        { rule: "Articles", times: 5, latest: { original: "a apple", corrected: "an apple" } },
+        { rule: null, times: 1, latest: { original: "a", corrected: "b" } },
+      ],
+      nextOffset: null,
+    });
+    expect(fake.user.listMistakeGroups).toHaveBeenCalledWith(0, 21);
+  });
+
+  it("reads from the given offset and points to the next page when a row beyond it comes back", async () => {
+    fake.user.listMistakeGroups.mockResolvedValue({
+      ok: true,
+      value: Array.from({ length: 21 }, () => ({
+        rule: null,
+        times: 1,
+        original: "a",
+        corrected: "b",
+      })),
+    });
+
+    const res = await mistakes("?offset=20");
+
+    const page = mistakePageSchema.parse(await res.json());
+    expect(page.items).toHaveLength(20);
+    expect(page.nextOffset).toBe(40);
+    expect(fake.user.listMistakeGroups).toHaveBeenCalledWith(20, 21);
+  });
+
+  it("answers an empty page with no next offset", async () => {
+    fake.user.listMistakeGroups.mockResolvedValue({ ok: true, value: [] });
+
+    const res = await mistakes("");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ items: [], nextOffset: null });
+  });
+
+  it("answers 400 for a bad offset and reads nothing", async () => {
+    for (const query of ["?offset=-1", "?offset=abc", "?offset=01"]) {
+      expect((await mistakes(query)).status).toBe(400);
+    }
+    expect(fake.user.listMistakeGroups).not.toHaveBeenCalled();
+  });
+
+  it("answers 401 when the store is unauthorized and 503 when it is unavailable", async () => {
+    fake.user.listMistakeGroups.mockResolvedValueOnce({ ok: false, failure: "unauthorized" });
+    expect((await mistakes("")).status).toBe(401);
+    fake.user.listMistakeGroups.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+    expect((await mistakes("")).status).toBe(503);
+  });
+
+  it("builds the store for the token's user", async () => {
+    fake.user.listMistakeGroups.mockResolvedValue({ ok: true, value: [] });
+    const headers = await authed();
+
+    await app.request("/progress/mistakes", { headers });
+
+    expect(fake.callers).toEqual([
+      { id: "user-1", accessToken: headers.Authorization.replace("Bearer ", "") },
+    ]);
+  });
+});
+
+describe("GET /progress/words", () => {
+  const wordRow = {
+    word: "catchy",
+    sentence: "That song.",
+    createdAt: "2026-11-05T01:00:00+00:00",
+  };
+
+  async function words(query: string) {
+    return app.request(`/progress/words${query}`, { headers: await authed() });
+  }
+
+  it("answers words with their sentence and local day", async () => {
+    fake.user.listNewWords.mockResolvedValue({ ok: true, value: [wordRow] });
+
+    const res = await words("?tz=America%2FArgentina%2FBuenos_Aires");
+
+    expect(res.status).toBe(200);
+    expect(wordPageSchema.parse(await res.json())).toEqual({
+      items: [{ word: "catchy", sentence: "That song.", day: "2026-11-04" }],
+      nextOffset: null,
+    });
+    expect(fake.user.listNewWords).toHaveBeenCalledWith(0, 21);
+  });
+
+  it("reads from the given offset and points to the next page when a row beyond it comes back", async () => {
+    fake.user.listNewWords.mockResolvedValue({
+      ok: true,
+      value: Array.from({ length: 21 }, () => wordRow),
+    });
+
+    const res = await words("?tz=UTC&offset=20");
+
+    const page = wordPageSchema.parse(await res.json());
+    expect(page.items).toHaveLength(20);
+    expect(page.nextOffset).toBe(40);
+    expect(fake.user.listNewWords).toHaveBeenCalledWith(20, 21);
+  });
+
+  it("answers an empty page with no next offset", async () => {
+    fake.user.listNewWords.mockResolvedValue({ ok: true, value: [] });
+
+    const res = await words("?tz=UTC");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ items: [], nextOffset: null });
+  });
+
+  it("answers 400 for a bad offset and for an unknown zone, and reads nothing", async () => {
+    for (const query of [
+      "?tz=UTC&offset=-1",
+      "?tz=UTC&offset=abc",
+      "?tz=UTC&offset=01",
+      "?tz=Nowhere%2FAtlantis",
+      "",
+    ]) {
+      expect((await words(query)).status).toBe(400);
+    }
+    expect(fake.user.listNewWords).not.toHaveBeenCalled();
+  });
+
+  it("answers 401 when the store is unauthorized and 503 when it is unavailable", async () => {
+    fake.user.listNewWords.mockResolvedValueOnce({ ok: false, failure: "unauthorized" });
+    expect((await words("?tz=UTC")).status).toBe(401);
+    fake.user.listNewWords.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+    expect((await words("?tz=UTC")).status).toBe(503);
+  });
+
+  it("builds the store for the token's user", async () => {
+    fake.user.listNewWords.mockResolvedValue({ ok: true, value: [] });
+    const headers = await authed();
+
+    await app.request("/progress/words?tz=UTC", { headers });
+
+    expect(fake.callers).toEqual([
+      { id: "user-1", accessToken: headers.Authorization.replace("Bearer ", "") },
+    ]);
   });
 });

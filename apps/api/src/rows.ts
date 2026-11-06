@@ -52,6 +52,30 @@ const profileStatsRowSchema = z.object({
   new_words: z.number(),
 });
 
+const monthProgressRowSchema = z.object({
+  session_count: z.number(),
+  correction_count: z.number(),
+  new_word_count: z.number(),
+});
+
+const historyCountsRowSchema = z.object({
+  message_count: z.number(),
+  correction_count: z.number(),
+});
+
+const mistakeRowSchema = z.object({
+  rule: z.string().nullable(),
+  times: z.number(),
+  original: z.string(),
+  corrected: z.string(),
+});
+
+const wordRowSchema = z.object({
+  word: z.string(),
+  sentence: z.string(),
+  created_at: z.iso.datetime({ offset: true }),
+});
+
 const messageRowSchema = z.object({
   id: z.string(),
   session_id: z.string(),
@@ -131,6 +155,49 @@ export function toProfileStatsRow(
         sessionDays: parsed.data.session_days,
         newWords: parsed.data.new_words,
       }
+    : null;
+}
+
+export function toMonthProgressRow(
+  row: unknown,
+): { sessionCount: number; correctionCount: number; newWordCount: number } | null {
+  const parsed = monthProgressRowSchema.safeParse(row);
+  return parsed.success
+    ? {
+        sessionCount: parsed.data.session_count,
+        correctionCount: parsed.data.correction_count,
+        newWordCount: parsed.data.new_word_count,
+      }
+    : null;
+}
+
+// INFO: a session row with the counts of its messages and corrections.
+export function toHistoryRow(
+  row: unknown,
+): { session: Session; messageCount: number; correctionCount: number } | null {
+  const parsed = historyCountsRowSchema.safeParse(row);
+  const session = toSession(row);
+  if (!parsed.success || session === null) return null;
+  return {
+    session,
+    messageCount: parsed.data.message_count,
+    correctionCount: parsed.data.correction_count,
+  };
+}
+
+export function toMistakeRow(
+  row: unknown,
+): { rule: string | null; times: number; original: string; corrected: string } | null {
+  const parsed = mistakeRowSchema.safeParse(row);
+  return parsed.success ? parsed.data : null;
+}
+
+export function toWordRow(
+  row: unknown,
+): { word: string; sentence: string; createdAt: string } | null {
+  const parsed = wordRowSchema.safeParse(row);
+  return parsed.success
+    ? { word: parsed.data.word, sentence: parsed.data.sentence, createdAt: parsed.data.created_at }
     : null;
 }
 

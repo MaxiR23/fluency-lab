@@ -11,7 +11,7 @@ use. Following a plan is optional; free practice is the default.
 
 Status: Expo project in a pnpm monorepo. The design layer exists (tokens
 and base components); email sign-in, sign-up, password reset, onboarding, Home
-with the tab bar (Progress as a placeholder), Settings, Profile, the Chat screen (chat with the
+with the tab bar, Settings, Profile, Progress (history, mistakes and words), the Chat screen (chat with the
 tutor, saved sessions and the no-key state) and the Summary after ending a chat are built, the other screens are not. The screen map, the
 palette and the Home design are decided (see README.md).
 

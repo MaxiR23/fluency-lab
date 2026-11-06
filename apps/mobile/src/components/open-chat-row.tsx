@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import Swipeable, { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import { Icon } from "@/components/icon";
-import { selectableStyle } from "@/components/selectable-style";
+import { SessionCard } from "@/components/session-card";
 import { Text } from "@/components/text";
 import { borderWidth, colors, radius, size, spacing, strokeWidth } from "@/constants/theme";
 import type { OpenChatRowView } from "@/utils/open-chats";
@@ -72,63 +72,19 @@ export function OpenChatRow({
         <Actions row={row} methods={methods} onEnd={onEnd} onDelete={onDelete} />
       )}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={row.title}
+      <SessionCard
+        title={row.title}
+        time={row.time}
+        detail={row.preview}
+        icon={row.icon}
         onPress={onPress}
-        style={({ pressed }) => [selectableStyle({ selected: false, pressed }), styles.card]}
-      >
-        <View style={styles.iconBox}>
-          <Icon name={row.icon} color={colors.accent} size={size.iconBadge} />
-        </View>
-        <View style={styles.texts}>
-          <View style={styles.titleRow}>
-            <Text variant="bodyStrong" numberOfLines={1} style={styles.title}>
-              {row.title}
-            </Text>
-            {row.time === null ? null : (
-              <Text variant="why" style={styles.time}>
-                {row.time}
-              </Text>
-            )}
-          </View>
-          {row.preview === null ? null : (
-            <Text variant="caption" numberOfLines={1}>
-              {row.preview}
-            </Text>
-          )}
-        </View>
-      </Pressable>
+      />
     </Swipeable>
   );
 }
 
 const styles = StyleSheet.create({
   swipe: { borderRadius: radius.control },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: spacing.card,
-    paddingHorizontal: spacing.md,
-    gap: spacing.card,
-  },
-  iconBox: {
-    width: size.badge,
-    height: size.badge,
-    borderRadius: radius.badge,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  texts: { flex: 1, gap: spacing.hair },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
-  title: { flexShrink: 1 },
-  time: { flexShrink: 0 },
   actions: { flexDirection: "row", gap: spacing.sm, paddingLeft: spacing.sm },
   action: {
     width: size.swipeAction,
