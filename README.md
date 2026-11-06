@@ -9,9 +9,9 @@ plan is optional; free practice is the default.
 
 Expo project in a pnpm monorepo. The design layer exists (tokens and
 base components); email sign-in, sign-up, password reset, onboarding, Home
-with the tab bar (Progress and Settings as placeholders) and the Chat screen
-(chat with the tutor, saved sessions, corrections and new words, the monthly
-limit, and the no-key state) are built, the other screens are not. The screen
+with the tab bar (Progress as a placeholder), Settings, Profile and the Chat
+screen (chat with the tutor, saved sessions, corrections and new words, the
+monthly limit, and the no-key state) are built, the other screens are not. The screen
 map, the palette and the Home design are decided.
 
 ## Decided
@@ -32,7 +32,8 @@ map, the palette and the Home design are decided.
 - App layout in `apps/mobile/src/`: `app/` (routes), `ai/` (the AI port and
   its provider adapter), `auth/` (the auth
   port and its adapter), `components/`, `constants/` (theme tokens),
-  `data/` (the data port and its adapter), `hooks/`, `keys/` (the key port
+  `data/` (the data port and its adapter), `haptics/` (the haptics port and
+  its expo-haptics and key-value adapters), `hooks/`, `keys/` (the key port
   and its secure-store adapter), `utils/` (pure functions)
 - App identifier: `com.maxirebolo.fluencylab`
 
@@ -60,7 +61,7 @@ Needs Docker running.
 Copy each `.env.example` to `.env.local` (never committed) and fill it from
 the status output. Filter it so that no other secret is printed:
 
-    pnpm supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)='
+    pnpm supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY|SECRET_KEY)='
 
     apps/mobile/.env.local
       EXPO_PUBLIC_SUPABASE_URL              http://<LAN IP>:54321
@@ -69,6 +70,10 @@ the status output. Filter it so that no other secret is printed:
     apps/api/.env.local
       SUPABASE_URL                          http://127.0.0.1:54321
       SUPABASE_PUBLISHABLE_KEY              PUBLISHABLE_KEY
+      SUPABASE_SECRET_KEY                   SECRET_KEY
+
+The secret key goes only in `apps/api/.env.local`, never in a mobile env file or a
+doc. It is used only to delete an account.
 
 The phone reaches the stack on the Mac's LAN IP (`ipconfig getifaddr en0`);
 update the mobile URL when the network changes. `SUPABASE_URL` in `apps/api`
@@ -103,7 +108,7 @@ token; 401 when the token is missing or invalid, 500 when the signing keys
 cannot be loaded, so an outage never tells the client its token is bad).
 It also has `GET /profile`, `PUT /profile`, `GET /sessions/active`,
 `GET /sessions/open`, `DELETE /sessions/:id`, `GET /sessions/week`,
-`GET /sessions/spend`, `POST /sessions`,
+`GET /sessions/spend`, `GET /profile/stats`, `DELETE /account`, `POST /sessions`,
 `GET /sessions/:id/messages`, `POST /sessions/:id/messages`,
 `POST /sessions/:id/usage` and `POST /sessions/:id/end`: 401
 without a valid token, 400 on invalid input, 404 when the row is not the
@@ -112,6 +117,9 @@ caller's profile when it is missing instead of answering 404. `GET
 /sessions/week?tz=<IANA zone>` answers the days of the current week (Monday
 first, in that zone) that have a session; 400 for an unknown zone. `GET
 /sessions/spend?tz=<IANA zone>` answers the month's spend, which keeps the cost of deleted sessions. `GET
+/profile/stats?tz=<IANA zone>` answers the session count, the day streak and the new words. The day streak counts consecutive days with a session back from today, or from yesterday when today has none yet (it stays alive until today ends), in the device's time zone. `DELETE
+/account` deletes the caller's auth user and, through the cascades, their data; it needs
+`SUPABASE_SECRET_KEY`. `GET
 /sessions/:id/messages` answers the session and its messages. `POST
 /sessions/:id/usage` prices the reported tokens and adds them to the session's
 cost. `POST /sessions` takes a topic or a starter id. The API

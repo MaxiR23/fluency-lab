@@ -26,6 +26,8 @@ export const colors = {
   textDisabled: "#525252",
   surfaceFloating: "rgba(20,20,20,0.94)",
   accentGlow: "rgba(109,165,192,0.22)",
+  progressTrack: "rgba(255,255,255,0.08)",
+  accentHalo: "rgba(109,165,192,0.15)",
 } as const;
 
 export const spacing = {
@@ -54,6 +56,8 @@ export const spacing = {
   typingDot: 5,
   panel: 28,
   tabBarSide: 40,
+  pageGap: 20,
+  screenTopHeader: 52,
 } as const;
 export const radius = {
   control: 18,
@@ -97,6 +101,13 @@ export const size = {
   tag: 28,
   typingDot: 7,
   messageMaxWidth: "82%",
+  listRow: 50,
+  spendBar: 6,
+  spendBarMin: 8,
+  avatarLarge: 84,
+  switchWidth: 46,
+  switchHeight: 28,
+  switchKnob: 20,
 } as const;
 export const strokeWidth = { icon: 1.8, action: 2, check: 2.4, send: 1.9 } as const;
 export const borderWidth = { thin: 1 } as const;
@@ -113,6 +124,9 @@ export const fontSize = {
   title: 28,
   chatTitle: 16,
   cardHeading: 18,
+  avatarLarge: 32,
+  name: 20,
+  stat: 22,
 } as const;
 // INFO: React Native takes these in pixels; the design gives them as ratios and em.
 export const lineHeight = {
@@ -135,7 +149,8 @@ export const letterSpacing = {
 // shadowRadius 12 (half the blur); the design's inset highlight has no equivalent. The chat's
 // blur of 20 is shadowRadius 10. The glow is iOS only, because Android elevation draws one
 // black shadow. The tab bar's blur of 28 is shadowRadius 14; the pill glow of 14 is
-// shadowRadius 7 and iOS only.
+// shadowRadius 7 and iOS only. The large avatar's glow (blur 24) is shadowRadius 12, iOS only
+// like the others.
 export const shadow = {
   raised: {
     shadowColor: colors.shadow,
@@ -169,6 +184,12 @@ export const shadow = {
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
     shadowRadius: 7,
+  },
+  avatarGlow: {
+    shadowColor: colors.accentHalo,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 12,
   },
 } as const;
 // INFO: the durations follow the issue (200 to 250 ms); the offset, scale and dot keyframes

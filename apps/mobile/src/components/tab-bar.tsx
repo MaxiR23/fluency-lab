@@ -37,7 +37,8 @@ export function TabBar({
   navigateToTab,
   insets,
   pill,
-}: TabBarProps & { pill: PillMotion | null }) {
+  onTabPress,
+}: TabBarProps & { pill: PillMotion | null; onTabPress?: () => void }) {
   const count = state.routes.length;
   const [rowWidth, setRowWidth] = useState(0);
   const target = pillOffset(state.index, rowWidth, count);
@@ -95,6 +96,7 @@ export function TabBar({
             );
           }
           const onPress = () => {
+            onTabPress?.();
             const event = emitter.emit({
               type: "tabPress",
               target: route.key,

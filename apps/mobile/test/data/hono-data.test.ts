@@ -9,6 +9,7 @@
 // - The chat calls: createSession with a starter, openSession, addMessage, addUsage,
 //   endSession and getMonthSpend
 // - listOpenSessions and deleteSession
+// - getProfileStats and deleteAccount
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -672,5 +673,89 @@ describe("getSessionWeek", () => {
   it("returns bad_response for the wrong shape", async () => {
     const { data } = setup(reply({ weekStart: "2026-11-02" }));
     expect(await data.getSessionWeek("UTC")).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("getProfileStats", () => {
+  const stats = { sessions: 12, dayStreak: 3, newWords: 48 };
+
+  it("sends the time zone and returns the parsed stats", async () => {
+    const { data, seen } = setup(reply(stats));
+
+    expect(await data.getProfileStats("America/Argentina/Buenos_Aires")).toEqual({
+      ok: true,
+      value: stats,
+    });
+    expect(seen[0].url).toBe("http://api.test/profile/stats?tz=America%2FArgentina%2FBuenos_Aires");
+    expect(seen[0].method).toBe("GET");
+  });
+
+  it("returns zeros as a success", async () => {
+    const zeros = { sessions: 0, dayStreak: 0, newWords: 0 };
+    const { data } = setup(reply(zeros));
+    expect(await data.getProfileStats("UTC")).toEqual({ ok: true, value: zeros });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { data } = setup(reply({ error: "unauthorized" }, 401));
+    expect(await data.getProfileStats("UTC")).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("network down"));
+    expect(await data.getProfileStats("UTC")).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns network when the API does not answer before the deadline", async () => {
+    const hang = jest.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const data = createHonoData({
+      baseUrl: "http://api.test",
+      fetchFn: hang as unknown as typeof fetch,
+      readToken: async () => ({ ok: true, token: "token-1" }),
+      timeoutMs: 20,
+    });
+    expect(await data.getProfileStats("UTC")).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ sessions: -1, dayStreak: 0, newWords: 0 }));
+    expect(await data.getProfileStats("UTC")).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+// INFO: deleteAccount has no expected empty case: the call returns no data.
+describe("deleteAccount", () => {
+  it("sends DELETE /account with the token and returns null", async () => {
+    const { data, seen } = setup(reply({ deleted: true }));
+
+    expect(await data.deleteAccount()).toEqual({ ok: true, value: null });
+    expect(seen[0].url).toBe("http://api.test/account");
+    expect(seen[0].method).toBe("DELETE");
+    expect(seen[0].headers.get("Authorization")).toBe("Bearer token-1");
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { data } = setup(reply({ error: "unauthorized" }, 401));
+    expect(await data.deleteAccount()).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable on a 503", async () => {
+    const { data } = setup(reply({ error: "unavailable" }, 503));
+    expect(await data.deleteAccount()).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("network down"));
+    expect(await data.deleteAccount()).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for a body other than { deleted: true }", async () => {
+    const { data } = setup(reply({ deleted: false }));
+    expect(await data.deleteAccount()).toEqual({ ok: false, failure: "bad_response" });
   });
 });

@@ -9,6 +9,7 @@
 // - GET /me answers the user for a valid token, 401 for any bad one and 500
 //   when the signing keys cannot be loaded
 // - GET/PUT /profile, GET/POST /sessions, GET /sessions/open, DELETE /sessions/:id, GET /sessions/week, GET /sessions/spend,
+//   GET /profile/stats, DELETE /account,
 //   GET/POST /sessions/:id/messages, POST /sessions/:id/usage and POST /sessions/:id/end:
 //   401 without a valid token, 400 on invalid input, 404, 503, and the typed client
 // - GET /sessions/spend still counts the cost of a deleted session
@@ -27,6 +28,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   STARTERS,
   TUTOR_MODEL,
+  accountDeletedSchema,
+  profileStatsSchema,
   usageCostUsd,
   type ActiveSession,
   type Message,
@@ -267,6 +270,8 @@ const jsonType = { "Content-Type": "application/json" };
 const routes: { name: string; path: string; method: string; body?: unknown }[] = [
   { name: "GET /profile", path: "/profile", method: "GET" },
   { name: "PUT /profile", path: "/profile", method: "PUT", body: { level: "beginner" } },
+  { name: "GET /profile/stats", path: "/profile/stats?tz=UTC", method: "GET" },
+  { name: "DELETE /account", path: "/account", method: "DELETE" },
   { name: "GET /sessions/active", path: "/sessions/active", method: "GET" },
   { name: "GET /sessions/open", path: "/sessions/open", method: "GET" },
   { name: "DELETE /sessions/:id", path: `/sessions/${sessionId}`, method: "DELETE" },
@@ -783,6 +788,113 @@ describe("GET /sessions/spend", () => {
   it("responds 503 when the store is unavailable", async () => {
     fake.user.listSessionCostsSince.mockResolvedValue({ ok: false, failure: "unavailable" });
     expect((await spend("?tz=UTC")).status).toBe(503);
+  });
+});
+
+describe("GET /profile/stats", () => {
+  async function stats(query: string) {
+    return app.request(`/profile/stats${query}`, { headers: await authed() });
+  }
+
+  it("answers the session count, the day streak and the new words for the caller's zone", async () => {
+    fake.user.getStats.mockResolvedValue({
+      ok: true,
+      value: {
+        sessionCount: 12,
+        sessionDays: ["2026-11-05", "2026-11-04", "2026-11-01"],
+        newWords: 5,
+      },
+    });
+
+    const res = await stats("?tz=America%2FArgentina%2FBuenos_Aires");
+
+    expect(res.status).toBe(200);
+    expect(profileStatsSchema.parse(await res.json())).toEqual({
+      sessions: 12,
+      dayStreak: 2,
+      newWords: 5,
+    });
+    expect(fake.user.getStats).toHaveBeenCalledWith("America/Argentina/Buenos_Aires");
+  });
+
+  it("counts the streak back from yesterday while today has no session yet", async () => {
+    fake.user.getStats.mockResolvedValue({
+      ok: true,
+      value: { sessionCount: 2, sessionDays: ["2026-11-04", "2026-11-03"], newWords: 0 },
+    });
+
+    const res = await stats("?tz=UTC");
+
+    expect(await res.json()).toEqual({ sessions: 2, dayStreak: 2, newWords: 0 });
+  });
+
+  it("answers zeros for a user with no sessions", async () => {
+    fake.user.getStats.mockResolvedValue({
+      ok: true,
+      value: { sessionCount: 0, sessionDays: [], newWords: 0 },
+    });
+
+    const res = await stats("?tz=UTC");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sessions: 0, dayStreak: 0, newWords: 0 });
+  });
+
+  it("answers 401 when the store is unauthorized", async () => {
+    fake.user.getStats.mockResolvedValue({ ok: false, failure: "unauthorized" });
+    expect((await stats("?tz=UTC")).status).toBe(401);
+  });
+
+  it("answers 503 when the store is unavailable", async () => {
+    fake.user.getStats.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await stats("?tz=UTC")).status).toBe(503);
+  });
+
+  it("answers 400 for an unknown zone and without tz, and reads nothing", async () => {
+    expect((await stats("?tz=Mars%2FOlympus")).status).toBe(400);
+    expect((await stats("")).status).toBe(400);
+    expect(fake.user.getStats).not.toHaveBeenCalled();
+  });
+
+  it("answers 400 for a raw offset and a GMT offset form", async () => {
+    expect((await stats("?tz=-03:00")).status).toBe(400);
+    expect((await stats("?tz=%2B05:30")).status).toBe(400);
+    expect((await stats("?tz=GMT-3")).status).toBe(400);
+    expect(fake.user.getStats).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /account", () => {
+  async function remove() {
+    return app.request("/account", { method: "DELETE", headers: await authed() });
+  }
+
+  it("deletes the caller from the token and answers { deleted: true }", async () => {
+    fake.user.deleteAccount.mockResolvedValue({ ok: true, value: null });
+
+    const res = await remove();
+
+    expect(res.status).toBe(200);
+    expect(accountDeletedSchema.parse(await res.json())).toEqual({ deleted: true });
+    expect(fake.callers.map((caller) => caller.id)).toEqual(["user-1"]);
+    expect(fake.user.deleteAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers 401 when the store is unauthorized", async () => {
+    fake.user.deleteAccount.mockResolvedValue({ ok: false, failure: "unauthorized" });
+    expect((await remove()).status).toBe(401);
+  });
+
+  it("answers 503 when the store is unavailable", async () => {
+    fake.user.deleteAccount.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await remove()).status).toBe(503);
+  });
+
+  it("answers 401 without a token and deletes nothing", async () => {
+    const res = await app.request("/account", { method: "DELETE" });
+
+    expect(res.status).toBe(401);
+    expect(fake.user.deleteAccount).not.toHaveBeenCalled();
   });
 });
 

@@ -9,6 +9,7 @@
 // - The root view background is set to the background token when the module loads
 // - The tree is wrapped in a ThemeProvider with the token dark theme
 // - The whole app is wrapped in the keyboard provider
+// - The app is wrapped in the haptics provider, which reads the stored setting once
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -30,6 +31,7 @@ import { colors, fontFamily } from "@/constants/theme";
 import { darkNavigationTheme } from "@/utils/navigation-theme";
 import { emitSession, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { resetFakeData } from "../helpers/fake-data";
+import { fakeHapticsSetting } from "../helpers/fake-haptics";
 
 jest.mock("expo-font", () => ({ useFonts: jest.fn() }));
 jest.mock("expo-splash-screen", () => ({
@@ -146,5 +148,12 @@ describe("RootLayout", () => {
     jest.mocked(useFonts).mockReturnValue([true, null]);
     await render(<RootLayout />);
     expect(JSON.stringify(screen.toJSON())).toContain('"type":"KeyboardProvider"');
+  });
+
+  it("wraps the app in the haptics provider", async () => {
+    jest.mocked(useFonts).mockReturnValue([true, null]);
+    await render(<RootLayout />);
+    await act(async () => emitSession(null));
+    expect(fakeHapticsSetting.read).toHaveBeenCalledTimes(1);
   });
 });

@@ -6,6 +6,7 @@
 // - toProfile, toSession and toMessage rename snake_case rows and reject bad rows
 // - toOpenSession reads a session row with its newest embedded message
 // - toSessionStart reads the start time of a session row
+// - toProfileStatsRow reads the session count, the session days and the new words count
 // - toSessionCost reads the start time and the cost of a session row
 // - toProfilePatch renames an update to columns
 //
@@ -22,6 +23,7 @@ import {
   toOpenSession,
   toProfile,
   toProfilePatch,
+  toProfileStatsRow,
   toSession,
   toSessionCost,
   toSessionStart,
@@ -285,5 +287,34 @@ describe("toOpenSession", () => {
 
   it("returns null without a messages list", () => {
     expect(toOpenSession(sessionRow)).toBeNull();
+  });
+});
+
+describe("toProfileStatsRow", () => {
+  it("parses the count, the days and the new words", () => {
+    expect(
+      toProfileStatsRow({
+        session_count: 12,
+        session_days: ["2026-11-06", "2026-11-05"],
+        new_words: 48,
+      }),
+    ).toEqual({ sessionCount: 12, sessionDays: ["2026-11-06", "2026-11-05"], newWords: 48 });
+  });
+
+  it("parses a user with no sessions", () => {
+    expect(toProfileStatsRow({ session_count: 0, session_days: [], new_words: 0 })).toEqual({
+      sessionCount: 0,
+      sessionDays: [],
+      newWords: 0,
+    });
+  });
+
+  it("returns null for a bad day, a non-number count or a missing field", () => {
+    expect(
+      toProfileStatsRow({ session_count: 1, session_days: ["yesterday"], new_words: 0 }),
+    ).toBeNull();
+    expect(toProfileStatsRow({ session_count: "1", session_days: [], new_words: 0 })).toBeNull();
+    expect(toProfileStatsRow({ session_count: 1, session_days: [] })).toBeNull();
+    expect(toProfileStatsRow(null)).toBeNull();
   });
 });

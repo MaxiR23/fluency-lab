@@ -18,6 +18,7 @@ import type {} from "hono/jwt";
 import { requireAuth, readBearerToken, readTokenUser, type AuthConfig } from "./auth";
 import { MONTH_LOOKBACK_MS, currentMonthStart, monthSpend } from "./month";
 import type { Caller, Store, StoreFailure } from "./store";
+import { dayStreak } from "./streak";
 import { WEEK_LOOKBACK_MS, currentWeek, isTimeZone, sessionDays } from "./week";
 
 // INFO: no zod issue text leaves the API.
@@ -79,6 +80,38 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
         return c.json(outcome.value, 200);
       },
     )
+    .get(
+      "/profile/stats",
+      auth,
+      caller,
+      zValidator(
+        "query",
+        weekQuerySchema.refine((query) => isTimeZone(query.tz)),
+        invalidInput,
+      ),
+      async (c) => {
+        const { tz } = c.req.valid("query");
+        const { today } = currentWeek(now(), tz);
+        const outcome = await config.store.forUser(c.get("caller")).getStats(tz);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        const { sessionCount, sessionDays, newWords } = outcome.value;
+        return c.json(
+          { sessions: sessionCount, dayStreak: dayStreak(sessionDays, today), newWords },
+          200,
+        );
+      },
+    )
+    .delete("/account", auth, caller, async (c) => {
+      const outcome = await config.store.forUser(c.get("caller")).deleteAccount();
+      if (!outcome.ok) {
+        const { status, body } = failureResponse(outcome.failure);
+        return c.json(body, status);
+      }
+      return c.json({ deleted: true as const }, 200);
+    })
     .get("/sessions/active", auth, caller, async (c) => {
       const outcome = await config.store.forUser(c.get("caller")).getActiveSession();
       if (!outcome.ok) {

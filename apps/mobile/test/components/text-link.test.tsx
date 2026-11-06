@@ -54,4 +54,11 @@ describe("TextLink", () => {
     await render(<TextLink label="Go" variant="footerLink" />);
     expect(StyleSheet.flatten(screen.getByText("Go").props.style)).toEqual(textStyle("footerLink"));
   });
+
+  it("draws the strong caption variant when asked", async () => {
+    await render(<TextLink label="Go" variant="captionLinkStrong" />);
+    expect(StyleSheet.flatten(screen.getByText("Go").props.style)).toEqual(
+      textStyle("captionLinkStrong"),
+    );
+  });
 });

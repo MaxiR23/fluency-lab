@@ -8,6 +8,7 @@
 // - The response schemas of the profile, the active session and the messages
 // - The open sessions response
 // - The session week response and its query
+// - The profile stats response and the account deleted response
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -18,6 +19,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  accountDeletedSchema,
   activeSessionResponseSchema,
   correctionSchema,
   messageCorrectionsSchema,
@@ -27,6 +29,7 @@ import {
   openSessionsResponseSchema,
   newWordsSchema,
   profileSchema,
+  profileStatsSchema,
   profileUpdateSchema,
   sessionCreateSchema,
   sessionIdParamSchema,
@@ -455,5 +458,35 @@ describe("tutorReplySchema", () => {
       tutorReplySchema.safeParse({ reply: 1, corrections: [], explanation: "", newWords: [] })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("profileStatsSchema", () => {
+  it("accepts whole counts of zero or more", () => {
+    expect(profileStatsSchema.safeParse({ sessions: 12, dayStreak: 3, newWords: 48 }).success).toBe(
+      true,
+    );
+    expect(profileStatsSchema.safeParse({ sessions: 0, dayStreak: 0, newWords: 0 }).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects a negative or fractional count and a missing field", () => {
+    expect(profileStatsSchema.safeParse({ sessions: -1, dayStreak: 0, newWords: 0 }).success).toBe(
+      false,
+    );
+    expect(profileStatsSchema.safeParse({ sessions: 1, dayStreak: 1.5, newWords: 0 }).success).toBe(
+      false,
+    );
+    expect(profileStatsSchema.safeParse({ sessions: 1, dayStreak: 1 }).success).toBe(false);
+  });
+});
+
+describe("accountDeletedSchema", () => {
+  it("accepts { deleted: true } and rejects anything else", () => {
+    expect(accountDeletedSchema.safeParse({ deleted: true }).success).toBe(true);
+    expect(accountDeletedSchema.safeParse({ deleted: false }).success).toBe(false);
+    expect(accountDeletedSchema.safeParse({}).success).toBe(false);
+    expect(accountDeletedSchema.safeParse({ deleted: "true" }).success).toBe(false);
   });
 });

@@ -7,7 +7,7 @@
 // - The Apple and email providers in supabase/config.toml
 // - The recovery email template: a code, no link
 // - No supabase-js import in screens or components
-// - The env examples and the ignore rules
+// - The env examples and the ignore rules, and no secret key name under apps/mobile
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -134,7 +134,16 @@ describe("env files", () => {
     assert.deepEqual(envKeys("apps/api/.env.example"), [
       "SUPABASE_URL=",
       "SUPABASE_PUBLISHABLE_KEY=",
+      "SUPABASE_SECRET_KEY=",
     ]);
+  });
+
+  it("has no secret key name under apps/mobile", () => {
+    const files = [...sourceFiles("apps/mobile/src"), path.join(root, "apps/mobile/.env.example")];
+    const offenders = files.filter((file) =>
+      /SECRET_KEY|service_role/.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(offenders, []);
   });
 
   it("does not ignore the env examples", () => {

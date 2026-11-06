@@ -2,12 +2,19 @@ import { StyleSheet, View } from "react-native";
 
 import { Icon } from "@/components/icon";
 import { Text } from "@/components/text";
-import { borderWidth, colors, radius, size } from "@/constants/theme";
+import { borderWidth, colors, radius, shadow, size } from "@/constants/theme";
 
-export function Avatar({ initial }: { initial: string | null }) {
+export function Avatar({
+  initial,
+  size: avatarSize = "small",
+}: {
+  initial: string | null;
+  size?: "small" | "large";
+}) {
+  const large = avatarSize === "large";
   return (
     <View
-      style={styles.avatar}
+      style={large ? [styles.avatar, styles.large] : styles.avatar}
       testID="avatar"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
@@ -15,7 +22,7 @@ export function Avatar({ initial }: { initial: string | null }) {
       {initial === null ? (
         <Icon name="person" color={colors.accent} size={size.iconBadge} />
       ) : (
-        <Text variant="avatar">{initial}</Text>
+        <Text variant={large ? "avatarLarge" : "avatar"}>{initial}</Text>
       )}
     </View>
   );
@@ -31,5 +38,11 @@ const styles = StyleSheet.create({
     borderWidth: borderWidth.thin,
     alignItems: "center",
     justifyContent: "center",
+  },
+  large: {
+    width: size.avatarLarge,
+    height: size.avatarLarge,
+    backgroundColor: colors.surfaceSunken,
+    ...shadow.avatarGlow,
   },
 });

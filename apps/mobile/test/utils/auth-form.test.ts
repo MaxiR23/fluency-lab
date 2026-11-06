@@ -5,6 +5,7 @@
 // Tested:
 // - Email normalization and the field checks of the three forms
 // - Reading the email route param
+// - nameError, the name check shared with the Edit name screen
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -18,6 +19,7 @@ import { describe, expect, it } from "@jest/globals";
 import {
   hasFieldErrors,
   normalizeEmail,
+  nameError,
   normalizeName,
   readEmailParam,
   validateCredentials,
@@ -166,6 +168,17 @@ describe("readEmailParam", () => {
 describe("normalizeName", () => {
   it("trims the name", () => {
     expect(normalizeName("  Ana Ruiz  ")).toBe("Ana Ruiz");
+  });
+});
+
+describe("nameError", () => {
+  it("returns undefined for a name", () => {
+    expect(nameError("Ana Ruiz")).toBeUndefined();
+  });
+
+  it("asks for a name when blank or only spaces", () => {
+    expect(nameError("")).toBe("Enter your name.");
+    expect(nameError("   ")).toBe("Enter your name.");
   });
 });
 

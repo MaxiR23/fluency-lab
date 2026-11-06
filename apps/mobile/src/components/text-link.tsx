@@ -10,7 +10,7 @@ export function TextLink({
   style,
 }: {
   label: string;
-  variant?: "captionLink" | "footerLink";
+  variant?: "captionLink" | "captionLinkStrong" | "footerLink";
   disabled?: boolean;
   onPress?: () => void;
   style?: StyleProp<TextStyle>;

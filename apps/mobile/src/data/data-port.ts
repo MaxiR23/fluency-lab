@@ -4,6 +4,7 @@ import type {
   MessageCreate,
   MonthSpend,
   Profile,
+  ProfileStats,
   ProfileUpdate,
   Session,
   SessionCreate,
@@ -34,4 +35,8 @@ export type DataPort = {
   getMonthSpend(timeZone: string): Promise<DataOutcome<MonthSpend>>;
   // INFO: a week with no days is the expected empty: no session this week.
   getSessionWeek(timeZone: string): Promise<DataOutcome<SessionWeek>>;
+  // INFO: zeros are the expected empty: no sessions yet.
+  getProfileStats(timeZone: string): Promise<DataOutcome<ProfileStats>>;
+  // INFO: deletes the signed in user's account and data on the server; nothing is returned.
+  deleteAccount(): Promise<DataOutcome<null>>;
 };

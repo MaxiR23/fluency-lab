@@ -13,6 +13,7 @@
 // - Cancel keeps the chat open; Back keeps the session open and Home offers Continue
 // - The no key state: card, locked input and Send, Add API key opens the key step
 // - The ready state: Send follows the draft, the composer sits in the keyboard footer
+// - Send plays the send haptic, and nothing plays when haptics are off
 // - The state updates when the key step goes back to Chat
 // - Signed out users cannot reach Chat
 //
@@ -38,6 +39,7 @@ import {
   profileWith,
   resetFakeData,
 } from "../helpers/fake-data";
+import { fakeHaptics, fakeHapticsSetting } from "../helpers/fake-haptics";
 import { fakeKeys, resetFakeKeys } from "../helpers/fake-keys";
 import { renderApp, renderAppAt } from "../helpers/render-app";
 import { generatedSecret } from "../helpers/generated-secret";
@@ -233,6 +235,22 @@ describe("Chat", () => {
     expect(screen.getByRole("button", { name: "Send", disabled: false })).toBeTruthy();
     await fireEvent.changeText(input, "");
     expect(screen.getByRole("button", { name: "Send", disabled: true })).toBeTruthy();
+  });
+
+  it("plays the send haptic when Send is pressed", async () => {
+    withKey();
+    await renderAppAt("/chat", fakeSession());
+    await sendMessage("Hello");
+    expect(fakeHaptics.play).toHaveBeenCalledWith("send");
+    expect(fakeHaptics.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("plays nothing on Send when haptics are off", async () => {
+    fakeHapticsSetting.read.mockResolvedValue({ ok: true, value: false });
+    withKey();
+    await renderAppAt("/chat", fakeSession());
+    await sendMessage("Hello");
+    expect(fakeHaptics.play).not.toHaveBeenCalled();
   });
 
   it("draws the starter's title and opener", async () => {

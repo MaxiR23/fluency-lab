@@ -126,11 +126,11 @@ describe("buttonStyle", () => {
     expect(buttonStyle("deep", {}, { compact: false }).container.minHeight).toBe(size.control);
   });
 
-  it("draws a small secondary button as the design's End button", () => {
+  it("draws a small secondary button as the design's Edit name button", () => {
     const { container, label } = buttonStyle("secondary", {}, { small: true });
     expect(container.minHeight).toBe(size.controlSmall);
     expect(size.controlSmall).toBe(36);
-    expect(container.paddingHorizontal).toBe(spacing.card);
+    expect(container.paddingHorizontal).toBe(spacing.md);
     expect(container.borderRadius).toBe(radius.control);
     expect(container.backgroundColor).toBe(colors.surface);
     expect(container.borderColor).toBe(colors.border);

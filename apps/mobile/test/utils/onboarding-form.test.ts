@@ -5,7 +5,7 @@
 //
 // Tested:
 // - The reducer events and the step rules
-// - The monthly limit parsing and the AI step errors
+// - The monthly limit parsing, its error text and the AI step errors
 // - The update sent for Finish and for Skip, and that it never carries the key
 //
 // What is covered:
@@ -22,6 +22,7 @@ import {
   aiStepUpdate,
   canContinue,
   initialOnboardingForm,
+  monthlyLimitError,
   normalizeApiKey,
   onboardingFormReducer,
   onboardingUpdate,
@@ -217,6 +218,26 @@ describe("parseMonthlyLimit", () => {
 
   it("trims spaces", () => {
     expect(parseMonthlyLimit(" 20 ")).toBe(20);
+  });
+});
+
+describe("monthlyLimitError", () => {
+  it("returns undefined for 0.01, 10000 and 12.5", () => {
+    expect(monthlyLimitError("0.01")).toBeUndefined();
+    expect(monthlyLimitError("10000")).toBeUndefined();
+    expect(monthlyLimitError("12.5")).toBeUndefined();
+  });
+
+  it("asks for an amount when blank", () => {
+    expect(monthlyLimitError("")).toBe("Enter an amount in USD.");
+    expect(monthlyLimitError("  ")).toBe("Enter an amount in USD.");
+  });
+
+  it("rejects 0, 10000.01 and 1.234", () => {
+    const message = "Enter an amount between 0.01 and 10000, with at most two decimals.";
+    expect(monthlyLimitError("0")).toBe(message);
+    expect(monthlyLimitError("10000.01")).toBe(message);
+    expect(monthlyLimitError("1.234")).toBe(message);
   });
 });
 

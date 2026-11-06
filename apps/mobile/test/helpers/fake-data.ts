@@ -4,8 +4,8 @@
 // jest.requireActual of this file. Call resetFakeData() in beforeEach: it makes
 // getProfile answer with a completed profile, listOpenSessions with no open
 // session and getSessionWeek with an empty week (Home reads all three), and
-// getMonthSpend with 0 spent (Chat reads it), so a
-// signed in user lands on Home.
+// getMonthSpend with 0 spent (Chat reads it), getProfileStats with zeros (Profile reads it)
+// and deleteAccount with success, so a signed in user lands on Home.
 
 import { jest } from "@jest/globals";
 import type { ActiveSession, Message, Profile, Session, SessionWeek } from "@fluency-lab/shared";
@@ -25,6 +25,8 @@ export const fakeData = {
   endSession: jest.fn<DataPort["endSession"]>(),
   getMonthSpend: jest.fn<DataPort["getMonthSpend"]>(),
   getSessionWeek: jest.fn<DataPort["getSessionWeek"]>(),
+  getProfileStats: jest.fn<DataPort["getProfileStats"]>(),
+  deleteAccount: jest.fn<DataPort["deleteAccount"]>(),
 } satisfies DataPort;
 
 export function profileWith(overrides: Partial<Profile>): Profile {
@@ -96,4 +98,9 @@ export function resetFakeData(): void {
     ok: true,
     value: { monthStart: "2026-11-01", spentUsd: 0 },
   });
+  fakeData.getProfileStats.mockResolvedValue({
+    ok: true,
+    value: { sessions: 0, dayStreak: 0, newWords: 0 },
+  });
+  fakeData.deleteAccount.mockResolvedValue({ ok: true, value: null });
 }

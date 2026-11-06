@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
+import { HapticsProvider } from "@/hooks/use-haptics";
 import { OnboardingProvider, useOnboarding } from "@/hooks/use-onboarding";
 import { SessionProvider, useSession } from "@/hooks/use-session";
 import { appEntry } from "@/utils/onboarding-gate";
@@ -54,6 +55,8 @@ function RootNavigator({ fontsSettled }: { fontsSettled: boolean }) {
         <Stack.Screen name="api-key" />
         <Stack.Screen name="suggestions" />
         <Stack.Screen name="chats" />
+        <Stack.Screen name="profile" />
+        <Stack.Screen name="edit-profile" />
       </Stack.Protected>
       <Stack.Protected guard={entry === "onboarding"}>
         <Stack.Screen name="onboarding" />
@@ -82,7 +85,9 @@ export default function RootLayout() {
         <ThemeProvider value={navigationTheme}>
           <SessionProvider>
             <OnboardingProvider>
-              <RootNavigator fontsSettled={isFontLoadSettled(loaded, error)} />
+              <HapticsProvider>
+                <RootNavigator fontsSettled={isFontLoadSettled(loaded, error)} />
+              </HapticsProvider>
             </OnboardingProvider>
           </SessionProvider>
         </ThemeProvider>

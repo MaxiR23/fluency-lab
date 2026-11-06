@@ -1,31 +1,40 @@
 import type { Provider } from "@fluency-lab/shared";
-import { router, Stack, useNavigation } from "expo-router";
+import { router, Stack, useLocalSearchParams, useNavigation } from "expo-router";
 import { useState } from "react";
+import { Alert, StyleSheet, View } from "react-native";
 
 import type { FailureCause } from "@/auth/auth-port";
 import { AiStepFields } from "@/components/ai-step-fields";
 import { Button } from "@/components/button";
 import { FailureMessage } from "@/components/failure-message";
 import { StepScreen } from "@/components/step-screen";
+import { TextLink } from "@/components/text-link";
 import { useOnboarding } from "@/hooks/use-onboarding";
 import { keys } from "@/keys";
-import { dataFailureMessage, keySaveFailureMessage } from "@/utils/data-message";
+import {
+  dataFailureMessage,
+  keyDeleteFailureMessage,
+  keySaveFailureMessage,
+} from "@/utils/data-message";
+import { keyStepStart, removeKeyButtons, removeKeyPrompt } from "@/utils/key-step";
 import {
   aiStepUpdate,
   normalizeApiKey,
   validateAiStep,
   type AiStepErrors,
 } from "@/utils/onboarding-form";
-import { DEFAULT_MONTHLY_LIMIT, stepTitles } from "@/utils/onboarding-options";
+import { stepTitles } from "@/utils/onboarding-options";
 
 type SaveFailure = { message: string; cause?: FailureCause };
 
 export default function ApiKey() {
   const { finish } = useOnboarding();
   const navigation = useNavigation();
-  const [provider, setProvider] = useState<Provider>("claude");
+  const params = useLocalSearchParams<{ provider?: string; limit?: string; removable?: string }>();
+  const start = keyStepStart(params);
+  const [provider, setProvider] = useState<Provider>(start.provider);
   const [apiKey, setApiKey] = useState("");
-  const [monthlyLimit, setMonthlyLimit] = useState(DEFAULT_MONTHLY_LIMIT);
+  const [monthlyLimit, setMonthlyLimit] = useState(start.monthlyLimit);
   const [errors, setErrors] = useState<AiStepErrors>({});
   const [failure, setFailure] = useState<SaveFailure | undefined>(undefined);
   const [running, setRunning] = useState(false);
@@ -55,6 +64,19 @@ export default function ApiKey() {
     if (navigation.isFocused()) router.back();
   }
 
+  // INFO: only the key in secure storage is removed; the profile is not touched.
+  async function remove() {
+    setFailure(undefined);
+    setRunning(true);
+    const removed = await keys.deleteApiKey();
+    setRunning(false);
+    if (!removed.ok) {
+      setFailure({ message: keyDeleteFailureMessage, cause: removed.cause });
+      return;
+    }
+    if (navigation.isFocused()) router.back();
+  }
+
   return (
     <>
       <Stack.Screen options={{ gestureEnabled: !running }} />
@@ -68,6 +90,22 @@ export default function ApiKey() {
               <FailureMessage message={failure.message} cause={failure.cause} />
             )}
             <Button variant="deep" label="Save" loading={running} onPress={() => void save()} />
+            {start.removable ? (
+              <View style={styles.remove}>
+                <TextLink
+                  variant="footerLink"
+                  label="Remove key"
+                  disabled={running}
+                  onPress={() =>
+                    Alert.alert(
+                      removeKeyPrompt.title,
+                      removeKeyPrompt.message,
+                      removeKeyButtons(() => void remove()),
+                    )
+                  }
+                />
+              </View>
+            ) : null}
           </>
         }
       >
@@ -84,3 +122,7 @@ export default function ApiKey() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  remove: { alignItems: "center" },
+});
