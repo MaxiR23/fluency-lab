@@ -2,6 +2,7 @@
   "name": "@fluency-lab/shared",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "main": "src/index.ts",
   "devDependencies": {
     "eslint": "^9.39.5",
