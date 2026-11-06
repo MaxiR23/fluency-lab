@@ -138,6 +138,14 @@ export const monthSpendSchema = z.object({
   spentUsd: z.number().min(0),
 });
 
+export const profileStatsSchema = z.object({
+  sessions: z.int().min(0),
+  dayStreak: z.int().min(0),
+  newWords: z.int().min(0),
+});
+
+export const accountDeletedSchema = z.object({ deleted: z.literal(true) });
+
 export type Profile = z.infer<typeof profileSchema>;
 export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
 export type Session = z.infer<typeof sessionSchema>;
@@ -152,3 +160,5 @@ export type SessionUsage = z.infer<typeof sessionUsageSchema>;
 export type TutorReplyPayload = z.infer<typeof tutorReplySchema>;
 export type MonthSpend = z.infer<typeof monthSpendSchema>;
 export type SessionWithMessages = z.infer<typeof sessionMessagesResponseSchema>;
+export type ProfileStats = z.infer<typeof profileStatsSchema>;
+export type AccountDeleted = z.infer<typeof accountDeletedSchema>;

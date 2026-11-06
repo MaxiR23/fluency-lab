@@ -46,6 +46,7 @@ const names: IconName[] = [
   "send",
   "close",
   "trash",
+  "chevron",
 ];
 
 type Node = { props?: Record<string, unknown>; children?: unknown };
@@ -110,5 +111,10 @@ describe("Icon", () => {
     await render(<Icon name="home" color={colors.accent} />);
     expect(screen.queryByTestId("icon-home")).toBeNull();
     expect(screen.getByTestId("icon-home", { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it("draws the chevron path of the design", async () => {
+    await render(<Icon name="chevron" color={colors.textPlaceholder} />);
+    expect(drawing()).toBe("M9 6l6 6-6 6");
   });
 });

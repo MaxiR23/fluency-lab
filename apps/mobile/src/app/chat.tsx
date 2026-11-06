@@ -13,6 +13,7 @@ import { Text } from "@/components/text";
 import { colors, spacing } from "@/constants/theme";
 import { useChat } from "@/hooks/use-chat";
 import { useChatMotion } from "@/hooks/use-chat-motion";
+import { useHaptics } from "@/hooks/use-haptics";
 import { busy, sendState } from "@/utils/chat-conversation";
 import { chatItems } from "@/utils/chat-items";
 import { chatOrigin } from "@/utils/chat-opening";
@@ -33,6 +34,7 @@ export default function Chat() {
   const origin = chatOrigin(params);
   const { view, setDraft, send, retry, end, updateKey } = useChat(origin);
   const motion = useChatMotion();
+  const { play } = useHaptics();
 
   if (view.kind === "loading") {
     return (
@@ -117,7 +119,10 @@ export default function Chat() {
           <ChatComposer
             value={conversation === null ? "" : conversation.draft}
             onChangeText={setDraft}
-            onSend={() => void send()}
+            onSend={() => {
+              play("send");
+              void send();
+            }}
             placeholder={
               conversation === null ? "Add a key to start chatting" : "Write in English…"
             }

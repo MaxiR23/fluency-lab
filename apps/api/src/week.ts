@@ -4,7 +4,12 @@ import { addDays, weekDates } from "@fluency-lab/shared";
 // whatever the zone, so reading sessions since this long ago covers the week.
 export const WEEK_LOOKBACK_MS = 8 * 24 * 60 * 60 * 1000;
 
+// INFO: Intl accepts raw offsets ("-03:00") and offset forms ("GMT-3"), which
+// are not IANA zone names and make the week math throw, so they are refused.
+const OFFSET_FORM = /^([+-]|(UTC|GMT)[+-])/;
+
 export function isTimeZone(value: string): boolean {
+  if (OFFSET_FORM.test(value)) return false;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value });
     return true;

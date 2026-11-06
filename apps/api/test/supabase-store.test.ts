@@ -7,6 +7,7 @@
 // - Every request carries the caller's token and the publishable key
 // - listOpenSessions reads active sessions newest first with their newest message in one request; deleteSession deletes by id
 // - listSessionCostsSince reads the sessions and deleted_session_costs and returns both
+// - getStats calls profile_stats with the caller's token; deleteAccount deletes the caller through the admin API with the secret key and never the caller's token
 // - Each store call: success, expected empty, 401, transport failure, bad row
 //
 // What is covered:
@@ -26,6 +27,7 @@ const sessionId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ea1";
 const stamp = "2026-01-01T10:00:00+00:00";
 const publishableKey = generatedSecret("publishable");
 const accessToken = generatedSecret("access");
+const secretKey = generatedSecret("secret");
 
 const profileRow = {
   id,
@@ -97,6 +99,7 @@ function setup(answers: Answer[], timeoutMs?: number) {
   const config = {
     url: "http://db.test",
     publishableKey,
+    secretKey,
     fetchFn,
     now: () => new Date("2026-02-03T04:05:06.000Z"),
   };
@@ -109,29 +112,64 @@ describe("storeConfigFromEnv", () => {
 
   it("reads the url and the publishable key", () => {
     const config = storeConfigFromEnv(
-      { SUPABASE_URL: "http://db.test", SUPABASE_PUBLISHABLE_KEY: publishableKey },
+      {
+        SUPABASE_URL: "http://db.test",
+        SUPABASE_PUBLISHABLE_KEY: publishableKey,
+        SUPABASE_SECRET_KEY: secretKey,
+      },
       fetchFn,
     );
     expect(config.url).toBe("http://db.test");
     expect(config.publishableKey).toBe(publishableKey);
   });
 
-  it("throws naming SUPABASE_URL when it is missing", () => {
-    expect(() => storeConfigFromEnv({ SUPABASE_PUBLISHABLE_KEY: publishableKey }, fetchFn)).toThrow(
-      "Missing SUPABASE_URL",
+  it("reads the secret key", () => {
+    const config = storeConfigFromEnv(
+      {
+        SUPABASE_URL: "http://db.test",
+        SUPABASE_PUBLISHABLE_KEY: publishableKey,
+        SUPABASE_SECRET_KEY: secretKey,
+      },
+      fetchFn,
     );
+    expect(config.secretKey).toBe(secretKey);
+  });
+
+  it("throws naming SUPABASE_SECRET_KEY when it is missing", () => {
+    expect(() =>
+      storeConfigFromEnv(
+        { SUPABASE_URL: "http://db.test", SUPABASE_PUBLISHABLE_KEY: publishableKey },
+        fetchFn,
+      ),
+    ).toThrow("Missing SUPABASE_SECRET_KEY");
+  });
+
+  it("throws naming SUPABASE_URL when it is missing", () => {
+    expect(() =>
+      storeConfigFromEnv(
+        { SUPABASE_PUBLISHABLE_KEY: publishableKey, SUPABASE_SECRET_KEY: secretKey },
+        fetchFn,
+      ),
+    ).toThrow("Missing SUPABASE_URL");
   });
 
   it("throws naming SUPABASE_PUBLISHABLE_KEY when it is missing", () => {
-    expect(() => storeConfigFromEnv({ SUPABASE_URL: "http://db.test" }, fetchFn)).toThrow(
-      "Missing SUPABASE_PUBLISHABLE_KEY",
-    );
+    expect(() =>
+      storeConfigFromEnv(
+        { SUPABASE_URL: "http://db.test", SUPABASE_SECRET_KEY: secretKey },
+        fetchFn,
+      ),
+    ).toThrow("Missing SUPABASE_PUBLISHABLE_KEY");
   });
 
   it("treats a blank key as missing", () => {
     expect(() =>
       storeConfigFromEnv(
-        { SUPABASE_URL: "http://db.test", SUPABASE_PUBLISHABLE_KEY: "  " },
+        {
+          SUPABASE_URL: "http://db.test",
+          SUPABASE_PUBLISHABLE_KEY: "  ",
+          SUPABASE_SECRET_KEY: secretKey,
+        },
         fetchFn,
       ),
     ).toThrow("Missing SUPABASE_PUBLISHABLE_KEY");
@@ -139,7 +177,11 @@ describe("storeConfigFromEnv", () => {
 
   it("drops a trailing slash", () => {
     const config = storeConfigFromEnv(
-      { SUPABASE_URL: "http://db.test/", SUPABASE_PUBLISHABLE_KEY: publishableKey },
+      {
+        SUPABASE_URL: "http://db.test/",
+        SUPABASE_PUBLISHABLE_KEY: publishableKey,
+        SUPABASE_SECRET_KEY: secretKey,
+      },
       fetchFn,
     );
     expect(config.url).toBe("http://db.test");
@@ -147,7 +189,10 @@ describe("storeConfigFromEnv", () => {
 
   it("does not put a value in the error message", () => {
     try {
-      storeConfigFromEnv({ SUPABASE_URL: "http://secret-host.test" }, fetchFn);
+      storeConfigFromEnv(
+        { SUPABASE_URL: "http://secret-host.test", SUPABASE_SECRET_KEY: secretKey },
+        fetchFn,
+      );
     } catch (error) {
       expect(String(error)).not.toContain("secret-host");
     }
@@ -163,6 +208,14 @@ describe("the request", () => {
 
     expect(requests[0].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
     expect(requests[0].headers.get("apikey")).toBe(publishableKey);
+  });
+
+  it("never sends the secret key on a user request", async () => {
+    const { user, requests } = setup([ok([profileRow])]);
+
+    await user.getProfile();
+
+    for (const header of requests[0].headers.values()) expect(header).not.toContain(secretKey);
   });
 });
 
@@ -237,7 +290,7 @@ describe("getProfile", () => {
         init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
       });
     const user = createSupabaseStore(
-      { url: "http://db.test", publishableKey, fetchFn, now: () => new Date() },
+      { url: "http://db.test", publishableKey, secretKey, fetchFn, now: () => new Date() },
       20,
     ).forUser({ id, accessToken });
 
@@ -852,5 +905,109 @@ describe("listSessionStarts", () => {
   it("returns unavailable for a bad row", async () => {
     const { user } = setup([ok([{ id }])]);
     expect(await user.listSessionStarts(since)).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
+describe("getStats", () => {
+  const statsRow = { session_count: 12, session_days: ["2026-11-06", "2026-11-05"], new_words: 48 };
+
+  it("calls profile_stats with the zone and the caller's token and returns the stats", async () => {
+    const { user, requests } = setup([ok([statsRow])]);
+
+    const outcome = await user.getStats("America/Argentina/Buenos_Aires");
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: { sessionCount: 12, sessionDays: ["2026-11-06", "2026-11-05"], newWords: 48 },
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url.pathname).toBe("/rest/v1/rpc/profile_stats");
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({
+      time_zone: "America/Argentina/Buenos_Aires",
+    });
+    expect(requests[0].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("returns zeros and no days for a user with no sessions", async () => {
+    const { user } = setup([ok([{ session_count: 0, session_days: [], new_words: 0 }])]);
+    expect(await user.getStats("UTC")).toEqual({
+      ok: true,
+      value: { sessionCount: 0, sessionDays: [], newWords: 0 },
+    });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.getStats("UTC")).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.getStats("UTC")).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("returns unavailable for a bad row and for no row", async () => {
+    expect(await setup([ok([{ session_count: "x" }])]).user.getStats("UTC")).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+    expect(await setup([ok([])]).user.getStats("UTC")).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+});
+
+describe("deleteAccount", () => {
+  const deleted = () => ok({ id });
+
+  it("deletes the caller by id through the admin API with the secret key, never the caller's token", async () => {
+    const { user, requests } = setup([deleted()]);
+
+    const outcome = await user.deleteAccount();
+
+    expect(outcome).toEqual({ ok: true, value: null });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].method).toBe("DELETE");
+    expect(requests[0].url.pathname).toBe(`/auth/v1/admin/users/${id}`);
+    expect(requests[0].headers.get("apikey")).toBe(secretKey);
+    expect(requests[0].headers.get("Authorization")).toBe(`Bearer ${secretKey}`);
+    for (const header of requests[0].headers.values()) expect(header).not.toContain(accessToken);
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({ should_soft_delete: false });
+  });
+
+  it("treats a 404 as already deleted", async () => {
+    const { user } = setup([failure(404)]);
+    expect(await user.deleteAccount()).toEqual({ ok: true, value: null });
+  });
+
+  it("returns unavailable on a 401, a 403 and a 500", async () => {
+    for (const status of [401, 403, 500]) {
+      const { user } = setup([failure(status)]);
+      expect(await user.deleteAccount()).toEqual({ ok: false, failure: "unavailable" });
+    }
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.deleteAccount()).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("returns unavailable when the auth server does not answer before the deadline", async () => {
+    const slow = createSupabaseStore(
+      {
+        url: "http://db.test",
+        publishableKey,
+        secretKey,
+        now: () => new Date(),
+        fetchFn: (_input, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(new TypeError("aborted")));
+          }),
+      },
+      20,
+    ).forUser({ id, accessToken });
+    expect(await slow.deleteAccount()).toEqual({ ok: false, failure: "unavailable" });
   });
 });

@@ -84,7 +84,7 @@ export function buttonStyle(
       borderWidth: borderWidth.thin,
       borderRadius: radius.control,
       minHeight: minHeight(options),
-      paddingHorizontal: options.small === true ? spacing.card : spacing.lg,
+      paddingHorizontal: options.small === true ? spacing.md : spacing.lg,
       alignItems: "center",
       justifyContent: "center",
     },

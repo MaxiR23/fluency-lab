@@ -1,12 +1,15 @@
 // apps/mobile/test/app/(tabs)/settings.test.tsx
 //
-// Tests for the Settings placeholder and Sign out.
+// Tests for the Settings screen.
 //
 // Tested:
-// - Settings draws Sign out
+// - Loading, with data, expected empty (no spend, no limit, no key) and error states
+// - The month's spend, the limit, the bar and the reset date
+// - The provider, the model and the key rows, and the version
+// - The haptics switch: on by default, off saved on the device, a save failure
+// - Edit limit, Provider and API key open their screens, the key step with the current provider and limit
 // - The end of Settings is padded by the tab bar clearance
-// - Sign out returns to Login, and its failures show their message
-// - The failure is drawn through FailureMessage, with its cause in development only
+// - Settings has no Sign out (it lives on Profile)
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -15,21 +18,19 @@
 //
 // SEE: apps/mobile/src/app/(tabs)/settings.tsx
 
-import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 
-import { textStyle } from "@/components/text-style";
-import { authFailureMessage } from "@/utils/auth-message";
+import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
+import { hapticsFailureMessage } from "@/utils/haptics-setting";
+import { appVersion } from "@/utils/app-version";
 import { tabBarLayout } from "@/utils/tab-bar";
-import { emitSession, fakeAuth, fakeSession, resetFakeAuth } from "../../helpers/fake-auth";
-import { resetFakeData } from "../../helpers/fake-data";
-import { resetFakeKeys } from "../../helpers/fake-keys";
+import { fakeSession, resetFakeAuth } from "../../helpers/fake-auth";
+import { fakeData, profileWith, resetFakeData } from "../../helpers/fake-data";
+import { fakeHapticsSetting } from "../../helpers/fake-haptics";
+import { fakeKeys, resetFakeKeys } from "../../helpers/fake-keys";
 import { renderAppAt } from "../../helpers/render-app";
-import { setDev } from "../../helpers/set-dev";
-
-const savedDev = __DEV__;
-const networkCause = { name: "AuthRetryableFetchError", detail: "offline" };
 
 jest.mock("expo-font", () => ({ useFonts: jest.fn(() => [true, null]) }));
 jest.mock("expo-splash-screen", () => ({
@@ -58,91 +59,167 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-describe("Settings placeholder", () => {
+const completedAt = "2026-11-05T10:00:00Z";
+const ada = profileWith({
+  displayName: "Ada",
+  provider: "claude",
+  monthlyLimitUsd: 10,
+  onboardingCompletedAt: completedAt,
+});
+
+function withSpend(spentUsd: number) {
+  fakeData.getMonthSpend.mockResolvedValue({
+    ok: true,
+    value: { monthStart: "2026-11-01", spentUsd },
+  });
+}
+
+describe("Settings", () => {
   beforeEach(() => {
     resetFakeAuth();
     resetFakeData();
     resetFakeKeys();
+    fakeData.getProfile.mockResolvedValue({ ok: true, value: ada });
   });
 
-  afterEach(() => {
-    setDev(savedDev);
-  });
-
-  it("pads the end of Settings by the tab bar clearance", async () => {
+  it("draws the loading state while the reads run", async () => {
+    const pending = deferred<Awaited<ReturnType<typeof fakeKeys.hasApiKey>>>();
+    fakeKeys.hasApiKey.mockReturnValue(pending.promise);
     await renderAppAt("/settings", fakeSession());
-    const style = StyleSheet.flatten(screen.getByTestId("settings-content").props.style);
-    expect(style.paddingBottom).toBe(tabBarLayout(0).clearance);
+    expect(screen.getByTestId("settings-loading")).toBeTruthy();
+    await act(async () => pending.resolve({ ok: true, value: true }));
+    expect(screen.queryByTestId("settings-loading")).toBeNull();
+    expect(screen.getByRole("header", { name: "Settings" })).toBeTruthy();
   });
 
-  it("draws Settings with Sign out", async () => {
+  it("draws $0.42 of $10.00, the bar and resets on Dec 1", async () => {
+    withSpend(0.42);
     await renderAppAt("/settings", fakeSession());
-    expect(screen.getAllByText("Settings").length).toBeGreaterThan(0);
-    expect(screen).toHavePathname("/settings");
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    expect(screen.getByText("Spent this month")).toBeTruthy();
+    expect(screen.getByText("$0.42")).toBeTruthy();
+    expect(screen.getByText("of $10.00")).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByTestId("spend-fill").props.style).width).toBe("4.2%");
+    expect(screen.getByText("Counted by Fluency Lab · resets on Dec 1")).toBeTruthy();
   });
 
-  it("returns to Login after signing out", async () => {
-    fakeAuth.signOut.mockImplementation(async () => {
-      emitSession(null);
-      return { ok: true, value: null };
+  it("draws $0.00 and No limit set with no limit", async () => {
+    fakeData.getProfile.mockResolvedValue({
+      ok: true,
+      value: profileWith({ ...ada, monthlyLimitUsd: null }),
     });
     await renderAppAt("/settings", fakeSession());
-    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
-    expect(screen).toHavePathname("/sign-in");
-    expect(screen.queryByText("Home")).toBeNull();
+    expect(screen.getByText("$0.00")).toBeTruthy();
+    expect(screen.getByText("No limit set")).toBeTruthy();
+    expect(screen.queryByTestId("spend-bar")).toBeNull();
   });
 
-  it("shows the generic message and stays on Settings", async () => {
-    fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "unknown" });
+  it("draws the provider, the model and Saved on this device", async () => {
+    fakeKeys.hasApiKey.mockResolvedValue({ ok: true, value: true });
     await renderAppAt("/settings", fakeSession());
-    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
-    expect(screen.getByText(authFailureMessage("unknown"))).toBeTruthy();
-    expect(screen).toHavePathname("/settings");
+    expect(screen.getByRole("header", { name: "Your AI" })).toBeTruthy();
+    expect(screen.getByText("Claude")).toBeTruthy();
+    expect(screen.getByText("Claude Haiku 5.5")).toBeTruthy();
+    expect(screen.getByText("Saved on this device")).toBeTruthy();
   });
 
-  it("shows the network message and stays on Settings", async () => {
-    fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "network" });
+  it("draws Not set for a missing key", async () => {
     await renderAppAt("/settings", fakeSession());
-    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
-    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
-    expect(screen).toHavePathname("/settings");
+    expect(screen.getByText("Not set")).toBeTruthy();
+    expect(screen.queryByText("Saved on this device")).toBeNull();
   });
 
-  it("draws the sign out failure as an alert in the error style", async () => {
-    fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "network" });
+  it("draws the haptics switch on by default and the app version", async () => {
     await renderAppAt("/settings", fakeSession());
-    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
-    const node = screen.getByRole("alert");
-    expect(screen.getByText(authFailureMessage("network"))).toBe(node);
-    expect(StyleSheet.flatten(node.props.style)).toEqual(textStyle("error"));
+    expect(screen.getByRole("header", { name: "App" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Haptics" }).props.accessibilityState).toMatchObject({
+      checked: true,
+    });
+    expect(screen.getByText("Version")).toBeTruthy();
+    expect(screen.getByText(appVersion())).toBeTruthy();
   });
 
-  it("draws the cause line under the sign out failure in development", async () => {
-    fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "network", cause: networkCause });
+  it("turns haptics off and saves off on the device", async () => {
     await renderAppAt("/settings", fakeSession());
-    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
-    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
-    expect(screen.getByText("AuthRetryableFetchError: offline")).toBeTruthy();
+    await fireEvent.press(screen.getByRole("switch", { name: "Haptics" }));
+    expect(fakeHapticsSetting.save).toHaveBeenCalledWith(false);
+    expect(screen.getByRole("switch", { name: "Haptics" }).props.accessibilityState).toMatchObject({
+      checked: false,
+    });
   });
 
-  it("draws only the sign out message outside development", async () => {
-    setDev(false);
-    fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "network", cause: networkCause });
+  it("draws the haptics save failure and keeps the switch on", async () => {
+    fakeHapticsSetting.save.mockResolvedValue({ ok: false, failure: "not_saved" });
     await renderAppAt("/settings", fakeSession());
-    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
-    expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
-    expect(screen.queryByText(/AuthRetryableFetchError/)).toBeNull();
+    await fireEvent.press(screen.getByRole("switch", { name: "Haptics" }));
+    expect(
+      screen.getByText(hapticsFailureMessage({ kind: "ready", on: true, saveFailed: true }) ?? ""),
+    ).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Haptics" }).props.accessibilityState).toMatchObject({
+      checked: true,
+    });
   });
 
-  it("shows the button busy and disabled while the request runs", async () => {
-    const pending = deferred<{ ok: false; failure: "network" }>();
-    fakeAuth.signOut.mockReturnValue(pending.promise);
+  it("draws the haptics read failure with the switch off", async () => {
+    fakeHapticsSetting.read.mockResolvedValue({ ok: false, failure: "not_read" });
     await renderAppAt("/settings", fakeSession());
-    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
-    const busy = screen.getByRole("button", { name: "Sign out", busy: true, disabled: true });
-    await fireEvent.press(busy);
-    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
-    await act(async () => pending.resolve({ ok: false, failure: "network" }));
+    expect(screen.getByText(hapticsFailureMessage({ kind: "failed" }) ?? "")).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Haptics" }).props.accessibilityState).toMatchObject({
+      checked: false,
+    });
+  });
+
+  it("draws the failure and reads again on Try again", async () => {
+    fakeData.getMonthSpend.mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt("/settings", fakeSession());
+    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(screen.queryByRole("header", { name: "Settings" })).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByRole("header", { name: "Settings" })).toBeTruthy();
+    expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+  });
+
+  it("draws the key read failure", async () => {
+    fakeKeys.hasApiKey.mockResolvedValue({ ok: false, failure: "not_read" });
+    await renderAppAt("/settings", fakeSession());
+    expect(screen.getByText(keyReadFailureMessage)).toBeTruthy();
+  });
+
+  it("opens the limit edit from Edit limit", async () => {
+    await renderAppAt("/settings", fakeSession());
+    await fireEvent.press(screen.getByRole("link", { name: "Edit limit" }));
+    expect(screen).toHavePathname("/edit-profile");
+    expect(screen).toHaveSearchParams({ field: "limit" });
+  });
+
+  it("opens the provider edit from Provider", async () => {
+    await renderAppAt("/settings", fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Provider" }));
+    expect(screen).toHavePathname("/edit-profile");
+    expect(screen).toHaveSearchParams({ field: "provider" });
+  });
+
+  it("opens the key step with the current provider and limit from API key", async () => {
+    fakeData.getProfile.mockResolvedValue({
+      ok: true,
+      value: profileWith({ ...ada, provider: "openai", monthlyLimitUsd: 25 }),
+    });
+    fakeKeys.hasApiKey.mockResolvedValue({ ok: true, value: true });
+    await renderAppAt("/settings", fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "API key" }));
+    expect(screen).toHavePathname("/api-key");
+    expect(screen).toHaveSearchParams({ provider: "openai", limit: "25", removable: "1" });
+  });
+
+  it("has no Sign out", async () => {
+    await renderAppAt("/settings", fakeSession());
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
+
+  it("pads the end by the tab bar clearance", async () => {
+    await renderAppAt("/settings", fakeSession());
+    const style = StyleSheet.flatten(
+      screen.getByTestId("settings-content").props.contentContainerStyle,
+    );
+    expect(style.paddingBottom).toBe(tabBarLayout(0).clearance);
   });
 });

@@ -1,11 +1,13 @@
 import {
   type Profile,
   type ProfileUpdate,
+  accountDeletedSchema,
   activeSessionResponseSchema,
   messageSchema,
   monthSpendSchema,
   openSessionsResponseSchema,
   profileSchema,
+  profileStatsSchema,
   sessionMessagesResponseSchema,
   sessionSchema,
   sessionWeekSchema,
@@ -116,6 +118,12 @@ export function createHonoData(config: HonoDataConfig): DataPort {
         (client) => client.sessions[":id"].end.$post({ param: { id: sessionId } }),
         sessionSchema,
       ),
+    getProfileStats: (timeZone) =>
+      call((client) => client.profile.stats.$get({ query: { tz: timeZone } }), profileStatsSchema),
+    async deleteAccount() {
+      const outcome = await call((client) => client.account.$delete(), accountDeletedSchema);
+      return outcome.ok ? { ok: true, value: null } : outcome;
+    },
     getMonthSpend: (timeZone) =>
       call((client) => client.sessions.spend.$get({ query: { tz: timeZone } }), monthSpendSchema),
   };

@@ -16,7 +16,9 @@ import Home from "@/app/(tabs)/index";
 import Progress from "@/app/(tabs)/progress";
 import Settings from "@/app/(tabs)/settings";
 import TabsLayout from "@/app/(tabs)/_layout";
+import EditProfile from "@/app/edit-profile";
 import Onboarding from "@/app/onboarding";
+import Profile from "@/app/profile";
 import ResetPassword from "@/app/reset-password";
 import SignIn from "@/app/sign-in";
 import Suggestions from "@/app/suggestions";
@@ -33,6 +35,8 @@ export async function renderApp(initialUrl: string, session: AuthSession | null)
       "(tabs)/settings": Settings,
       chat: Chat,
       chats: Chats,
+      profile: Profile,
+      "edit-profile": EditProfile,
       suggestions: Suggestions,
       "api-key": ApiKey,
       onboarding: Onboarding,

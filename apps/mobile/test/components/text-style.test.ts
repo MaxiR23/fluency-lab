@@ -391,4 +391,34 @@ describe("textStyle", () => {
   it("keeps body and muted at the same size and differs only in color", () => {
     expect({ ...textStyle("muted"), color: colors.text }).toEqual(textStyle("body"));
   });
+
+  it("draws captionLinkStrong in semibold accent at the caption size", () => {
+    expect(textStyle("captionLinkStrong")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.caption,
+      color: colors.accent,
+    });
+  });
+
+  it("draws avatarLarge, profileName and stat in bold at their own sizes", () => {
+    expect(textStyle("avatarLarge")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.avatarLarge,
+      color: colors.accent,
+    });
+    expect(textStyle("profileName")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.name,
+      color: colors.text,
+    });
+    expect(textStyle("stat")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.stat,
+      color: colors.text,
+    });
+  });
+
+  it("draws bodyDanger as the body in the error color", () => {
+    expect(textStyle("bodyDanger")).toEqual({ ...textStyle("body"), color: colors.error });
+  });
 });

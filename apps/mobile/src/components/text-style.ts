@@ -42,7 +42,12 @@ export type TextVariant =
   | "screenTitle"
   | "intro"
   | "swipeAction"
-  | "swipeActionDanger";
+  | "swipeActionDanger"
+  | "captionLinkStrong"
+  | "avatarLarge"
+  | "profileName"
+  | "stat"
+  | "bodyDanger";
 
 const variants: Record<TextVariant, TextStyle> = {
   title: {
@@ -262,6 +267,31 @@ const variants: Record<TextVariant, TextStyle> = {
   swipeActionDanger: {
     fontFamily: fontFamily.semibold,
     fontSize: fontSize.xsmall,
+    color: colors.error,
+  },
+  captionLinkStrong: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.caption,
+    color: colors.accent,
+  },
+  avatarLarge: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.avatarLarge,
+    color: colors.accent,
+  },
+  profileName: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.name,
+    color: colors.text,
+  },
+  stat: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.stat,
+    color: colors.text,
+  },
+  bodyDanger: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.body,
     color: colors.error,
   },
 };

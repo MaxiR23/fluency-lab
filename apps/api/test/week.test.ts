@@ -26,6 +26,17 @@ describe("isTimeZone", () => {
     expect(isTimeZone("UTC")).toBe(true);
   });
 
+  it("rejects raw offsets and UTC or GMT offset forms", () => {
+    expect(isTimeZone("-03:00")).toBe(false);
+    expect(isTimeZone("+05:30")).toBe(false);
+    expect(isTimeZone("UTC+3")).toBe(false);
+    expect(isTimeZone("GMT-3")).toBe(false);
+  });
+
+  it("keeps Etc zone names", () => {
+    expect(isTimeZone("Etc/GMT-3")).toBe(true);
+  });
+
   it("rejects an unknown zone and an empty string", () => {
     expect(isTimeZone("Mars/Olympus")).toBe(false);
     expect(isTimeZone("")).toBe(false);

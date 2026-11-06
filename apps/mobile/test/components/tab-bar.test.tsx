@@ -6,6 +6,7 @@
 // - Every tab with its icon and label
 // - The current tab is selected and not pressable
 // - Another tab navigates after tabPress, unless it was prevented
+// - onTabPress is called when another tab is pressed, not for the current tab
 // - Active icon and label in the text color, inactive muted
 // - The pill sits under the current tab and springs to a new one
 // - A first measure places the pill in place, with no spring from the start
@@ -63,7 +64,7 @@ const emit = jest.fn((_event: { type: "tabPress"; target: string; canPreventDefa
 }));
 const navigateToTab = jest.fn((_key: string) => undefined);
 
-function bar(index = 0, pill: PillMotion | null = tabPillMotion(false)) {
+function bar(index = 0, pill: PillMotion | null = tabPillMotion(false), onTabPress?: () => void) {
   return (
     <TabBar
       state={{ index, routes: names.map((name) => ({ key: `${name}-key`, name })) }}
@@ -85,6 +86,7 @@ function bar(index = 0, pill: PillMotion | null = tabPillMotion(false)) {
       navigateToTab={navigateToTab}
       insets={{ bottom: 34 }}
       pill={pill}
+      onTabPress={onTabPress}
     />
   );
 }
@@ -107,6 +109,21 @@ describe("TabBar", () => {
     emit.mockClear();
     navigateToTab.mockClear();
     emit.mockReturnValue({ defaultPrevented: false });
+  });
+
+  it("calls onTabPress when another tab is pressed", async () => {
+    const onTabPress = jest.fn();
+    await render(bar(0, tabPillMotion(false), onTabPress));
+    await fireEvent.press(screen.getByTestId("tab-settings"));
+    expect(onTabPress).toHaveBeenCalledTimes(1);
+    expect(navigateToTab).toHaveBeenCalledWith("settings-key");
+  });
+
+  it("does not call onTabPress for the current tab", async () => {
+    const onTabPress = jest.fn();
+    await render(bar(0, tabPillMotion(false), onTabPress));
+    await fireEvent.press(screen.getByTestId("tab-home"));
+    expect(onTabPress).not.toHaveBeenCalled();
   });
 
   it("draws every tab with its icon and label", async () => {

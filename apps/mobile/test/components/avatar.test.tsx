@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The initial or the person icon on a round surface
+// - The large size: 84, sunken, the large initial and the glow
 //
 // What is covered:
 // - Normal case, empty case
@@ -18,7 +19,7 @@ import { StyleSheet } from "react-native";
 
 import { Avatar } from "@/components/avatar";
 import { textStyle } from "@/components/text-style";
-import { borderWidth, colors, radius, size } from "@/constants/theme";
+import { borderWidth, colors, radius, shadow, size } from "@/constants/theme";
 
 describe("Avatar", () => {
   it("draws the initial", async () => {
@@ -52,5 +53,28 @@ describe("Avatar", () => {
     await render(<Avatar initial="M" />);
     expect(screen.queryByTestId("avatar")).toBeNull();
     expect(screen.getByTestId("avatar", { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it("is an 84 sunken round with the large initial and the glow when large", async () => {
+    await render(<Avatar initial="M" size="large" />);
+    const box = StyleSheet.flatten(
+      screen.getByTestId("avatar", { includeHiddenElements: true }).props.style,
+    );
+    expect(box).toMatchObject({
+      width: size.avatarLarge,
+      height: size.avatarLarge,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceSunken,
+      borderColor: colors.border,
+      borderWidth: borderWidth.thin,
+      ...shadow.avatarGlow,
+    });
+    const initial = screen.getByText("M", { includeHiddenElements: true });
+    expect(StyleSheet.flatten(initial.props.style)).toMatchObject(textStyle("avatarLarge"));
+  });
+
+  it("draws the person icon in the large avatar without an initial", async () => {
+    await render(<Avatar initial={null} size="large" />);
+    expect(screen.getByTestId("icon-person", { includeHiddenElements: true })).toBeTruthy();
   });
 });

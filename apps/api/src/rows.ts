@@ -46,6 +46,12 @@ const sessionCostRowSchema = z.object({
   cost_usd: z.number(),
 });
 
+const profileStatsRowSchema = z.object({
+  session_count: z.number(),
+  session_days: z.array(z.iso.date()),
+  new_words: z.number(),
+});
+
 const messageRowSchema = z.object({
   id: z.string(),
   session_id: z.string(),
@@ -112,6 +118,19 @@ export function toSessionCost(row: unknown): { createdAt: string; costUsd: numbe
   const parsed = sessionCostRowSchema.safeParse(row);
   return parsed.success
     ? { createdAt: parsed.data.created_at, costUsd: parsed.data.cost_usd }
+    : null;
+}
+
+export function toProfileStatsRow(
+  row: unknown,
+): { sessionCount: number; sessionDays: string[]; newWords: number } | null {
+  const parsed = profileStatsRowSchema.safeParse(row);
+  return parsed.success
+    ? {
+        sessionCount: parsed.data.session_count,
+        sessionDays: parsed.data.session_days,
+        newWords: parsed.data.new_words,
+      }
     : null;
 }
 

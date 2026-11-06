@@ -107,6 +107,14 @@ export function parseMonthlyLimit(text: string): number | null {
   return value >= MIN_LIMIT && value <= MAX_LIMIT ? value : null;
 }
 
+export function monthlyLimitError(text: string): string | undefined {
+  if (text.trim() === "") return "Enter an amount in USD.";
+  if (parseMonthlyLimit(text) === null) {
+    return "Enter an amount between 0.01 and 10000, with at most two decimals.";
+  }
+  return undefined;
+}
+
 export type AiStepErrors = { apiKey?: string; monthlyLimit?: string };
 
 export function normalizeApiKey(key: string): string {
@@ -123,11 +131,8 @@ export function validateAiStep(
     errors.apiKey =
       variant === "key" ? "Enter your API key." : "Enter your API key, or skip for now.";
   }
-  if (input.monthlyLimit.trim() === "") {
-    errors.monthlyLimit = "Enter an amount in USD.";
-  } else if (parseMonthlyLimit(input.monthlyLimit) === null) {
-    errors.monthlyLimit = "Enter an amount between 0.01 and 10000, with at most two decimals.";
-  }
+  const limitError = monthlyLimitError(input.monthlyLimit);
+  if (limitError !== undefined) errors.monthlyLimit = limitError;
   return errors;
 }
 

@@ -1,6 +1,6 @@
 import { suggestTopics } from "@fluency-lab/shared";
 import { router } from "expo-router";
-import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { ActionCard } from "@/components/action-card";
 import { Avatar } from "@/components/avatar";
@@ -68,7 +68,13 @@ export default function Home() {
               Ready to practice?
             </Text>
           </View>
-          <Avatar initial={avatarInitial(profile.displayName)} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Profile"
+            onPress={() => router.push("/profile")}
+          >
+            <Avatar initial={avatarInitial(profile.displayName)} />
+          </Pressable>
         </View>
         <WeekStrip week={state.week} />
         <HeroCard onPress={() => openChat()} />

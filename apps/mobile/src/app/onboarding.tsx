@@ -1,17 +1,16 @@
-import { TOPICS } from "@fluency-lab/shared";
 import { useReducer, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { AiStepFields } from "@/components/ai-step-fields";
 import { Button } from "@/components/button";
-import { Chip } from "@/components/chip";
 import { FailureMessage } from "@/components/failure-message";
-import { OptionCard } from "@/components/option-card";
+import { GoalStepFields } from "@/components/goal-step-fields";
+import { LevelStepFields } from "@/components/level-step-fields";
 import { Screen } from "@/components/screen";
 import { SignOutButton } from "@/components/sign-out-button";
 import { StepScreen } from "@/components/step-screen";
-import { Text } from "@/components/text";
 import { TextLink } from "@/components/text-link";
+import { TopicStepFields } from "@/components/topic-step-fields";
 import { colors, spacing } from "@/constants/theme";
 import { useOnboarding } from "@/hooks/use-onboarding";
 import { keys } from "@/keys";
@@ -28,17 +27,11 @@ import {
   normalizeApiKey,
   onboardingFormReducer,
   onboardingUpdate,
-  selectedCountLabel,
   showsBack,
   validateAiStep,
   type AiStepErrors,
 } from "@/utils/onboarding-form";
-import {
-  goalOptions,
-  levelOptions,
-  ONBOARDING_STEPS,
-  stepTitles,
-} from "@/utils/onboarding-options";
+import { ONBOARDING_STEPS, stepTitles } from "@/utils/onboarding-options";
 
 type SaveFailure = { message: string; cause?: FailureCause };
 
@@ -151,46 +144,22 @@ function Steps() {
       footer={footer}
     >
       {step === 1 ? (
-        <View style={styles.list}>
-          {levelOptions.map((option) => (
-            <OptionCard
-              key={option.id}
-              role="radio"
-              label={option.label}
-              description={option.description}
-              selected={draft.level === option.id}
-              onPress={() => dispatch({ type: "level_picked", level: option.id })}
-            />
-          ))}
-        </View>
+        <LevelStepFields
+          value={draft.level}
+          onChange={(level) => dispatch({ type: "level_picked", level })}
+        />
       ) : null}
       {step === 2 ? (
-        <View style={styles.list}>
-          {goalOptions.map((option) => (
-            <OptionCard
-              key={option.id}
-              role="checkbox"
-              label={option.label}
-              selected={draft.goals.includes(option.id)}
-              onPress={() => dispatch({ type: "goal_toggled", goal: option.id })}
-            />
-          ))}
-        </View>
+        <GoalStepFields
+          value={draft.goals}
+          onToggle={(goal) => dispatch({ type: "goal_toggled", goal })}
+        />
       ) : null}
       {step === 3 ? (
-        <View style={styles.list}>
-          <Text variant="caption">{selectedCountLabel(draft.topics.length)}</Text>
-          <View style={styles.chips}>
-            {TOPICS.map((topic) => (
-              <Chip
-                key={topic.id}
-                label={topic.label}
-                selected={draft.topics.includes(topic.id)}
-                onPress={() => dispatch({ type: "topic_toggled", topic: topic.id })}
-              />
-            ))}
-          </View>
-        </View>
+        <TopicStepFields
+          value={draft.topics}
+          onToggle={(topic) => dispatch({ type: "topic_toggled", topic })}
+        />
       ) : null}
       {step === 4 ? (
         <AiStepFields
@@ -212,7 +181,5 @@ function Steps() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   content: { padding: spacing.screenSide, gap: spacing.md },
-  list: { gap: spacing.group },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   skip: { alignItems: "center" },
 });

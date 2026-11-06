@@ -32,6 +32,15 @@ export type UserStore = {
   listSessionCostsSince(
     since: string,
   ): Promise<StoreOutcome<{ createdAt: string; costUsd: number }[]>>;
+  // INFO: the profile numbers in one read. sessionDays are the distinct local dates
+  // (in the given zone) with a session, newest first. Zeros and no days are the
+  // expected empty: the user has no sessions yet.
+  getStats(
+    timeZone: string,
+  ): Promise<StoreOutcome<{ sessionCount: number; sessionDays: string[]; newWords: number }>>;
+  // INFO: deletes the caller's auth user; their data goes with it through the
+  // cascades. A user who is already gone is a success.
+  deleteAccount(): Promise<StoreOutcome<null>>;
 };
 
 export type Store = { forUser(caller: Caller): UserStore };

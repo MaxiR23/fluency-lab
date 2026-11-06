@@ -32,6 +32,10 @@ export function validateCredentials(input: { email: string; password: string }):
   });
 }
 
+export function nameError(name: string): string | undefined {
+  return normalizeName(name) === "" ? "Enter your name." : undefined;
+}
+
 export function validateSignUp(input: {
   name: string;
   email: string;
@@ -39,7 +43,7 @@ export function validateSignUp(input: {
 }): FieldErrors {
   return withoutUndefined({
     ...validateCredentials(input),
-    name: normalizeName(input.name) === "" ? "Enter your name." : undefined,
+    name: nameError(input.name),
   });
 }
 

@@ -4,11 +4,12 @@
 //
 // Tested:
 // - Loading, with data, expected empty (no Continue, empty week) and error states
-// - The greeting, the avatar, the week, Free chat, Continue and the suggestions
+// - The greeting, the avatar (a Profile button), the week, Free chat, Continue and the suggestions
 // - Free chat, Continue and a suggestion open Chat, and See all opens the list
 // - See all (N) next to Continue with more than one open session, opening Open chats
 // - The end of Home is padded by the tab bar clearance
 // - The tab bar: Home is the current tab and not a link or a button
+// - A tab press plays the tab haptic, and nothing plays when the stored setting is off
 // - Signed out users cannot reach Home
 //
 // What is covered:
@@ -35,6 +36,7 @@ import {
   resetFakeData,
   weekWith,
 } from "../../helpers/fake-data";
+import { fakeHaptics, fakeHapticsSetting } from "../../helpers/fake-haptics";
 import { resetFakeKeys } from "../../helpers/fake-keys";
 import { renderApp } from "../../helpers/render-app";
 
@@ -301,7 +303,28 @@ describe("Home", () => {
     expect(screen.getAllByText("Progress").length).toBe(2);
     await fireEvent.press(screen.getByTestId("tab-settings"));
     expect(screen).toHavePathname("/settings");
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Settings" })).toBeTruthy();
+  });
+
+  it("opens Profile from the avatar labelled Profile", async () => {
+    await renderApp("/", fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Profile" }));
+    expect(screen).toHavePathname("/profile");
+  });
+
+  it("plays the tab haptic when Settings is pressed", async () => {
+    await renderApp("/", fakeSession());
+    await fireEvent.press(screen.getByTestId("tab-settings"));
+    expect(fakeHaptics.play).toHaveBeenCalledWith("tab");
+    expect(fakeHaptics.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("plays nothing when the stored setting is off", async () => {
+    // INFO: the setting is read from the device on launch, so an off saved before survives a restart.
+    fakeHapticsSetting.read.mockResolvedValue({ ok: true, value: false });
+    await renderApp("/", fakeSession());
+    await fireEvent.press(screen.getByTestId("tab-settings"));
+    expect(fakeHaptics.play).not.toHaveBeenCalled();
   });
 
   it("lands on Login when signed out at Home", async () => {

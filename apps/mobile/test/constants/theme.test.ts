@@ -6,6 +6,7 @@
 // - The README palette, accent-pressed and error
 // - Radius, spacing scale, sizes, tints, the raised shadow and font faces
 // - The floating tab bar tokens and the tab pill spring
+// - The Settings and Profile tokens: the spend bar, the switch, the large avatar and its glow
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -121,6 +122,13 @@ describe("theme", () => {
       tag: 28,
       typingDot: 7,
       messageMaxWidth: "82%",
+      listRow: 50,
+      spendBar: 6,
+      spendBarMin: 8,
+      avatarLarge: 84,
+      switchWidth: 46,
+      switchHeight: 28,
+      switchKnob: 20,
     });
     expect(strokeWidth).toEqual({ icon: 1.8, action: 2, check: 2.4, send: 1.9 });
   });
@@ -139,6 +147,9 @@ describe("theme", () => {
       title: 28,
       chatTitle: 16,
       cardHeading: 18,
+      avatarLarge: 32,
+      name: 20,
+      stat: 22,
     });
   });
 
@@ -335,5 +346,27 @@ describe("theme", () => {
     expect(size.swipeAction).toBe(66);
     expect(colors.errorSoft).toBe("rgba(248,113,113,0.16)");
     expect(colors.errorLine).toBe("rgba(248,113,113,0.45)");
+  });
+
+  it("holds the settings and profile tokens with the design's values", () => {
+    expect(colors.progressTrack).toBe("rgba(255,255,255,0.08)");
+    expect(colors.accentHalo).toBe("rgba(109,165,192,0.15)");
+    expect(spacing.pageGap).toBe(20);
+    expect(spacing.screenTopHeader).toBe(52);
+    expect(size.listRow).toBe(50);
+    expect(size.spendBar).toBe(6);
+    expect(size.spendBarMin).toBe(8);
+    expect(size.avatarLarge).toBe(84);
+    expect([size.switchWidth, size.switchHeight, size.switchKnob]).toEqual([46, 28, 20]);
+    expect([fontSize.avatarLarge, fontSize.name, fontSize.stat]).toEqual([32, 20, 22]);
+  });
+
+  it("holds the avatar glow as a radius 12 shadow of accentHalo", () => {
+    expect(shadow.avatarGlow).toEqual({
+      shadowColor: colors.accentHalo,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 12,
+    });
   });
 });

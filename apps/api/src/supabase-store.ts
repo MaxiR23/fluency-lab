@@ -5,6 +5,7 @@ import {
   toOpenSession,
   toProfile,
   toProfilePatch,
+  toProfileStatsRow,
   toSession,
   toSessionCost,
   toSessionStart,
@@ -14,6 +15,7 @@ import type { Caller, Store, StoreOutcome, UserStore } from "./store";
 export type StoreConfig = {
   url: string;
   publishableKey: string;
+  secretKey: string;
   fetchFn: typeof fetch;
   now: () => Date;
 };
@@ -33,6 +35,7 @@ export function storeConfigFromEnv(
   return {
     url: readVariable(env, "SUPABASE_URL").replace(/\/$/, ""),
     publishableKey: readVariable(env, "SUPABASE_PUBLISHABLE_KEY"),
+    secretKey: readVariable(env, "SUPABASE_SECRET_KEY"),
     fetchFn,
     now: () => new Date(),
   };
@@ -260,6 +263,35 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
             .select("*")
             .maybeSingle();
           return mapRow(result, toSession);
+        },
+
+        async getStats(timeZone) {
+          const result = await client.rpc("profile_stats", { time_zone: timeZone }).maybeSingle();
+          const mapped = mapRow(result, toProfileStatsRow);
+          if (!mapped.ok) return mapped;
+          // INFO: the function always returns one row, so no row is a bad answer.
+          return mapped.value === null ? unavailable : { ok: true, value: mapped.value };
+        },
+
+        async deleteAccount() {
+          // INFO: the secret key bypasses row level security. This client is for
+          // deletion only and carries no caller header. Per the Supabase docs a user
+          // is deleted through the admin API (auth.admin.deleteUser), not with SQL on
+          // auth.users, which is Supabase-managed. A 404 means the user is already
+          // gone, which is the outcome the route promises, so it is a success.
+          const admin = createClient(config.url, config.secretKey, {
+            auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+            global: { fetch: timed },
+          });
+          try {
+            const { error } = await admin.auth.admin.deleteUser(caller.id);
+            if (error === null || error.status === 404) return { ok: true, value: null };
+            return unavailable;
+          } catch {
+            // INFO: deleteUser rethrows a non-auth error and rejects an id that is not
+            // a uuid; both end as a typed failure, never as a success.
+            return unavailable;
+          }
         },
 
         async listSessionCostsSince(since) {
