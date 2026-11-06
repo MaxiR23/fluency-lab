@@ -7,6 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "fluencylab",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#000000",
     "ios": {
       "bundleIdentifier": "com.maxirebolo.fluencylab",
       "usesAppleSignIn": true,
