@@ -7,13 +7,15 @@ Conventions for tests in this repo.
     pnpm test                    run all tests (every workspace, then scripts/test)
     pnpm exec jest <path>        one apps/mobile file, path from the repo root
     pnpm exec vitest run <path>  one packages/shared or apps/api file, path from the repo root
+    pnpm supabase test db        the pgTAP database tests (needs the local Supabase stack)
 
 ## Runner
 
 One runner per place: **jest-expo**, the Expo preset for Jest, for
 `apps/mobile` (pure functions, hooks and components); **vitest** for
 `packages/shared`, which has no Expo or React Native, and for `apps/api`; and `node --test`
-for `scripts/test`.
+for `scripts/test`. The database (row level security, triggers) is tested
+with **pgTAP** through `pnpm supabase test db`, which needs the local stack.
 
 - Pure functions (recommendations, spend limit, session analysis, text
   helpers) get plain unit tests: input in, output out, no render, no
@@ -24,6 +26,9 @@ for `scripts/test`.
   `vitest` in `packages/shared` and `apps/api`.
 - `render`, `fireEvent` and `act` from Testing Library are async and
   are awaited.
+- Tests never contain literal values that look like secrets (passwords,
+  keys, tokens, ids next to jwt or auth settings); they are generated at
+  run time.
 
 ## File location
 
@@ -35,6 +40,7 @@ tests go under `apps/mobile/test/app/`.
     apps/mobile/src/app/index.tsx      -> apps/mobile/test/app/index.test.tsx
     packages/shared/src/<file>.ts      -> packages/shared/test/<file>.test.ts
     apps/api/src/<file>.ts             -> apps/api/test/<file>.test.ts
+    supabase/tests/database/<name>_test.sql   (header with `--`)
 
 Cross-cutting tests of a workspace that do not map to a single file
 live at the root of its `test/`. The repo scripts are tested with

@@ -27,7 +27,7 @@ palette and the Home design are decided (see README.md).
   `@fluency-lab` scope, so `pnpm --filter api` works.
 - Inside `apps/mobile/src/`: `app/` (routes only), `auth/` (the auth and Apple
   ports, their adapters and the Apple sign-in flow), `components/` (shared components), `constants/` (`theme.ts`, the only source of visual values),
-  `hooks/` (shared hooks) and `utils/` (pure functions not tied to one
+  `data/` (the data port and its Hono adapter), `hooks/` (shared hooks) and `utils/` (pure functions not tied to one
   component).
 - pnpm is the only package manager. Add Expo packages with
   `pnpm --filter @fluency-lab/mobile exec expo install <package>`, never with npm or npx. AGENTS.md was
@@ -44,7 +44,7 @@ palette and the Home design are decided (see README.md).
 - Sign in with Google, Apple and email.
 - Text only: no voice.
 - Tests: jest-expo for the app (`apps/mobile`); vitest for `packages/shared` and `apps/api`; `node --test` for the repo scripts, in
-  `scripts/test/`.
+  `scripts/test/`; pgTAP for the database, in `supabase/tests/`.
 - Hooks with lefthook, commit messages with commitlint.
 
 Storage and auth for accounts and progress: Supabase Auth and Supabase
@@ -67,6 +67,7 @@ No pending decisions are left.
     pnpm supabase:start          start the local Supabase stack (needs Docker)
     pnpm supabase:stop           stop the local Supabase stack
     pnpm supabase:status         print the local stack's URLs and keys; they go in the .env.local files
+    pnpm supabase test db        the database tests (pgTAP), needs the local stack
     pnpm exec eslint <path>      one file, path from the repo root
     pnpm format                  to fix formatting
 

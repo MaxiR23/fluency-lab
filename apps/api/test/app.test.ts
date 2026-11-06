@@ -8,6 +8,8 @@
 // - the typed client sees /health (typecheck fails if AppType loses it)
 // - GET /me answers the user for a valid token, 401 for any bad one and 500
 //   when the signing keys cannot be loaded
+// - GET/PUT /profile, GET/POST /sessions and GET /sessions/:id/messages: 401
+//   without a valid token, 400 on invalid input, 404, 503, and the typed client
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -19,8 +21,10 @@
 import { sign } from "hono/jwt";
 import { testClient } from "hono/testing";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import type { ActiveSession, Message, Profile, Session } from "@fluency-lab/shared";
 import { createApp } from "../src/app";
 import type { JwksOutcome } from "../src/auth";
+import { createFakeStore } from "./helpers/fake-store";
 import { generatedSecret } from "./helpers/generated-secret";
 
 const issuer = "http://127.0.0.1:54321/auth/v1";
@@ -40,8 +44,10 @@ async function generateKey() {
   return { priv: { ...priv, alg: "ES256", kid }, pub: { ...pub, alg: "ES256", kid } };
 }
 
+const fake = createFakeStore();
 const app = createApp({
   auth: { issuer, loadKeys: async () => keysOutcome },
+  store: fake.store,
 });
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -75,6 +81,8 @@ beforeAll(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  fake.callers.length = 0;
+  for (const method of Object.values(fake.user)) method.mockReset();
 });
 
 describe("GET /health", () => {
@@ -194,5 +202,331 @@ describe("GET /me", () => {
     const res = await client.me.$get();
 
     expect(await res.json()).toEqual({ id: "user-1", email: "a@example.com" });
+  });
+});
+
+const stamp = "2026-01-01 10:00:00+00";
+const sessionId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ea1";
+
+const profile: Profile = {
+  id: "user-1",
+  displayName: "Ada",
+  level: "beginner",
+  goals: [],
+  topics: [],
+  provider: null,
+  monthlyLimitUsd: null,
+  onboardingCompletedAt: null,
+  createdAt: stamp,
+  updatedAt: stamp,
+};
+
+const session: Session = {
+  id: sessionId,
+  topicId: null,
+  title: "Free chat",
+  status: "active",
+  summary: null,
+  costUsd: 0,
+  createdAt: stamp,
+  updatedAt: stamp,
+};
+
+const message: Message = {
+  id: "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ec1",
+  sessionId,
+  role: "user",
+  text: "Hello",
+  corrections: null,
+  newWords: null,
+  createdAt: stamp,
+};
+
+function json(body: unknown) {
+  return JSON.stringify(body);
+}
+
+async function authed(extra: Record<string, string> = {}) {
+  return { Authorization: `Bearer ${await token({})}`, ...extra };
+}
+
+const jsonType = { "Content-Type": "application/json" };
+
+const routes: { name: string; path: string; method: string; body?: unknown }[] = [
+  { name: "GET /profile", path: "/profile", method: "GET" },
+  { name: "PUT /profile", path: "/profile", method: "PUT", body: { level: "beginner" } },
+  { name: "GET /sessions/active", path: "/sessions/active", method: "GET" },
+  { name: "POST /sessions", path: "/sessions", method: "POST", body: { topicId: null } },
+  { name: "GET /sessions/:id/messages", path: `/sessions/${sessionId}/messages`, method: "GET" },
+];
+
+describe("authentication of the data routes", () => {
+  for (const route of routes) {
+    const init = (headers: Record<string, string>): RequestInit => ({
+      method: route.method,
+      headers: route.body === undefined ? headers : { ...jsonType, ...headers },
+      body: route.body === undefined ? undefined : json(route.body),
+    });
+
+    it(`${route.name} responds 401 without an Authorization header`, async () => {
+      const res = await app.request(route.path, init({}));
+
+      expect(res.status).toBe(401);
+      expect(fake.callers).toEqual([]);
+    });
+
+    it(`${route.name} responds 401 with a token signed by another key`, async () => {
+      const bad = await token({}, otherKey);
+      const res = await app.request(route.path, init({ Authorization: `Bearer ${bad}` }));
+
+      expect(res.status).toBe(401);
+      expect(fake.callers).toEqual([]);
+    });
+  }
+
+  it("responds 401 when the store reports unauthorized", async () => {
+    fake.user.getProfile.mockResolvedValue({ ok: false, failure: "unauthorized" });
+
+    const res = await app.request("/profile", { headers: await authed() });
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+});
+
+describe("GET /profile", () => {
+  it("responds 200 with the profile", async () => {
+    fake.user.getProfile.mockResolvedValue({ ok: true, value: profile });
+
+    const res = await app.request("/profile", { headers: await authed() });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(profile);
+  });
+
+  it("builds the store for the token's user and the raw token", async () => {
+    fake.user.getProfile.mockResolvedValue({ ok: true, value: profile });
+    const headers = await authed();
+
+    await app.request("/profile", { headers });
+
+    expect(fake.callers).toEqual([
+      { id: "user-1", accessToken: headers.Authorization.replace("Bearer ", "") },
+    ]);
+  });
+
+  it("responds 404 when the store has no profile", async () => {
+    fake.user.getProfile.mockResolvedValue({ ok: true, value: null });
+
+    const res = await app.request("/profile", { headers: await authed() });
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.getProfile.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    const res = await app.request("/profile", { headers: await authed() });
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
+  });
+});
+
+describe("PUT /profile", () => {
+  async function put(body: string, headers: Record<string, string> = jsonType) {
+    return app.request("/profile", {
+      method: "PUT",
+      headers: await authed(headers),
+      body,
+    });
+  }
+
+  it("responds 200 with the updated profile and hands the parsed update to the store", async () => {
+    fake.user.updateProfile.mockResolvedValue({
+      ok: true,
+      value: { ...profile, level: "advanced" },
+    });
+
+    const res = await put(json({ level: "advanced", displayName: "  Ada " }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ level: "advanced" });
+    expect(fake.user.updateProfile).toHaveBeenCalledWith({ level: "advanced", displayName: "Ada" });
+  });
+
+  it("responds 400 for an empty body object", async () => {
+    const res = await put(json({}));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_input" });
+    expect(fake.user.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it("responds 400 for an unknown level", async () => {
+    expect((await put(json({ level: "expert" }))).status).toBe(400);
+  });
+
+  it("responds 400 for a monthly limit under a cent", async () => {
+    const res = await put(json({ monthlyLimitUsd: 0.004 }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_input" });
+    expect(fake.user.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it("responds 400 for an apiKey field", async () => {
+    expect((await put(json({ level: "beginner", apiKey: "x" }))).status).toBe(400);
+    expect(fake.user.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it("responds 400 for a body that is not JSON", async () => {
+    expect((await put("{nope")).status).toBe(400);
+  });
+
+  it("responds 400 for a request without Content-Type", async () => {
+    expect((await put(json({ level: "beginner" }), {})).status).toBe(400);
+  });
+
+  it("responds 404 when the store returns null", async () => {
+    fake.user.updateProfile.mockResolvedValue({ ok: true, value: null });
+
+    expect((await put(json({ level: "beginner" }))).status).toBe(404);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.updateProfile.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    expect((await put(json({ level: "beginner" }))).status).toBe(503);
+  });
+});
+
+describe("GET /sessions/active", () => {
+  it("responds 200 with { activeSession: null } when there is none", async () => {
+    fake.user.getActiveSession.mockResolvedValue({ ok: true, value: null });
+
+    const res = await app.request("/sessions/active", { headers: await authed() });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ activeSession: null });
+  });
+
+  it("responds 200 with the session and its last message", async () => {
+    const active: ActiveSession = { session, lastMessage: message };
+    fake.user.getActiveSession.mockResolvedValue({ ok: true, value: active });
+
+    const res = await app.request("/sessions/active", { headers: await authed() });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ activeSession: active });
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.getActiveSession.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    expect((await app.request("/sessions/active", { headers: await authed() })).status).toBe(503);
+  });
+});
+
+describe("POST /sessions", () => {
+  async function post(body: string) {
+    return app.request("/sessions", { method: "POST", headers: await authed(jsonType), body });
+  }
+
+  it("responds 201 with the session", async () => {
+    fake.user.createSession.mockResolvedValue({ ok: true, value: session });
+
+    const res = await post(json({ topicId: null }));
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual(session);
+  });
+
+  it("titles a topic session with its label and a free chat 'Free chat'", async () => {
+    fake.user.createSession.mockResolvedValue({ ok: true, value: session });
+
+    await post(json({ topicId: "job_interviews" }));
+    await post(json({ topicId: null }));
+
+    expect(fake.user.createSession).toHaveBeenNthCalledWith(1, {
+      topicId: "job_interviews",
+      title: "Job interviews",
+    });
+    expect(fake.user.createSession).toHaveBeenNthCalledWith(2, {
+      topicId: null,
+      title: "Free chat",
+    });
+  });
+
+  it("responds 400 for an unknown topic", async () => {
+    expect((await post(json({ topicId: "cooking" }))).status).toBe(400);
+  });
+
+  it("responds 400 for a missing topicId", async () => {
+    expect((await post(json({}))).status).toBe(400);
+    expect(fake.user.createSession).not.toHaveBeenCalled();
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.createSession.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    expect((await post(json({ topicId: null }))).status).toBe(503);
+  });
+});
+
+describe("GET /sessions/:id/messages", () => {
+  async function list(id: string) {
+    return app.request(`/sessions/${id}/messages`, { headers: await authed() });
+  }
+
+  it("responds 200 with the messages", async () => {
+    fake.user.listMessages.mockResolvedValue({ ok: true, value: [message] });
+
+    const res = await list(sessionId);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ messages: [message] });
+    expect(fake.user.listMessages).toHaveBeenCalledWith(sessionId);
+  });
+
+  it("responds 200 with { messages: [] } for a session with none", async () => {
+    fake.user.listMessages.mockResolvedValue({ ok: true, value: [] });
+
+    const res = await list(sessionId);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ messages: [] });
+  });
+
+  it("responds 400 for an id that is not a uuid", async () => {
+    expect((await list("abc")).status).toBe(400);
+    expect(fake.user.listMessages).not.toHaveBeenCalled();
+  });
+
+  it("responds 404 when the session is not visible", async () => {
+    fake.user.listMessages.mockResolvedValue({ ok: true, value: null });
+
+    expect((await list(sessionId)).status).toBe(404);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.listMessages.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    expect((await list(sessionId)).status).toBe(503);
+  });
+});
+
+describe("typed client (data routes)", () => {
+  it("exposes the profile and session routes through AppType", async () => {
+    fake.user.getProfile.mockResolvedValue({ ok: true, value: profile });
+    fake.user.getActiveSession.mockResolvedValue({ ok: true, value: null });
+    const client = testClient(app, undefined, undefined, { headers: await authed() });
+
+    const profileRes = await client.profile.$get();
+    const activeRes = await client.sessions.active.$get();
+
+    expect(profileRes.status).toBe(200);
+    expect(await activeRes.json()).toEqual({ activeSession: null });
   });
 });
