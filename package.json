@@ -16,6 +16,7 @@
   },
   "scripts": {
     "prepare": "lefthook install",
+    "dev": "node scripts/dev.mjs",
     "start": "pnpm --filter @fluency-lab/mobile start",
     "gate": "pnpm typecheck && pnpm lint && pnpm test",
     "supabase:start": "supabase start",

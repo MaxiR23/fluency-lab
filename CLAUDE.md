@@ -57,6 +57,9 @@ No pending decisions are left.
 
     pnpm install                 also installs the git hooks (lefthook)
 
+    pnpm dev                     the whole local stack in one terminal: checks Docker, starts
+                                 Supabase, the API and Expo; extra args go to Expo (pnpm dev --clear);
+                                 Ctrl+C or closing the terminal stops the API and Expo, Supabase keeps running
     pnpm start                   Expo dev server (apps/mobile)
     pnpm gate                    typecheck, lint and test; what scripts/ship.sh runs
     pnpm typecheck               tsc --noEmit in every workspace
