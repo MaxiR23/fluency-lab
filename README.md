@@ -102,7 +102,8 @@ phone reaches it on the LAN IP.
 token; 401 when the token is missing or invalid, 500 when the signing keys
 cannot be loaded, so an outage never tells the client its token is bad).
 It also has `GET /profile`, `PUT /profile`, `GET /sessions/active`,
-`GET /sessions/week`, `GET /sessions/spend`, `POST /sessions`,
+`GET /sessions/open`, `DELETE /sessions/:id`, `GET /sessions/week`,
+`GET /sessions/spend`, `POST /sessions`,
 `GET /sessions/:id/messages`, `POST /sessions/:id/messages`,
 `POST /sessions/:id/usage` and `POST /sessions/:id/end`: 401
 without a valid token, 400 on invalid input, 404 when the row is not the
@@ -110,7 +111,7 @@ caller's, 503 when the database cannot be reached. `GET /profile` creates the
 caller's profile when it is missing instead of answering 404. `GET
 /sessions/week?tz=<IANA zone>` answers the days of the current week (Monday
 first, in that zone) that have a session; 400 for an unknown zone. `GET
-/sessions/spend?tz=<IANA zone>` answers the month's spend. `GET
+/sessions/spend?tz=<IANA zone>` answers the month's spend, which keeps the cost of deleted sessions. `GET
 /sessions/:id/messages` answers the session and its messages. `POST
 /sessions/:id/usage` prices the reported tokens and adds them to the session's
 cost. `POST /sessions` takes a topic or a starter id. The API
@@ -126,6 +127,7 @@ client (RPC). Run it with `pnpm --filter api dev`.
     Home            free chat, continue last session, suggested topics
     Suggestions     the full list of suggested topics, opened from Home
     Chat            the session, corrections inline, end session
+    Open chats      the active chats, open or delete one, from Home
     Summary         after a session: mistakes, new words, topic, cost
     Plan            optional, off by default
     Progress        session history, frequent mistakes, vocabulary

@@ -6,6 +6,7 @@
 -- - a user sees only their own sessions
 -- - a session can only be created for the caller, with a limited set of columns
 -- - a user ends their own session; no other column can be updated
+-- - a user deletes their own session and its messages; another user's session is untouched
 --
 -- What is covered:
 -- - Normal case, empty case, edges
@@ -14,17 +15,20 @@
 --
 -- SEE: supabase/migrations/20261106000211_create_profiles_sessions_messages.sql
 --      supabase/migrations/20261106035530_chat_writes.sql
+--      supabase/migrations/20261106063500_session_delete.sql
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(9);
+select plan(13);
 
 create temp table t_ids (k text primary key, id uuid not null);
 insert into t_ids values
   ('e0a', gen_random_uuid()),
   ('e0b', gen_random_uuid()),
   ('ea1', gen_random_uuid()),
-  ('eb1', gen_random_uuid());
+  ('eb1', gen_random_uuid()),
+  ('ec1', gen_random_uuid()),
+  ('ed1', gen_random_uuid());
 grant select on t_ids to authenticated;
 
 insert into auth.users (id, email) values
@@ -33,6 +37,9 @@ insert into auth.users (id, email) values
 insert into public.sessions (id, user_id, title) values
   ((select id from t_ids where k = 'ea1'), (select id from t_ids where k = 'e0a'), 'Free chat'),
   ((select id from t_ids where k = 'eb1'), (select id from t_ids where k = 'e0b'), 'Free chat');
+insert into public.messages (id, session_id, role, text) values
+  ((select id from t_ids where k = 'ec1'), (select id from t_ids where k = 'ea1'), 'user', 'Hello'),
+  ((select id from t_ids where k = 'ed1'), (select id from t_ids where k = 'eb1'), 'user', 'Hi');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', (select id::text from t_ids where k = 'e0a'), true);
@@ -46,6 +53,12 @@ select throws_ok($$update public.sessions set title = 'x' where id = (select id 
 select throws_ok($$update public.sessions set title = 'x' where id = (select id from t_ids where k = 'eb1')$$, '42501', null, 'updating another user session is not allowed');
 select results_eq($$update public.sessions set status = 'ended' where id = (select id from t_ids where k = 'ea1') returning status$$, array['ended'::text], 'a user ends their own session');
 select is_empty($$update public.sessions set status = 'ended' where id = (select id from t_ids where k = 'eb1') returning 1$$, 'ending another user session changes no row');
+select is_empty($$delete from public.sessions where id = (select id from t_ids where k = 'eb1') returning 1$$, 'deleting another user session deletes no row');
+select results_eq($$delete from public.sessions where id = (select id from t_ids where k = 'ea1') returning id$$, $$select id from t_ids where k = 'ea1'$$, 'a user deletes their own session');
+
+reset role;
+select is_empty($$select 1 from public.messages where session_id = (select id from t_ids where k = 'ea1')$$, 'the deleted session messages are gone');
+select results_eq($$select count(*) from public.messages where session_id = (select id from t_ids where k = 'eb1')$$, array[1::bigint], 'the other user session keeps its messages');
 
 select * from finish();
 rollback;

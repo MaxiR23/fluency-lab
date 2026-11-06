@@ -4,6 +4,7 @@
 //
 // Tested:
 // - relativeTime buckets and its unparsable date
+// - shortRelativeTime, the compact form of the Open chats rows
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -14,7 +15,7 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { relativeTime } from "@/utils/relative-time";
+import { relativeTime, shortRelativeTime } from "@/utils/relative-time";
 
 const now = Date.parse("2026-11-05T12:00:00Z");
 
@@ -53,5 +54,36 @@ describe("relativeTime", () => {
 
   it("returns null for an unparsable date", () => {
     expect(relativeTime("not a date", now)).toBeNull();
+  });
+});
+
+describe("shortRelativeTime", () => {
+  it("says now under a minute and for a future date", () => {
+    expect(shortRelativeTime(ago(59), now)).toBe("now");
+    expect(shortRelativeTime(ago(-300), now)).toBe("now");
+  });
+
+  it("says 1m at exactly 60 seconds and 59m one second before an hour", () => {
+    expect(shortRelativeTime(ago(60), now)).toBe("1m");
+    expect(shortRelativeTime(ago(3599), now)).toBe("59m");
+  });
+
+  it("says 1h at exactly one hour and 23h one second before a day", () => {
+    expect(shortRelativeTime(ago(3600), now)).toBe("1h");
+    expect(shortRelativeTime(ago(24 * 3600 - 1), now)).toBe("23h");
+  });
+
+  it("says Yesterday from 24 hours to one second before 48", () => {
+    expect(shortRelativeTime(ago(24 * 3600), now)).toBe("Yesterday");
+    expect(shortRelativeTime(ago(48 * 3600 - 1), now)).toBe("Yesterday");
+  });
+
+  it("says 2d at exactly 48 hours and 5d at five days", () => {
+    expect(shortRelativeTime(ago(48 * 3600), now)).toBe("2d");
+    expect(shortRelativeTime(ago(5 * 24 * 3600), now)).toBe("5d");
+  });
+
+  it("returns null for an unparsable date", () => {
+    expect(shortRelativeTime("not a date", now)).toBeNull();
   });
 });

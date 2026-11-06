@@ -45,6 +45,7 @@ const names: IconName[] = [
   "lock",
   "send",
   "close",
+  "trash",
 ];
 
 type Node = { props?: Record<string, unknown>; children?: unknown };

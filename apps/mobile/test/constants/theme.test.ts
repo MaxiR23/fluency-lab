@@ -106,6 +106,7 @@ describe("theme", () => {
       pill: 40,
       avatar: 44,
       touch: 44,
+      swipeAction: 66,
       tabItem: 64,
       suggestionCard: 200,
       heroArtWidth: 56,
@@ -308,5 +309,11 @@ describe("theme", () => {
       semibold: "PlusJakartaSans_600SemiBold",
       bold: "PlusJakartaSans_700Bold",
     });
+  });
+
+  it("holds the swipe action width and the error tints", () => {
+    expect(size.swipeAction).toBe(66);
+    expect(colors.errorSoft).toBe("rgba(248,113,113,0.16)");
+    expect(colors.errorLine).toBe("rgba(248,113,113,0.45)");
   });
 });

@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, View } from "react-native";
 
+import { BackButton } from "@/components/back-button";
 import { Icon } from "@/components/icon";
 import { Text } from "@/components/text";
 import { borderWidth, colors, radius, size, spacing, strokeWidth } from "@/constants/theme";
@@ -19,14 +20,7 @@ export function ChatHeader({
 }) {
   return (
     <View style={styles.row}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back to Home"
-        onPress={onBack}
-        style={styles.back}
-      >
-        <Icon name="back" color={colors.text} />
-      </Pressable>
+      <BackButton onPress={onBack} />
       <View style={styles.texts}>
         <Text variant="chatTitle" accessibilityRole="header">
           {title}
@@ -73,7 +67,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: borderWidth.thin,
     borderBottomColor: colors.border,
   },
-  back: { width: size.touch, height: size.touch, alignItems: "center", justifyContent: "center" },
   end: {
     width: size.badge,
     height: size.badge,

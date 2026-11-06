@@ -6,6 +6,7 @@
 // - greeting by the hour and the display name
 // - avatarInitial from the display name
 // - continueCard title, meta and icon
+// - seeAllLabel next to Continue
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -16,7 +17,7 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { avatarInitial, continueCard, greeting } from "@/utils/home";
+import { avatarInitial, continueCard, greeting, seeAllLabel } from "@/utils/home";
 import { activeSessionWith } from "../helpers/fake-data";
 
 const now = Date.parse("2026-11-05T12:00:00Z");
@@ -108,5 +109,20 @@ describe("continueCard", () => {
   it("drops the time when it cannot be read", () => {
     const active = activeSessionWith({ topicId: "music" }, { createdAt: "not a date" });
     expect(continueCard(active, now).meta).toBe("Music");
+  });
+});
+
+describe("seeAllLabel", () => {
+  it("is null with no open session and with one", () => {
+    expect(seeAllLabel(0)).toBeNull();
+    expect(seeAllLabel(1)).toBeNull();
+  });
+
+  it("says See all (2) with exactly two", () => {
+    expect(seeAllLabel(2)).toBe("See all (2)");
+  });
+
+  it("counts every open session", () => {
+    expect(seeAllLabel(5)).toBe("See all (5)");
   });
 });

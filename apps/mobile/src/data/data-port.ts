@@ -22,6 +22,9 @@ export type DataPort = {
   updateProfile(input: ProfileUpdate): Promise<DataOutcome<Profile>>;
   // INFO: null is the expected empty: the user has no active session.
   getActiveSession(): Promise<DataOutcome<ActiveSession | null>>;
+  // INFO: an empty list is the expected empty: no open session. Newest first.
+  listOpenSessions(): Promise<DataOutcome<ActiveSession[]>>;
+  deleteSession(sessionId: string): Promise<DataOutcome<Session>>;
   createSession(input: SessionCreate): Promise<DataOutcome<Session>>;
   openSession(sessionId: string): Promise<DataOutcome<SessionWithMessages>>;
   addMessage(sessionId: string, input: MessageCreate): Promise<DataOutcome<Message>>;

@@ -8,9 +8,10 @@
 // - the typed client sees /health (typecheck fails if AppType loses it)
 // - GET /me answers the user for a valid token, 401 for any bad one and 500
 //   when the signing keys cannot be loaded
-// - GET/PUT /profile, GET/POST /sessions, GET /sessions/week, GET /sessions/spend,
+// - GET/PUT /profile, GET/POST /sessions, GET /sessions/open, DELETE /sessions/:id, GET /sessions/week, GET /sessions/spend,
 //   GET/POST /sessions/:id/messages, POST /sessions/:id/usage and POST /sessions/:id/end:
 //   401 without a valid token, 400 on invalid input, 404, 503, and the typed client
+// - GET /sessions/spend still counts the cost of a deleted session
 // - the usage route prices the tokens, and the routes reject an apiKey field
 //
 // What is covered:
@@ -267,6 +268,8 @@ const routes: { name: string; path: string; method: string; body?: unknown }[] =
   { name: "GET /profile", path: "/profile", method: "GET" },
   { name: "PUT /profile", path: "/profile", method: "PUT", body: { level: "beginner" } },
   { name: "GET /sessions/active", path: "/sessions/active", method: "GET" },
+  { name: "GET /sessions/open", path: "/sessions/open", method: "GET" },
+  { name: "DELETE /sessions/:id", path: `/sessions/${sessionId}`, method: "DELETE" },
   { name: "GET /sessions/week", path: "/sessions/week?tz=UTC", method: "GET" },
   { name: "POST /sessions", path: "/sessions", method: "POST", body: { topicId: null } },
   { name: "GET /sessions/spend", path: "/sessions/spend?tz=UTC", method: "GET" },
@@ -449,6 +452,84 @@ describe("GET /sessions/active", () => {
     fake.user.getActiveSession.mockResolvedValue({ ok: false, failure: "unavailable" });
 
     expect((await app.request("/sessions/active", { headers: await authed() })).status).toBe(503);
+  });
+});
+
+describe("GET /sessions/open", () => {
+  it("responds 200 with the open sessions and their last messages", async () => {
+    const open: ActiveSession[] = [
+      { session, lastMessage: message },
+      { session, lastMessage: null },
+    ];
+    fake.user.listOpenSessions.mockResolvedValue({ ok: true, value: open });
+
+    const res = await app.request("/sessions/open", { headers: await authed() });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sessions: open });
+  });
+
+  it("responds 200 with { sessions: [] } when there is none", async () => {
+    fake.user.listOpenSessions.mockResolvedValue({ ok: true, value: [] });
+
+    const res = await app.request("/sessions/open", { headers: await authed() });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sessions: [] });
+  });
+
+  it("builds the store for the token's user", async () => {
+    fake.user.listOpenSessions.mockResolvedValue({ ok: true, value: [] });
+    const headers = await authed();
+
+    await app.request("/sessions/open", { headers });
+
+    expect(fake.callers).toEqual([
+      { id: "user-1", accessToken: headers.Authorization.replace("Bearer ", "") },
+    ]);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.listOpenSessions.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    expect((await app.request("/sessions/open", { headers: await authed() })).status).toBe(503);
+  });
+
+  it("responds 401 when the store reports unauthorized", async () => {
+    fake.user.listOpenSessions.mockResolvedValue({ ok: false, failure: "unauthorized" });
+
+    expect((await app.request("/sessions/open", { headers: await authed() })).status).toBe(401);
+  });
+});
+
+describe("DELETE /sessions/:id", () => {
+  async function remove(id: string) {
+    return app.request(`/sessions/${id}`, { method: "DELETE", headers: await authed() });
+  }
+
+  it("responds 200 with the deleted session", async () => {
+    fake.user.deleteSession.mockResolvedValue({ ok: true, value: session });
+
+    const res = await remove(sessionId);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(session);
+    expect(fake.user.deleteSession).toHaveBeenCalledWith(sessionId);
+  });
+
+  it("responds 400 for an id that is not a uuid", async () => {
+    expect((await remove("abc")).status).toBe(400);
+    expect(fake.user.deleteSession).not.toHaveBeenCalled();
+  });
+
+  it("responds 404 when the session is not the caller's", async () => {
+    fake.user.deleteSession.mockResolvedValue({ ok: true, value: null });
+    expect((await remove(sessionId)).status).toBe(404);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.deleteSession.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await remove(sessionId)).status).toBe(503);
   });
 });
 
@@ -661,6 +742,32 @@ describe("GET /sessions/spend", () => {
     const res = await spend("?tz=America%2FArgentina%2FBuenos_Aires");
 
     expect(await res.json()).toEqual({ monthStart: "2026-11-01", spentUsd: 0 });
+  });
+
+  it("still includes the cost of a session after it is deleted", async () => {
+    // INFO: models the store: a delete moves the session cost to the ledger,
+    // and the cost read returns the sessions and the ledger together.
+    const sessions = [{ createdAt: "2026-11-02T09:00:00+00:00", costUsd: 0.25 }];
+    const ledger: { createdAt: string; costUsd: number }[] = [];
+    fake.user.listSessionCostsSince.mockImplementation(async () => ({
+      ok: true,
+      value: [...sessions, ...ledger],
+    }));
+    fake.user.deleteSession.mockImplementation(async () => {
+      ledger.push(...sessions.splice(0));
+      return { ok: true, value: session };
+    });
+
+    const before = await (await spend("?tz=UTC")).json();
+    const deleted = await app.request(`/sessions/${sessionId}`, {
+      method: "DELETE",
+      headers: await authed(),
+    });
+    const after = await (await spend("?tz=UTC")).json();
+
+    expect(deleted.status).toBe(200);
+    expect(before).toEqual({ monthStart: "2026-11-01", spentUsd: 0.25 });
+    expect(after).toEqual({ monthStart: "2026-11-01", spentUsd: 0.25 });
   });
 
   it("responds 400 for an unknown time zone and without tz", async () => {
@@ -931,5 +1038,17 @@ describe("typed client (data routes)", () => {
     expect(messageRes.status).toBe(201);
     expect(usageRes.status).toBe(200);
     expect(endRes.status).toBe(200);
+  });
+
+  it("exposes the open chats routes through AppType", async () => {
+    fake.user.listOpenSessions.mockResolvedValue({ ok: true, value: [] });
+    fake.user.deleteSession.mockResolvedValue({ ok: true, value: session });
+    const client = testClient(app, undefined, undefined, { headers: await authed() });
+
+    const openRes = await client.sessions.open.$get();
+    const deleteRes = await client.sessions[":id"].$delete({ param: { id: sessionId } });
+
+    expect(await openRes.json()).toEqual({ sessions: [] });
+    expect(deleteRes.status).toBe(200);
   });
 });

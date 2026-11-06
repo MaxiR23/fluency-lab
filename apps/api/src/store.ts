@@ -18,6 +18,10 @@ export type UserStore = {
   getProfile(): Promise<StoreOutcome<Profile>>;
   updateProfile(update: ProfileUpdate): Promise<StoreOutcome<Profile | null>>;
   getActiveSession(): Promise<StoreOutcome<ActiveSession | null>>;
+  // INFO: the caller's active sessions, newest first, each with its newest message.
+  listOpenSessions(): Promise<StoreOutcome<ActiveSession[]>>;
+  // INFO: null means the session is not visible to the caller (missing or another user's).
+  deleteSession(sessionId: string): Promise<StoreOutcome<Session | null>>;
   createSession(input: { topicId: TopicId | null; title: string }): Promise<StoreOutcome<Session>>;
   // INFO: null means the session is not visible to the caller (missing or another user's).
   getSessionWithMessages(sessionId: string): Promise<StoreOutcome<SessionWithMessages | null>>;

@@ -37,7 +37,11 @@ export type TextVariant =
   | "chatTitle"
   | "cardHeading"
   | "cardBody"
-  | "tagOutline";
+  | "tagOutline"
+  | "screenTitle"
+  | "intro"
+  | "swipeAction"
+  | "swipeActionDanger";
 
 const variants: Record<TextVariant, TextStyle> = {
   title: {
@@ -232,6 +236,27 @@ const variants: Record<TextVariant, TextStyle> = {
     fontFamily: fontFamily.semibold,
     fontSize: fontSize.caption,
     color: colors.accent,
+  },
+  screenTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.cardHeading,
+    color: colors.text,
+  },
+  intro: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+    lineHeight: lineHeight.small,
+  },
+  swipeAction: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.xsmall,
+    color: colors.text,
+  },
+  swipeActionDanger: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.xsmall,
+    color: colors.error,
   },
 };
 

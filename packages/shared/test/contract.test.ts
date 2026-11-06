@@ -6,6 +6,7 @@
 // - profileUpdateSchema, sessionCreateSchema and sessionIdParamSchema
 // - The chat schemas: corrections, new words, the message to save, the usage and the tutor reply
 // - The response schemas of the profile, the active session and the messages
+// - The open sessions response
 // - The session week response and its query
 //
 // What is covered:
@@ -23,6 +24,7 @@ import {
   messageCreateSchema,
   messageSchema,
   monthSpendSchema,
+  openSessionsResponseSchema,
   newWordsSchema,
   profileSchema,
   profileUpdateSchema,
@@ -231,6 +233,29 @@ describe("response schemas", () => {
   it("parses an active session body with its last message", () => {
     const body = { activeSession: { session, lastMessage: message } };
     expect(activeSessionResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it("parses a list of open sessions with and without a last message", () => {
+    const body = {
+      sessions: [
+        { session, lastMessage: message },
+        { session, lastMessage: null },
+      ],
+    };
+    expect(openSessionsResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it("parses an empty list of open sessions", () => {
+    expect(openSessionsResponseSchema.parse({ sessions: [] })).toEqual({ sessions: [] });
+  });
+
+  it("rejects a missing sessions field and an item with a bad session", () => {
+    expect(openSessionsResponseSchema.safeParse({}).success).toBe(false);
+    expect(
+      openSessionsResponseSchema.safeParse({
+        sessions: [{ session: { id: "x" }, lastMessage: null }],
+      }).success,
+    ).toBe(false);
   });
 
   it("parses a session body with no messages", () => {

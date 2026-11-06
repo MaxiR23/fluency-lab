@@ -5,6 +5,8 @@
 // Tested:
 // - storeConfigFromEnv reads and validates the environment
 // - Every request carries the caller's token and the publishable key
+// - listOpenSessions reads active sessions newest first with their newest message in one request; deleteSession deletes by id
+// - listSessionCostsSince reads the sessions and deleted_session_costs and returns both
 // - Each store call: success, expected empty, 401, transport failure, bad row
 //
 // What is covered:
@@ -642,15 +644,101 @@ describe("endSession", () => {
   });
 });
 
+describe("listOpenSessions", () => {
+  it("returns the active sessions newest first, each with its newest message, in one request", async () => {
+    const { user, requests } = setup([
+      ok([
+        { ...sessionRow, messages: [messageRow(1)] },
+        { ...sessionRow, id: id, messages: [] },
+      ]),
+    ]);
+
+    const outcome = await user.listOpenSessions();
+
+    expect(outcome).toMatchObject({
+      ok: true,
+      value: [
+        { session: { id: sessionId }, lastMessage: { text: "m1" } },
+        { session: { id }, lastMessage: null },
+      ],
+    });
+    expect(requests).toHaveLength(1);
+    const params = requests[0].url.searchParams;
+    expect(params.get("status")).toBe("eq.active");
+    expect(params.get("order")).toBe("updated_at.desc");
+    expect(params.get("messages.order")).toBe("created_at.desc");
+    expect(params.get("messages.limit")).toBe("1");
+    expect(params.get("select")).toContain("messages(*)");
+  });
+
+  it("returns an empty list when there is no open session", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.listOpenSessions()).toEqual({ ok: true, value: [] });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.listOpenSessions()).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.listOpenSessions()).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("returns unavailable for a bad session row or a bad embedded message", async () => {
+    const bad = setup([ok([{ id: sessionId, messages: [] }])]);
+    expect(await bad.user.listOpenSessions()).toEqual({ ok: false, failure: "unavailable" });
+    const badMessage = setup([ok([{ ...sessionRow, messages: [{ id }] }])]);
+    expect(await badMessage.user.listOpenSessions()).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+});
+
+describe("deleteSession", () => {
+  it("deletes the session by id and returns it", async () => {
+    const { user, requests } = setup([ok([sessionRow])]);
+
+    const outcome = await user.deleteSession(sessionId);
+
+    expect(outcome).toMatchObject({ ok: true, value: { id: sessionId } });
+    expect(requests[0].method).toBe("DELETE");
+    expect(requests[0].url.searchParams.get("id")).toBe(`eq.${sessionId}`);
+  });
+
+  it("returns null when the session is not visible", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.deleteSession(sessionId)).toEqual({ ok: true, value: null });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.deleteSession(sessionId)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.deleteSession(sessionId)).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("returns unavailable for a bad row", async () => {
+    const { user } = setup([ok([{ id }])]);
+    expect(await user.deleteSession(sessionId)).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
 describe("listSessionCostsSince", () => {
   const since = "2026-10-05T12:00:00.000Z";
 
-  it("returns the start and cost of each session since the given time", async () => {
+  it("returns the start and cost of each session and each deleted session since the given time", async () => {
     const { user, requests } = setup([
       ok([
         { created_at: "2026-11-02T10:00:00+00:00", cost_usd: 0.25 },
         { created_at: "2026-11-04T10:00:00+00:00", cost_usd: 0 },
       ]),
+      ok([{ created_at: "2026-11-03T10:00:00+00:00", cost_usd: 0.5 }]),
     ]);
 
     const outcome = await user.listSessionCostsSince(since);
@@ -660,37 +748,63 @@ describe("listSessionCostsSince", () => {
       value: [
         { createdAt: "2026-11-02T10:00:00+00:00", costUsd: 0.25 },
         { createdAt: "2026-11-04T10:00:00+00:00", costUsd: 0 },
+        { createdAt: "2026-11-03T10:00:00+00:00", costUsd: 0.5 },
       ],
     });
     expect(requests[0].url.pathname).toBe("/rest/v1/sessions");
     expect(requests[0].url.searchParams.get("select")).toBe("created_at,cost_usd");
     expect(requests[0].url.searchParams.get("created_at")).toBe(`gte.${since}`);
+    expect(requests[1].url.pathname).toBe("/rest/v1/deleted_session_costs");
+    expect(requests[1].url.searchParams.get("select")).toBe("created_at,cost_usd");
+    expect(requests[1].url.searchParams.get("created_at")).toBe(`gte.${since}`);
   });
 
-  it("returns an empty list when there are no sessions", async () => {
-    const { user } = setup([ok([])]);
+  it("keeps the cost of a deleted session when no session is left", async () => {
+    const { user } = setup([
+      ok([]),
+      ok([{ created_at: "2026-11-03T10:00:00+00:00", cost_usd: 0.5 }]),
+    ]);
+    expect(await user.listSessionCostsSince(since)).toEqual({
+      ok: true,
+      value: [{ createdAt: "2026-11-03T10:00:00+00:00", costUsd: 0.5 }],
+    });
+  });
+
+  it("returns an empty list when there are no sessions and no deleted costs", async () => {
+    const { user } = setup([ok([]), ok([])]);
     expect(await user.listSessionCostsSince(since)).toEqual({ ok: true, value: [] });
   });
 
-  it("returns unauthorized on a 401", async () => {
-    const { user } = setup([failure(401)]);
-    expect(await user.listSessionCostsSince(since)).toEqual({
+  it("returns unauthorized on a 401 from either read", async () => {
+    expect(await setup([failure(401)]).user.listSessionCostsSince(since)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+    expect(await setup([ok([]), failure(401)]).user.listSessionCostsSince(since)).toEqual({
       ok: false,
       failure: "unauthorized",
     });
   });
 
-  it("returns unavailable when fetch rejects", async () => {
-    const { user } = setup([new TypeError("network down")]);
-    expect(await user.listSessionCostsSince(since)).toEqual({
+  it("returns unavailable when fetch rejects on either read", async () => {
+    const down = new TypeError("network down");
+    expect(await setup([down]).user.listSessionCostsSince(since)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+    expect(await setup([ok([]), down]).user.listSessionCostsSince(since)).toEqual({
       ok: false,
       failure: "unavailable",
     });
   });
 
-  it("returns unavailable for a bad row", async () => {
-    const { user } = setup([ok([{ created_at: "2026-11-02T10:00:00+00:00" }])]);
-    expect(await user.listSessionCostsSince(since)).toEqual({
+  it("returns unavailable for a bad row in either read", async () => {
+    const bad = ok([{ created_at: "2026-11-02T10:00:00+00:00" }]);
+    expect(await setup([bad]).user.listSessionCostsSince(since)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+    expect(await setup([ok([]), bad]).user.listSessionCostsSince(since)).toEqual({
       ok: false,
       failure: "unavailable",
     });

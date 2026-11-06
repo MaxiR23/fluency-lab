@@ -3,8 +3,8 @@
 // Tests for the Home hook.
 //
 // Tested:
-// - The profile, the active session and the week read from the data port
-// - The expected empty (no active session) and each failure
+// - The profile, the open sessions and the week read from the data port
+// - The expected empty (no open session) and each failure
 // - A read again on retry and on regaining focus, and a read that ends after unmount
 //
 // What is covered:
@@ -40,30 +40,46 @@ describe("useHome", () => {
     jest.mocked(useIsFocused).mockReturnValue(true);
   });
 
-  it("is ready with the profile and the active session read from the data port", async () => {
+  it("is ready with the profile and the open sessions read from the data port", async () => {
     const active = activeSessionWith({});
-    fakeData.getActiveSession.mockResolvedValue({ ok: true, value: active });
+    fakeData.listOpenSessions.mockResolvedValue({ ok: true, value: [active] });
     const { result } = await renderHook(() => useHome());
     await waitFor(() =>
       expect(result.current.state).toEqual({
         kind: "ready",
         profile: completedProfile(),
         activeSession: active,
+        openCount: 1,
         week: weekWith([]),
         loadedAt: expect.any(Number),
       }),
     );
   });
 
-  it("is ready with no active session when the port returns null", async () => {
+  it("is ready with no Continue when the port returns no open session", async () => {
     const { result } = await renderHook(() => useHome());
     await waitFor(() =>
       expect(result.current.state).toEqual({
         kind: "ready",
         profile: completedProfile(),
         activeSession: null,
+        openCount: 0,
         week: weekWith([]),
         loadedAt: expect.any(Number),
+      }),
+    );
+  });
+
+  it("counts every open session and keeps the newest as Continue", async () => {
+    const newest = activeSessionWith({ id: "session-2" });
+    const others = [activeSessionWith({ id: "session-1" }), activeSessionWith({ id: "session-0" })];
+    fakeData.listOpenSessions.mockResolvedValue({ ok: true, value: [newest, ...others] });
+    const { result } = await renderHook(() => useHome());
+    await waitFor(() =>
+      expect(result.current.state).toMatchObject({
+        kind: "ready",
+        activeSession: newest,
+        openCount: 3,
       }),
     );
   });
@@ -76,8 +92,8 @@ describe("useHome", () => {
     );
   });
 
-  it("fails with network when the active session read cannot reach the server", async () => {
-    fakeData.getActiveSession.mockResolvedValue({ ok: false, failure: "network" });
+  it("fails with network when the open sessions read cannot reach the server", async () => {
+    fakeData.listOpenSessions.mockResolvedValue({ ok: false, failure: "network" });
     const { result } = await renderHook(() => useHome());
     await waitFor(() =>
       expect(result.current.state).toEqual({ kind: "failed", failure: "network" }),
@@ -100,7 +116,7 @@ describe("useHome", () => {
   });
 
   it("fails with bad_response on a malformed body", async () => {
-    fakeData.getActiveSession.mockResolvedValue({ ok: false, failure: "bad_response" });
+    fakeData.listOpenSessions.mockResolvedValue({ ok: false, failure: "bad_response" });
     const { result } = await renderHook(() => useHome());
     await waitFor(() =>
       expect(result.current.state).toEqual({ kind: "failed", failure: "bad_response" }),
@@ -138,7 +154,7 @@ describe("useHome", () => {
     await waitFor(() => expect(result.current.state.kind).toBe("ready"));
     const first = result.current.state.kind === "ready" ? result.current.state.loadedAt : 0;
     const active = activeSessionWith({});
-    fakeData.getActiveSession.mockResolvedValue({ ok: true, value: active });
+    fakeData.listOpenSessions.mockResolvedValue({ ok: true, value: [active] });
     jest.mocked(useIsFocused).mockReturnValue(false);
     await rerender({});
     jest.mocked(useIsFocused).mockReturnValue(true);
@@ -149,6 +165,7 @@ describe("useHome", () => {
         kind: "ready",
         profile: completedProfile(),
         activeSession: active,
+        openCount: 1,
         week: weekWith([]),
         loadedAt: first + 1000,
       }),

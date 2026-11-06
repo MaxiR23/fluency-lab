@@ -7,6 +7,7 @@ import {
   TOPIC_IDS,
   messageCorrectionsSchema,
   newWordsSchema,
+  type ActiveSession,
   type Message,
   type Profile,
   type ProfileUpdate,
@@ -87,6 +88,19 @@ export function toSession(row: unknown): Session | null {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+}
+
+const openSessionRowSchema = z.object({ messages: z.array(z.unknown()).max(1) });
+
+// INFO: a session row with its newest message embedded (at most one).
+export function toOpenSession(row: unknown): ActiveSession | null {
+  const parsed = openSessionRowSchema.safeParse(row);
+  const session = toSession(row);
+  if (!parsed.success || session === null) return null;
+  const [first] = parsed.data.messages;
+  if (first === undefined) return { session, lastMessage: null };
+  const lastMessage = toMessage(first);
+  return lastMessage === null ? null : { session, lastMessage };
 }
 
 export function toSessionStart(row: unknown): string | null {

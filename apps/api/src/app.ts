@@ -87,6 +87,14 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
       }
       return c.json({ activeSession: outcome.value }, 200);
     })
+    .get("/sessions/open", auth, caller, async (c) => {
+      const outcome = await config.store.forUser(c.get("caller")).listOpenSessions();
+      if (!outcome.ok) {
+        const { status, body } = failureResponse(outcome.failure);
+        return c.json(body, status);
+      }
+      return c.json({ sessions: outcome.value }, 200);
+    })
     .get(
       "/sessions/week",
       auth,
@@ -219,6 +227,23 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
         const outcome = await config.store
           .forUser(c.get("caller"))
           .endSession(c.req.valid("param").id);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
+      },
+    )
+    .delete(
+      "/sessions/:id",
+      auth,
+      caller,
+      zValidator("param", sessionIdParamSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .deleteSession(c.req.valid("param").id);
         if (!outcome.ok) {
           const { status, body } = failureResponse(outcome.failure);
           return c.json(body, status);

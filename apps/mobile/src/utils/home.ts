@@ -38,3 +38,7 @@ export function continueCard(
     icon: sessionIcon(active.session.topicId),
   };
 }
+
+export function seeAllLabel(openCount: number): string | null {
+  return openCount <= 1 ? null : `See all (${openCount})`;
+}

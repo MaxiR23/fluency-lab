@@ -8,6 +8,7 @@
 // - Each call: success, expected empty, 400/401/404, network failure, bad body
 // - The chat calls: createSession with a starter, openSession, addMessage, addUsage,
 //   endSession and getMonthSpend
+// - listOpenSessions and deleteSession
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -266,6 +267,73 @@ describe("getActiveSession", () => {
   it("returns bad_response for the wrong shape", async () => {
     const { data } = setup(reply({ activeSession: { session: {} } }));
     expect(await data.getActiveSession()).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("listOpenSessions", () => {
+  it("gets /sessions/open and returns the open sessions", async () => {
+    const body = { sessions: [{ session, lastMessage: message }] };
+    const { data, seen } = setup(reply(body));
+
+    expect(await data.listOpenSessions()).toEqual({ ok: true, value: body.sessions });
+    expect(seen[0].method).toBe("GET");
+    expect(seen[0].url).toBe("http://api.test/sessions/open");
+  });
+
+  it("returns an empty list as a success", async () => {
+    const { data } = setup(reply({ sessions: [] }));
+    expect(await data.listOpenSessions()).toEqual({ ok: true, value: [] });
+  });
+
+  it("returns unauthorized on 401", async () => {
+    const { data } = setup(reply({ error: "unauthorized" }, 401));
+    expect(await data.listOpenSessions()).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("Network request failed"));
+    expect(await data.listOpenSessions()).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ sessions: [{ session: {} }] }));
+    expect(await data.listOpenSessions()).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("deleteSession", () => {
+  it("sends DELETE to /sessions/:id and returns the deleted session", async () => {
+    const { data, seen } = setup(reply(session));
+
+    expect(await data.deleteSession(id)).toEqual({ ok: true, value: session });
+    expect(seen[0].method).toBe("DELETE");
+    expect(seen[0].url).toBe(`http://api.test/sessions/${id}`);
+  });
+
+  it("returns not_found on 404 and unauthorized on 401", async () => {
+    expect(await setup(reply({ error: "not_found" }, 404)).data.deleteSession(id)).toEqual({
+      ok: false,
+      failure: "not_found",
+    });
+    expect(await setup(reply({ error: "unauthorized" }, 401)).data.deleteSession(id)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns invalid_input on 400", async () => {
+    const { data } = setup(reply({ error: "invalid_input" }, 400));
+    expect(await data.deleteSession("abc")).toEqual({ ok: false, failure: "invalid_input" });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("Network request failed"));
+    expect(await data.deleteSession(id)).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ id }));
+    expect(await data.deleteSession(id)).toEqual({ ok: false, failure: "bad_response" });
   });
 });
 

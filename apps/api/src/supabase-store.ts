@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Message } from "@fluency-lab/shared";
 import {
   toMessage,
+  toOpenSession,
   toProfile,
   toProfilePatch,
   toSession,
@@ -88,6 +89,22 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
         return mapRow(result, toMessage);
       }
 
+      async function readCosts(
+        table: "sessions" | "deleted_session_costs",
+        since: string,
+      ): Promise<StoreOutcome<{ createdAt: string; costUsd: number }[]>> {
+        const result = await client
+          .from(table)
+          .select("created_at, cost_usd")
+          .gte("created_at", since)
+          .order("created_at", { ascending: true });
+        const failed = failureOf(result);
+        if (failed !== null) return failed;
+        if (!Array.isArray(result.data)) return unavailable;
+        const costs = result.data.map(toSessionCost);
+        return costs.every((cost) => cost !== null) ? { ok: true, value: costs } : unavailable;
+      }
+
       return {
         async getProfile() {
           const result = await client
@@ -127,6 +144,31 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           const last = await lastMessage(session.value.id);
           if (!last.ok) return last;
           return { ok: true, value: { session: session.value, lastMessage: last.value } };
+        },
+
+        async listOpenSessions() {
+          const result = await client
+            .from("sessions")
+            .select("*, messages(*)")
+            .eq("status", "active")
+            .order("updated_at", { ascending: false })
+            .order("created_at", { referencedTable: "messages", ascending: false })
+            .limit(1, { referencedTable: "messages" });
+          const failed = failureOf(result);
+          if (failed !== null) return failed;
+          if (!Array.isArray(result.data)) return unavailable;
+          const open = result.data.map(toOpenSession);
+          return open.every((item) => item !== null) ? { ok: true, value: open } : unavailable;
+        },
+
+        async deleteSession(sessionId) {
+          const result = await client
+            .from("sessions")
+            .delete()
+            .eq("id", sessionId)
+            .select("*")
+            .maybeSingle();
+          return mapRow(result, toSession);
         },
 
         async createSession(input) {
@@ -221,16 +263,13 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
         },
 
         async listSessionCostsSince(since) {
-          const result = await client
-            .from("sessions")
-            .select("created_at, cost_usd")
-            .gte("created_at", since)
-            .order("created_at", { ascending: true });
-          const failed = failureOf(result);
-          if (failed !== null) return failed;
-          if (!Array.isArray(result.data)) return unavailable;
-          const costs = result.data.map(toSessionCost);
-          return costs.every((cost) => cost !== null) ? { ok: true, value: costs } : unavailable;
+          // INFO: a deleted session keeps its cost in deleted_session_costs
+          // (a trigger copies it), so deleting a chat never lowers the spend.
+          const sessions = await readCosts("sessions", since);
+          if (!sessions.ok) return sessions;
+          const deleted = await readCosts("deleted_session_costs", since);
+          if (!deleted.ok) return deleted;
+          return { ok: true, value: [...sessions.value, ...deleted.value] };
         },
       };
     },

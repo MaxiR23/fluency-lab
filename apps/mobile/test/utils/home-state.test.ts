@@ -3,7 +3,7 @@
 // Tests for the Home state.
 //
 // Tested:
-// - homeFromReads (profile, active session and week) and homeReducer
+// - homeFromReads (profile, open sessions and week) and homeReducer
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -18,46 +18,54 @@ import { homeFromReads, homeReducer, initialHome } from "@/utils/home-state";
 import { activeSessionWith, completedProfile, weekWith } from "../helpers/fake-data";
 
 const profile = completedProfile();
-const active = activeSessionWith({});
+const newest = activeSessionWith({ id: "session-2" });
+const older = activeSessionWith({ id: "session-1" });
 const week = weekWith(["2026-11-02"]);
 const loadedAt = Date.parse("2026-11-05T12:00:00Z");
 
 describe("homeFromReads", () => {
-  it("is ready with the profile, the active session and the week", () => {
+  it("is ready with the newest open session as Continue and the count", () => {
     expect(
       homeFromReads(
         { ok: true, value: profile },
-        { ok: true, value: active },
+        { ok: true, value: [newest, older] },
         { ok: true, value: week },
         loadedAt,
       ),
-    ).toEqual({ kind: "ready", profile, activeSession: active, week, loadedAt });
+    ).toEqual({ kind: "ready", profile, activeSession: newest, openCount: 2, week, loadedAt });
   });
 
-  it("is ready with no active session and an empty week", () => {
+  it("is ready with no Continue and a count of 0 for no open sessions", () => {
     const empty = weekWith([]);
     expect(
       homeFromReads(
         { ok: true, value: profile },
-        { ok: true, value: null },
+        { ok: true, value: [] },
         { ok: true, value: empty },
         loadedAt,
       ),
-    ).toEqual({ kind: "ready", profile, activeSession: null, week: empty, loadedAt });
+    ).toEqual({
+      kind: "ready",
+      profile,
+      activeSession: null,
+      openCount: 0,
+      week: empty,
+      loadedAt,
+    });
   });
 
   it("fails with the profile failure", () => {
     expect(
       homeFromReads(
         { ok: false, failure: "unauthorized" },
-        { ok: true, value: null },
+        { ok: true, value: [] },
         { ok: true, value: week },
         loadedAt,
       ),
     ).toEqual({ kind: "failed", failure: "unauthorized" });
   });
 
-  it("fails with the active session failure when the profile read succeeds", () => {
+  it("fails with the open sessions failure when the profile read succeeds", () => {
     expect(
       homeFromReads(
         { ok: true, value: profile },
@@ -72,7 +80,7 @@ describe("homeFromReads", () => {
     expect(
       homeFromReads(
         { ok: true, value: profile },
-        { ok: true, value: null },
+        { ok: true, value: [] },
         { ok: false, failure: "invalid_input" },
         loadedAt,
       ),
@@ -90,7 +98,7 @@ describe("homeFromReads", () => {
     ).toEqual({ kind: "failed", failure: "network" });
   });
 
-  it("keeps the active session failure before the week failure", () => {
+  it("keeps the open sessions failure before the week failure", () => {
     expect(
       homeFromReads(
         { ok: true, value: profile },
@@ -114,10 +122,10 @@ describe("homeReducer", () => {
       homeReducer(initialHome, {
         type: "loaded",
         profile: { ok: true, value: profile },
-        active: { ok: true, value: null },
+        open: { ok: true, value: [] },
         week: { ok: true, value: week },
         loadedAt,
       }),
-    ).toEqual({ kind: "ready", profile, activeSession: null, week, loadedAt });
+    ).toEqual({ kind: "ready", profile, activeSession: null, openCount: 0, week, loadedAt });
   });
 });

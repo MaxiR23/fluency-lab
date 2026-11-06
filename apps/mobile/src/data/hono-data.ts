@@ -4,6 +4,7 @@ import {
   activeSessionResponseSchema,
   messageSchema,
   monthSpendSchema,
+  openSessionsResponseSchema,
   profileSchema,
   sessionMessagesResponseSchema,
   sessionSchema,
@@ -81,6 +82,15 @@ export function createHonoData(config: HonoDataConfig): DataPort {
       );
       return outcome.ok ? { ok: true, value: outcome.value.activeSession } : outcome;
     },
+    async listOpenSessions() {
+      const outcome = await call(
+        (client) => client.sessions.open.$get(),
+        openSessionsResponseSchema,
+      );
+      return outcome.ok ? { ok: true, value: outcome.value.sessions } : outcome;
+    },
+    deleteSession: (sessionId) =>
+      call((client) => client.sessions[":id"].$delete({ param: { id: sessionId } }), sessionSchema),
     createSession: (input) =>
       call((client) => client.sessions.$post({ json: input }), sessionSchema),
     getSessionWeek: (timeZone) =>

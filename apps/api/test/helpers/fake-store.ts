@@ -10,6 +10,8 @@ export function createFakeStore() {
     getProfile: vi.fn<UserStore["getProfile"]>(),
     updateProfile: vi.fn<UserStore["updateProfile"]>(),
     getActiveSession: vi.fn<UserStore["getActiveSession"]>(),
+    listOpenSessions: vi.fn<UserStore["listOpenSessions"]>(),
+    deleteSession: vi.fn<UserStore["deleteSession"]>(),
     createSession: vi.fn<UserStore["createSession"]>(),
     getSessionWithMessages: vi.fn<UserStore["getSessionWithMessages"]>(),
     addMessage: vi.fn<UserStore["addMessage"]>(),
