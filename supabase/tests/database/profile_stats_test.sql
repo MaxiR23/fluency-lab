@@ -6,8 +6,9 @@
 -- - a user with no sessions gets 0 sessions, no days and 0 new words
 -- - the days are the caller's distinct session days in the given time zone, newest first
 -- - the session count is the caller's sessions only
--- - new words are counted once across messages, ignoring case and spaces
--- - another user's sessions and new words are not counted
+-- - new words are counted once across messages and correction threads, ignoring case and spaces;
+--   blank, null and non-array thread words are skipped
+-- - another user's sessions, new words and thread words are not counted
 -- - anon cannot execute the function
 --
 -- What is covered:
@@ -16,6 +17,7 @@
 -- Run with: pnpm supabase test db
 --
 -- SEE: supabase/migrations/20261106090000_profile_stats.sql
+-- SEE: supabase/migrations/20261106130000_thread_word_totals.sql
 
 begin;
 create extension if not exists pgtap with schema extensions;
@@ -49,6 +51,12 @@ insert into public.messages (session_id, role, text, new_words) values
   ((select id from t_ids where k = 'sa3'), 'tutor', 'four', '"not an array"'),
   ((select id from t_ids where k = 'sa3'), 'tutor', 'five', '["  "]'),
   ((select id from t_ids where k = 'sb1'), 'tutor', 'six', '["zebra", "quokka", "eager"]');
+insert into public.thread_messages (message_id, role, text, new_words) values
+  ((select id from public.messages where text = 'three'), 'user', 'Is gregarious right?', '["Gregarious", " EAGER "]'),
+  ((select id from public.messages where text = 'four'), 'tutor', 'odd', '"not an array"'),
+  ((select id from public.messages where text = 'five'), 'tutor', 'blank', '["  "]'),
+  ((select id from public.messages where text = 'three'), 'tutor', 'none', null),
+  ((select id from public.messages where text = 'six'), 'user', 'What is a platypus?', '["platypus", "zebra"]');
 
 set local role authenticated;
 
@@ -72,15 +80,15 @@ select results_eq(
 );
 select results_eq(
   $$select new_words from public.profile_stats('UTC')$$,
-  array[2::bigint],
-  'new words are counted once across messages, ignoring case and spaces'
+  array[3::bigint],
+  'new words are counted once across messages and threads, ignoring case and spaces'
 );
 
 select set_config('request.jwt.claim.sub', (select id::text from t_ids where k = 'e0b'), true);
 select results_eq(
   $$select session_count, new_words from public.profile_stats('UTC')$$,
-  $$values (1::bigint, 3::bigint)$$,
-  'another user sessions and new words are not counted'
+  $$values (1::bigint, 4::bigint)$$,
+  'another user sessions, new words and thread words are not counted'
 );
 
 reset role;
