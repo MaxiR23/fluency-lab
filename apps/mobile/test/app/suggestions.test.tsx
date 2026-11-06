@@ -107,6 +107,6 @@ describe("Suggestions", () => {
     const [first] = allSuggestions(beginner);
     await fireEvent.press(screen.getByRole("button", { name: first?.title ?? "" }));
     expect(screen).toHavePathname("/chat");
-    expect(screen).toHaveSearchParams({ topic: first?.title ?? "" });
+    expect(screen).toHaveSearchParams({ starter: first?.id ?? "" });
   });
 });

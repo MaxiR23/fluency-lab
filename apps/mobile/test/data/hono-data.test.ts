@@ -6,6 +6,8 @@
 // - Every call sends the token as a Bearer header to the API url
 // - A failed token read is returned without calling the API
 // - Each call: success, expected empty, 400/401/404, network failure, bad body
+// - The chat calls: createSession with a starter, openSession, addMessage, addUsage,
+//   endSession and getMonthSpend
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -15,6 +17,8 @@
 // SEE: apps/mobile/src/data/hono-data.ts
 
 import { describe, expect, it, jest } from "@jest/globals";
+
+import type { MessageCreate } from "@fluency-lab/shared";
 
 import { createHonoData } from "@/data/hono-data";
 import type { TokenRead } from "@/utils/data-token";
@@ -307,37 +311,255 @@ describe("createSession", () => {
   });
 });
 
-describe("listMessages", () => {
-  it("returns the messages of the session", async () => {
-    const { data, seen } = setup(reply({ messages: [message] }));
+describe("createSession with a starter", () => {
+  it("posts the starter id", async () => {
+    const { data, seen } = setup(reply(session, 201));
 
-    expect(await data.listMessages(id)).toEqual({ ok: true, value: [message] });
+    const outcome = await data.createSession({ starterId: "tech-app" });
+
+    expect(outcome).toEqual({ ok: true, value: session });
+    expect(JSON.parse(seen[0].body ?? "null")).toEqual({ starterId: "tech-app" });
+  });
+});
+
+describe("openSession", () => {
+  it("returns the session and its messages", async () => {
+    const { data, seen } = setup(reply({ session, messages: [message] }));
+
+    expect(await data.openSession(id)).toEqual({
+      ok: true,
+      value: { session, messages: [message] },
+    });
+    expect(seen[0].method).toBe("GET");
     expect(seen[0].url).toBe(`http://api.test/sessions/${id}/messages`);
   });
 
-  it("returns an empty list as a success", async () => {
-    const { data } = setup(reply({ messages: [] }));
-    expect(await data.listMessages(id)).toEqual({ ok: true, value: [] });
+  it("returns a session with no messages as a success", async () => {
+    const { data } = setup(reply({ session, messages: [] }));
+    expect(await data.openSession(id)).toEqual({ ok: true, value: { session, messages: [] } });
+  });
+
+  it("returns saved corrections and new words", async () => {
+    const saved = {
+      ...message,
+      corrections: { items: [{ original: "a", corrected: "b" }], explanation: "Because." },
+      newWords: ["word"],
+    };
+    const { data } = setup(reply({ session, messages: [saved] }));
+    expect(await data.openSession(id)).toEqual({
+      ok: true,
+      value: { session, messages: [saved] },
+    });
   });
 
   it("returns not_found on 404", async () => {
     const { data } = setup(reply({ error: "not_found" }, 404));
-    expect(await data.listMessages(id)).toEqual({ ok: false, failure: "not_found" });
+    expect(await data.openSession(id)).toEqual({ ok: false, failure: "not_found" });
   });
 
   it("returns unauthorized on 401", async () => {
     const { data } = setup(reply({ error: "unauthorized" }, 401));
-    expect(await data.listMessages(id)).toEqual({ ok: false, failure: "unauthorized" });
+    expect(await data.openSession(id)).toEqual({ ok: false, failure: "unauthorized" });
   });
 
   it("returns network when fetch rejects", async () => {
     const { data } = setup(new TypeError("Network request failed"));
-    expect(await data.listMessages(id)).toEqual({ ok: false, failure: "network" });
+    expect(await data.openSession(id)).toEqual({ ok: false, failure: "network" });
   });
 
   it("returns bad_response for the wrong shape", async () => {
-    const { data } = setup(reply({ messages: "none" }));
-    expect(await data.listMessages(id)).toEqual({ ok: false, failure: "bad_response" });
+    const { data } = setup(reply({ messages: [] }));
+    expect(await data.openSession(id)).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("addMessage", () => {
+  const input = { role: "tutor", text: "Hello" } as const;
+
+  it("posts the message and returns the saved one", async () => {
+    const { data, seen } = setup(reply(message, 201));
+
+    expect(await data.addMessage(id, input)).toEqual({ ok: true, value: message });
+    expect(seen[0].method).toBe("POST");
+    expect(seen[0].url).toBe(`http://api.test/sessions/${id}/messages`);
+    expect(JSON.parse(seen[0].body ?? "null")).toEqual(input);
+  });
+
+  it("posts corrections and new words", async () => {
+    const { data, seen } = setup(reply(message, 201));
+    const full: MessageCreate = {
+      role: "user",
+      text: "I never been",
+      corrections: { items: [{ original: "a", corrected: "b" }], explanation: null },
+      newWords: ["word"],
+    };
+
+    await data.addMessage(id, full);
+
+    expect(JSON.parse(seen[0].body ?? "null")).toEqual(full);
+  });
+
+  it("returns invalid_input on 400", async () => {
+    const { data } = setup(reply({ error: "invalid_input" }, 400));
+    expect(await data.addMessage(id, input)).toEqual({ ok: false, failure: "invalid_input" });
+  });
+
+  it("returns unauthorized on 401 and not_found on 404", async () => {
+    expect(await setup(reply({ error: "unauthorized" }, 401)).data.addMessage(id, input)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+    expect(await setup(reply({ error: "not_found" }, 404)).data.addMessage(id, input)).toEqual({
+      ok: false,
+      failure: "not_found",
+    });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("Network request failed"));
+    expect(await data.addMessage(id, input)).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ id }, 201));
+    expect(await data.addMessage(id, input)).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("addUsage", () => {
+  const usage = {
+    model: "claude-haiku-5-5",
+    inputTokens: 700,
+    outputTokens: 150,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+  } as const;
+
+  it("posts the usage and returns the session", async () => {
+    const { data, seen } = setup(reply({ ...session, costUsd: 0.000145 }));
+
+    expect(await data.addUsage(id, usage)).toEqual({
+      ok: true,
+      value: { ...session, costUsd: 0.000145 },
+    });
+    expect(seen[0].method).toBe("POST");
+    expect(seen[0].url).toBe(`http://api.test/sessions/${id}/usage`);
+    expect(JSON.parse(seen[0].body ?? "null")).toEqual(usage);
+  });
+
+  it("posts a zero usage", async () => {
+    const { data, seen } = setup(reply(session));
+    const zero = { ...usage, inputTokens: 0, outputTokens: 0 };
+
+    expect(await data.addUsage(id, zero)).toEqual({ ok: true, value: session });
+    expect(JSON.parse(seen[0].body ?? "null")).toEqual(zero);
+  });
+
+  it("returns invalid_input on 400, unauthorized on 401 and not_found on 404", async () => {
+    expect(await setup(reply({ error: "invalid_input" }, 400)).data.addUsage(id, usage)).toEqual({
+      ok: false,
+      failure: "invalid_input",
+    });
+    expect(await setup(reply({ error: "unauthorized" }, 401)).data.addUsage(id, usage)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+    expect(await setup(reply({ error: "not_found" }, 404)).data.addUsage(id, usage)).toEqual({
+      ok: false,
+      failure: "not_found",
+    });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("Network request failed"));
+    expect(await data.addUsage(id, usage)).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ id }));
+    expect(await data.addUsage(id, usage)).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("endSession", () => {
+  it("posts to end and returns the ended session", async () => {
+    const { data, seen } = setup(reply({ ...session, status: "ended" }));
+
+    expect(await data.endSession(id)).toEqual({ ok: true, value: { ...session, status: "ended" } });
+    expect(seen[0].method).toBe("POST");
+    expect(seen[0].url).toBe(`http://api.test/sessions/${id}/end`);
+  });
+
+  it("answers an already ended session as a success", async () => {
+    const { data } = setup(reply({ ...session, status: "ended" }));
+    expect(await data.endSession(id)).toMatchObject({ ok: true, value: { status: "ended" } });
+  });
+
+  it("returns unauthorized on 401 and not_found on 404", async () => {
+    expect(await setup(reply({ error: "unauthorized" }, 401)).data.endSession(id)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+    expect(await setup(reply({ error: "not_found" }, 404)).data.endSession(id)).toEqual({
+      ok: false,
+      failure: "not_found",
+    });
+  });
+
+  it("returns invalid_input on 400", async () => {
+    const { data } = setup(reply({ error: "invalid_input" }, 400));
+    expect(await data.endSession("abc")).toEqual({ ok: false, failure: "invalid_input" });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("Network request failed"));
+    expect(await data.endSession(id)).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ id }));
+    expect(await data.endSession(id)).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("getMonthSpend", () => {
+  it("sends the time zone and returns the month spend", async () => {
+    const { data, seen } = setup(reply({ monthStart: "2026-11-01", spentUsd: 1.5 }));
+
+    expect(await data.getMonthSpend("UTC")).toEqual({
+      ok: true,
+      value: { monthStart: "2026-11-01", spentUsd: 1.5 },
+    });
+    expect(seen[0].url).toBe("http://api.test/sessions/spend?tz=UTC");
+  });
+
+  it("returns 0 when nothing was spent", async () => {
+    const { data } = setup(reply({ monthStart: "2026-11-01", spentUsd: 0 }));
+    expect(await data.getMonthSpend("UTC")).toEqual({
+      ok: true,
+      value: { monthStart: "2026-11-01", spentUsd: 0 },
+    });
+  });
+
+  it("returns invalid_input on 400 and unauthorized on 401", async () => {
+    expect(await setup(reply({ error: "invalid_input" }, 400)).data.getMonthSpend("x")).toEqual({
+      ok: false,
+      failure: "invalid_input",
+    });
+    expect(await setup(reply({ error: "unauthorized" }, 401)).data.getMonthSpend("UTC")).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("Network request failed"));
+    expect(await data.getMonthSpend("UTC")).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ spentUsd: "none" }));
+    expect(await data.getMonthSpend("UTC")).toEqual({ ok: false, failure: "bad_response" });
   });
 });
 

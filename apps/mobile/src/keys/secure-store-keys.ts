@@ -49,5 +49,18 @@ export function createSecureStoreKeys<A>(deps: {
         };
       }
     },
+    async readApiKey() {
+      try {
+        const stored = await deps.getItemAsync(API_KEY_ITEM);
+        return { ok: true, value: stored === null || stored === "" ? null : stored };
+      } catch (thrown) {
+        // INFO: detail is forced to null for the same reason as in saveApiKey.
+        return {
+          ok: false,
+          failure: "not_read",
+          cause: { ...describeAuthCause(thrown), detail: null },
+        };
+      }
+    },
   };
 }

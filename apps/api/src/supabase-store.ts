@@ -1,6 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Message } from "@fluency-lab/shared";
-import { toMessage, toProfile, toProfilePatch, toSession, toSessionStart } from "./rows";
+import {
+  toMessage,
+  toProfile,
+  toProfilePatch,
+  toSession,
+  toSessionCost,
+  toSessionStart,
+} from "./rows";
 import type { Caller, Store, StoreOutcome, UserStore } from "./store";
 
 export type StoreConfig = {
@@ -148,7 +155,30 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
             : unavailable;
         },
 
-        async listMessages(sessionId) {
+        async getSessionWithMessages(sessionId) {
+          const visible = await client
+            .from("sessions")
+            .select("*")
+            .eq("id", sessionId)
+            .maybeSingle();
+          const session = mapRow(visible, toSession);
+          if (!session.ok) return session;
+          if (session.value === null) return { ok: true, value: null };
+          const result = await client
+            .from("messages")
+            .select("*")
+            .eq("session_id", sessionId)
+            .order("created_at", { ascending: true });
+          const failed = failureOf(result);
+          if (failed !== null) return failed;
+          if (!Array.isArray(result.data)) return unavailable;
+          const messages = result.data.map(toMessage);
+          return messages.every((m) => m !== null)
+            ? { ok: true, value: { session: session.value, messages } }
+            : unavailable;
+        },
+
+        async addMessage(sessionId, input) {
           const visible = await client
             .from("sessions")
             .select("id")
@@ -159,14 +189,48 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           if (visible.data === null) return { ok: true, value: null };
           const result = await client
             .from("messages")
+            .insert({
+              session_id: sessionId,
+              role: input.role,
+              text: input.text,
+              corrections: input.corrections ?? null,
+              new_words: input.newWords ?? null,
+            })
             .select("*")
-            .eq("session_id", sessionId)
+            .single();
+          const mapped = mapRow(result, toMessage);
+          if (!mapped.ok) return mapped;
+          return mapped.value === null ? unavailable : { ok: true, value: mapped.value };
+        },
+
+        async addSessionCost(sessionId, amountUsd) {
+          const result = await client
+            .rpc("add_session_cost", { session_id: sessionId, amount_usd: amountUsd })
+            .maybeSingle();
+          return mapRow(result, toSession);
+        },
+
+        async endSession(sessionId) {
+          const result = await client
+            .from("sessions")
+            .update({ status: "ended" })
+            .eq("id", sessionId)
+            .select("*")
+            .maybeSingle();
+          return mapRow(result, toSession);
+        },
+
+        async listSessionCostsSince(since) {
+          const result = await client
+            .from("sessions")
+            .select("created_at, cost_usd")
+            .gte("created_at", since)
             .order("created_at", { ascending: true });
           const failed = failureOf(result);
           if (failed !== null) return failed;
           if (!Array.isArray(result.data)) return unavailable;
-          const messages = result.data.map(toMessage);
-          return messages.every((m) => m !== null) ? { ok: true, value: messages } : unavailable;
+          const costs = result.data.map(toSessionCost);
+          return costs.every((cost) => cost !== null) ? { ok: true, value: costs } : unavailable;
         },
       };
     },

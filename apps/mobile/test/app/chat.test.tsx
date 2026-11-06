@@ -3,8 +3,13 @@
 // Tests for the Chat screen.
 //
 // Tested:
-// - Loading, no key, ready (empty conversation) and the key and profile read errors
-// - The header: topic title or Free chat, the provider line and Back
+// - Loading, no key, ready (the opener or greeting) and the key, profile and spend read errors
+// - The header: the starter's title or Free chat, the provider line, Back and End
+// - A message gets a tutor reply with corrections and new words, with the typing indicator
+// - A saved session from Continue draws its messages and corrections
+// - Each AI failure draws its message and action; the cause line shows in development only
+// - The 80% warning, the 100% block and the provider OpenAI notice
+// - End saves and goes Home, where Continue no longer shows the session
 // - The no key state: card, locked input and Send, Add API key opens the key step
 // - The ready state: Send follows the draft, the composer sits in a KeyboardAvoidingView
 // - The state updates when the key step goes back to Chat
@@ -17,15 +22,18 @@
 //
 // SEE: apps/mobile/src/app/chat.tsx
 
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { STARTERS, type Message, type Session } from "@fluency-lab/shared";
 import { act, fireEvent, screen, within } from "@testing-library/react-native";
 
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
+import { fakeAi, resetFakeAi, tutorReplyWith } from "../helpers/fake-ai";
 import { completedProfile, fakeData, profileWith, resetFakeData } from "../helpers/fake-data";
 import { fakeKeys, resetFakeKeys } from "../helpers/fake-keys";
 import { renderApp, renderAppAt } from "../helpers/render-app";
 import { generatedSecret } from "../helpers/generated-secret";
+import { setDev } from "../helpers/set-dev";
 
 jest.mock("expo-font", () => ({ useFonts: jest.fn(() => [true, null]) }));
 jest.mock("expo-splash-screen", () => ({
@@ -34,6 +42,9 @@ jest.mock("expo-splash-screen", () => ({
 }));
 jest.mock("@/data", () => ({
   data: jest.requireActual<typeof import("../helpers/fake-data")>("../helpers/fake-data").fakeData,
+}));
+jest.mock("@/ai", () => ({
+  ai: jest.requireActual<typeof import("../helpers/fake-ai")>("../helpers/fake-ai").fakeAi,
 }));
 jest.mock("@/keys", () => ({
   keys: jest.requireActual<typeof import("../helpers/fake-keys")>("../helpers/fake-keys").fakeKeys,
@@ -64,20 +75,80 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+const savedDev = __DEV__;
+const starter = STARTERS[0];
+
+const session: Session = {
+  id: "session-1",
+  topicId: "travel",
+  title: "Travel plans",
+  status: "active",
+  summary: null,
+  costUsd: 0,
+  createdAt: "2026-11-05T09:00:00Z",
+  updatedAt: "2026-11-05T09:30:00Z",
+};
+
+function saved(role: Message["role"], text: string, extra: Partial<Message> = {}): Message {
+  return {
+    id: `m-${text}`,
+    sessionId: "session-1",
+    role,
+    text,
+    corrections: null,
+    newWords: null,
+    createdAt: "2026-11-05T09:00:00Z",
+    ...extra,
+  };
+}
+
+// INFO: the design's sample reply: two corrections, one explanation and a new word.
+const designReply = tutorReplyWith({
+  reply: "Japan is wonderful! What would you like to see there?",
+  corrections: [
+    { original: "the next year", corrected: "next year" },
+    { original: "I never been", corrected: "I've never been" },
+  ],
+  explanation: "No article before next year; use the present perfect.",
+  newWords: ["definitely"],
+});
+
 describe("Chat", () => {
   beforeEach(() => {
     resetFakeAuth();
     resetFakeData();
     resetFakeKeys();
+    resetFakeAi();
     keyboardAvoidingProps.length = 0;
   });
 
-  function withKey(provider: "claude" | "openai" | null = "claude") {
+  afterEach(() => {
+    setDev(savedDev);
+  });
+
+  async function sendMessage(text: string) {
+    await fireEvent.changeText(screen.getByPlaceholderText("Write in English\u2026"), text);
+    await fireEvent.press(screen.getByRole("button", { name: "Send", disabled: false }));
+  }
+
+  function withKey(
+    provider: "claude" | "openai" | null = "claude",
+    extra: Parameters<typeof profileWith>[0] = {},
+  ) {
     fakeKeys.hasApiKey.mockResolvedValue({ ok: true, value: true });
     fakeData.getProfile.mockResolvedValue({
       ok: true,
-      value: profileWith({ provider, onboardingCompletedAt: "2026-11-05T10:00:00Z" }),
+      value: profileWith({
+        provider,
+        displayName: "Ada",
+        onboardingCompletedAt: "2026-11-05T10:00:00Z",
+        ...extra,
+      }),
     });
+    fakeData.createSession.mockResolvedValue({ ok: true, value: session });
+    fakeData.addMessage.mockResolvedValue({ ok: true, value: saved("user", "x") });
+    fakeData.addUsage.mockResolvedValue({ ok: true, value: session });
+    fakeData.endSession.mockResolvedValue({ ok: true, value: { ...session, status: "ended" } });
   }
 
   it("draws the loading state while the key is read", async () => {
@@ -107,12 +178,15 @@ describe("Chat", () => {
     expect(screen).toHavePathname("/api-key");
   });
 
-  it("draws the empty conversation with the provider when a key is saved", async () => {
+  it("draws the free chat greeting with the provider when a key is saved", async () => {
     withKey("claude");
     await renderAppAt("/chat", fakeSession());
     expect(screen.getByText("Claude")).toBeTruthy();
     expect(screen.getByTestId("message-list")).toBeTruthy();
+    expect(screen.getByText("Hi Ada! What would you like to talk about today?")).toBeTruthy();
     expect(screen.queryByText("New word")).toBeNull();
+    expect(fakeAi.reply).not.toHaveBeenCalled();
+    expect(fakeData.createSession).not.toHaveBeenCalled();
     expect(screen.getByPlaceholderText("Write in English\u2026")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Send", disabled: true })).toBeTruthy();
     expect(screen.queryByText("Connect your AI to start")).toBeNull();
@@ -136,10 +210,261 @@ describe("Chat", () => {
     expect(screen.getByRole("button", { name: "Send", disabled: true })).toBeTruthy();
   });
 
-  it("draws the topic title passed by the caller", async () => {
+  it("draws the starter's title and opener", async () => {
     withKey();
-    await renderAppAt({ pathname: "/chat", params: { topic: "Travel plans" } }, fakeSession());
+    await renderAppAt({ pathname: "/chat", params: { starter: starter.id } }, fakeSession());
+    expect(screen.getByRole("header", { name: starter.title })).toBeTruthy();
+    expect(screen.getByText(starter.opener)).toBeTruthy();
+  });
+
+  it("draws the starter's title in the no-key state", async () => {
+    await renderAppAt({ pathname: "/chat", params: { starter: starter.id } }, fakeSession());
+    expect(screen.getByRole("header", { name: starter.title })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "End" })).toBeNull();
+  });
+
+  it("a message gets a tutor reply with corrections and new words", async () => {
+    withKey();
+    fakeAi.reply.mockResolvedValue({ ok: true, value: designReply });
+    await renderAppAt("/chat", fakeSession());
+
+    await sendMessage("I never been to Japan, but I want to go the next year.");
+
+    expect(screen.getByText("I never been to Japan, but I want to go the next year.")).toBeTruthy();
+    expect(screen.getByText("2 corrections")).toBeTruthy();
+    expect(screen.getByText("the next year")).toBeTruthy();
+    expect(screen.getByText("I never been")).toBeTruthy();
+    expect(screen.getByText(/next year$/)).toBeTruthy();
+    expect(screen.getByText("No article before next year; use the present perfect.")).toBeTruthy();
+    expect(screen.getByText("New word")).toBeTruthy();
+    expect(screen.getByText("definitely")).toBeTruthy();
+    expect(screen.getByText("Japan is wonderful! What would you like to see there?")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Write in English\u2026").props.value).toBe("");
+    expect(screen.queryByTestId("typing-indicator")).toBeNull();
+  });
+
+  it("shows the typing indicator while the reply is pending", async () => {
+    withKey();
+    let finish!: (value: Awaited<ReturnType<typeof fakeAi.reply>>) => void;
+    fakeAi.reply.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await renderAppAt("/chat", fakeSession());
+
+    await sendMessage("Hello");
+
+    expect(screen.getByTestId("typing-indicator")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send", disabled: true })).toBeTruthy();
+    await act(async () => finish({ ok: true, value: tutorReplyWith() }));
+    expect(screen.queryByTestId("typing-indicator")).toBeNull();
+  });
+
+  it("draws the saved messages and corrections of a session from Continue", async () => {
+    withKey();
+    fakeData.openSession.mockResolvedValue({
+      ok: true,
+      value: {
+        session,
+        messages: [
+          saved("tutor", "Where do you want to go?"),
+          saved("user", "I goed to Rome", {
+            corrections: {
+              items: [{ original: "goed", corrected: "went" }],
+              explanation: "Go is irregular.",
+            },
+            newWords: ["itinerary"],
+          }),
+        ],
+      },
+    });
+    await renderAppAt({ pathname: "/chat", params: { session: "session-1" } }, fakeSession());
+
+    expect(fakeData.openSession).toHaveBeenCalledWith("session-1");
     expect(screen.getByRole("header", { name: "Travel plans" })).toBeTruthy();
+    expect(screen.getByText("Where do you want to go?")).toBeTruthy();
+    expect(screen.getByText("I goed to Rome")).toBeTruthy();
+    expect(screen.getByText("1 correction")).toBeTruthy();
+    expect(screen.getByText("Go is irregular.")).toBeTruthy();
+    expect(screen.getByText("itinerary")).toBeTruthy();
+  });
+
+  it("draws the ended message for an ended session", async () => {
+    withKey();
+    fakeData.openSession.mockResolvedValue({
+      ok: true,
+      value: { session: { ...session, status: "ended" }, messages: [] },
+    });
+    await renderAppAt({ pathname: "/chat", params: { session: "session-1" } }, fakeSession());
+    expect(screen.getByText("This conversation has ended.")).toBeTruthy();
+  });
+
+  it("draws the invalid key message, with the cause in development, and Update key opens the key step", async () => {
+    withKey();
+    fakeAi.reply.mockResolvedValue({
+      ok: false,
+      failure: "invalid_key",
+      cause: { name: "HttpError", code: "authentication_error", detail: null },
+    });
+    await renderAppAt("/chat", fakeSession());
+
+    await sendMessage("Hello");
+
+    expect(
+      screen.getByText("Your API key was not accepted. Update it to keep chatting."),
+    ).toBeTruthy();
+    expect(screen.getByText("HttpError (authentication_error)")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Write in English\u2026").props.value).toBe("Hello");
+    await fireEvent.press(screen.getByRole("button", { name: "Update key" }));
+    expect(screen).toHavePathname("/api-key");
+  });
+
+  it("hides the cause line outside development", async () => {
+    setDev(false);
+    withKey();
+    fakeAi.reply.mockResolvedValue({
+      ok: false,
+      failure: "invalid_key",
+      cause: { name: "HttpError", code: "authentication_error", detail: null },
+    });
+    await renderAppAt("/chat", fakeSession());
+
+    await sendMessage("Hello");
+
+    expect(
+      screen.getByText("Your API key was not accepted. Update it to keep chatting."),
+    ).toBeTruthy();
+    expect(screen.queryByText("HttpError (authentication_error)")).toBeNull();
+  });
+
+  it("draws the rate limit message and Try again sends the same text again", async () => {
+    withKey();
+    fakeAi.reply.mockResolvedValueOnce({ ok: false, failure: "rate_limited" });
+    await renderAppAt("/chat", fakeSession());
+
+    await sendMessage("Hello");
+    expect(
+      screen.getByText(
+        "Too many messages for your API key right now. Wait a moment and try again.",
+      ),
+    ).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+
+    expect(fakeAi.reply).toHaveBeenCalledTimes(2);
+    expect(fakeAi.reply.mock.calls[1][0].turns.at(-1)).toEqual({ role: "user", text: "Hello" });
+    expect(screen.queryByText(/Too many messages/)).toBeNull();
+    expect(screen.getByText("Nice! Where did you go?")).toBeTruthy();
+  });
+
+  it.each([
+    ["overloaded", "The AI is busy right now. Try again in a moment."],
+    ["network", "Could not reach the AI. Check your connection and try again."],
+  ] as const)("draws the %s message with Try again", async (failure, message) => {
+    withKey();
+    fakeAi.reply.mockResolvedValue({ ok: false, failure });
+    await renderAppAt("/chat", fakeSession());
+
+    await sendMessage("Hello");
+
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  it("draws a save failure and Try again resumes the rest without asking the tutor again", async () => {
+    withKey();
+    fakeData.addUsage.mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt("/chat", fakeSession());
+
+    await sendMessage("Hello");
+    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+
+    expect(fakeAi.reply).toHaveBeenCalledTimes(1);
+    expect(fakeData.addUsage).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+  });
+
+  it("warns above the input at 80% of the limit and Send still works", async () => {
+    withKey("claude", { monthlyLimitUsd: 10 });
+    fakeData.getMonthSpend.mockResolvedValue({
+      ok: true,
+      value: { monthStart: "2026-11-01", spentUsd: 8 },
+    });
+    await renderAppAt("/chat", fakeSession());
+    expect(screen.getByText("You're close to your monthly limit.")).toBeTruthy();
+
+    await sendMessage("Hello");
+
+    expect(fakeAi.reply).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks sending at 100% of the limit and never calls the AI", async () => {
+    withKey("claude", { monthlyLimitUsd: 10 });
+    fakeData.getMonthSpend.mockResolvedValue({
+      ok: true,
+      value: { monthStart: "2026-11-01", spentUsd: 10 },
+    });
+    await renderAppAt("/chat", fakeSession());
+
+    expect(screen.getByText("You reached your monthly limit.")).toBeTruthy();
+    expect(screen.getByText("SpendLimit")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Write in English\u2026").props.editable).toBe(false);
+    expect(screen.getByRole("button", { name: "Send", disabled: true })).toBeTruthy();
+    expect(fakeAi.reply).not.toHaveBeenCalled();
+  });
+
+  it("says OpenAI is coming soon, offers Update key and locks sending", async () => {
+    withKey("openai");
+    await renderAppAt("/chat", fakeSession());
+
+    expect(screen.getByText("OpenAI is coming soon. Use a Claude key for now.")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Write in English\u2026").props.editable).toBe(false);
+    expect(screen.getByRole("button", { name: "Send", disabled: true })).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Update key" }));
+    expect(screen).toHavePathname("/api-key");
+  });
+
+  it("End after a turn saves, goes Home and leaves no Continue card", async () => {
+    withKey();
+    await renderAppAt("/chat", fakeSession());
+    await sendMessage("Hello");
+
+    await fireEvent.press(screen.getByRole("button", { name: "End" }));
+
+    expect(fakeData.endSession).toHaveBeenCalledWith("session-1");
+    expect(screen).toHavePathname("/");
+    expect(screen.queryByText("Continue")).toBeNull();
+  });
+
+  it("End before any message goes Home and writes nothing", async () => {
+    withKey();
+    await renderAppAt("/chat", fakeSession());
+
+    await fireEvent.press(screen.getByRole("button", { name: "End" }));
+
+    expect(screen).toHavePathname("/");
+    expect(fakeData.endSession).not.toHaveBeenCalled();
+    expect(fakeData.createSession).not.toHaveBeenCalled();
+  });
+
+  it("draws an End failure and stays in the chat", async () => {
+    withKey();
+    fakeData.endSession.mockResolvedValue({ ok: false, failure: "network" });
+    await renderAppAt("/chat", fakeSession());
+    await sendMessage("Hello");
+
+    await fireEvent.press(screen.getByRole("button", { name: "End" }));
+
+    expect(screen).toHavePathname("/chat");
+    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+  });
+
+  it("draws the month spend failure", async () => {
+    withKey();
+    fakeData.getMonthSpend.mockResolvedValue({ ok: false, failure: "unavailable" });
+    await renderAppAt("/chat", fakeSession());
+    expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
   });
 
   it("draws the key read failure and reads again on Try again", async () => {

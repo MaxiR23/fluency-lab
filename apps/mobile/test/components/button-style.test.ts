@@ -15,7 +15,7 @@
 import { describe, expect, it } from "@jest/globals";
 
 import { buttonStyle } from "@/components/button-style";
-import { colors, radius, size } from "@/constants/theme";
+import { colors, fontFamily, fontSize, radius, size, spacing } from "@/constants/theme";
 
 describe("buttonStyle", () => {
   it("draws idle primary on accent with an accent-deep label", () => {
@@ -124,5 +124,26 @@ describe("buttonStyle", () => {
 
   it("keeps the control height when not compact", () => {
     expect(buttonStyle("deep", {}, { compact: false }).container.minHeight).toBe(size.control);
+  });
+
+  it("draws a small secondary button as the design's End button", () => {
+    const { container, label } = buttonStyle("secondary", {}, { small: true });
+    expect(container.minHeight).toBe(size.controlSmall);
+    expect(size.controlSmall).toBe(36);
+    expect(container.paddingHorizontal).toBe(spacing.card);
+    expect(container.borderRadius).toBe(radius.control);
+    expect(container.backgroundColor).toBe(colors.surface);
+    expect(container.borderColor).toBe(colors.border);
+    expect(label.color).toBe(colors.text);
+    expect(label.fontFamily).toBe(fontFamily.semibold);
+    expect(label.fontSize).toBe(fontSize.caption);
+  });
+
+  it("leaves the default and compact styles unchanged when small is not set", () => {
+    expect(buttonStyle("secondary", {}, { small: false })).toEqual(buttonStyle("secondary"));
+    expect(buttonStyle("secondary", {}, { compact: true }).label.fontSize).toBe(fontSize.body);
+    expect(buttonStyle("secondary", {}, { compact: true }).container.paddingHorizontal).toBe(
+      spacing.lg,
+    );
   });
 });

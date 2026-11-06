@@ -9,9 +9,10 @@ plan is optional; free practice is the default.
 
 Expo project in a pnpm monorepo. The design layer exists (tokens and
 base components); email sign-in, sign-up, password reset, onboarding, Home
-with the tab bar (Progress and Settings as placeholders) and the Chat screen (layout
-and no-key state) are built, the other screens are not. The screen map, the
-palette and the Home design are decided.
+with the tab bar (Progress and Settings as placeholders) and the Chat screen
+(chat with the tutor, saved sessions, corrections and new words, the monthly
+limit, and the no-key state) are built, the other screens are not. The screen
+map, the palette and the Home design are decided.
 
 ## Decided
 
@@ -28,7 +29,8 @@ palette and the Home design are decided.
   reached only through a port
 - Test runners: jest-expo (app), vitest (`packages/shared`, `apps/api`),
   `node --test` (repo scripts), pgTAP (database, `supabase/tests/`)
-- App layout in `apps/mobile/src/`: `app/` (routes), `auth/` (the auth
+- App layout in `apps/mobile/src/`: `app/` (routes), `ai/` (the AI port and
+  its provider adapter), `auth/` (the auth
   port and its adapter), `components/`, `constants/` (theme tokens),
   `data/` (the data port and its adapter), `hooks/`, `keys/` (the key port
   and its secure-store adapter), `utils/` (pure functions)
@@ -100,12 +102,18 @@ phone reaches it on the LAN IP.
 token; 401 when the token is missing or invalid, 500 when the signing keys
 cannot be loaded, so an outage never tells the client its token is bad).
 It also has `GET /profile`, `PUT /profile`, `GET /sessions/active`,
-`GET /sessions/week`, `POST /sessions` and `GET /sessions/:id/messages`: 401
+`GET /sessions/week`, `GET /sessions/spend`, `POST /sessions`,
+`GET /sessions/:id/messages`, `POST /sessions/:id/messages`,
+`POST /sessions/:id/usage` and `POST /sessions/:id/end`: 401
 without a valid token, 400 on invalid input, 404 when the row is not the
 caller's, 503 when the database cannot be reached. `GET /profile` creates the
 caller's profile when it is missing instead of answering 404. `GET
 /sessions/week?tz=<IANA zone>` answers the days of the current week (Monday
-first, in that zone) that have a session; 400 for an unknown zone. The API
+first, in that zone) that have a session; 400 for an unknown zone. `GET
+/sessions/spend?tz=<IANA zone>` answers the month's spend. `GET
+/sessions/:id/messages` answers the session and its messages. `POST
+/sessions/:id/usage` prices the reported tokens and adds them to the session's
+cost. `POST /sessions` takes a topic or a starter id. The API
 reads the database as the signed-in user, so row level security applies.
 `pnpm --filter api dev` needs `apps/api/.env.local`. Its routes are chained on one `Hono`
 expression and the type of the app (`AppType`) is exported for the typed

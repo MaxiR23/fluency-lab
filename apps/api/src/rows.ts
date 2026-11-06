@@ -5,6 +5,8 @@ import {
   PROVIDERS,
   SESSION_STATUSES,
   TOPIC_IDS,
+  messageCorrectionsSchema,
+  newWordsSchema,
   type Message,
   type Profile,
   type ProfileUpdate,
@@ -38,13 +40,18 @@ const sessionRowSchema = z.object({
 
 const sessionStartRowSchema = z.object({ created_at: z.iso.datetime({ offset: true }) });
 
+const sessionCostRowSchema = z.object({
+  created_at: z.iso.datetime({ offset: true }),
+  cost_usd: z.number(),
+});
+
 const messageRowSchema = z.object({
   id: z.string(),
   session_id: z.string(),
   role: z.enum(MESSAGE_ROLES),
   text: z.string(),
-  corrections: z.json().nullable(),
-  new_words: z.json().nullable(),
+  corrections: messageCorrectionsSchema.nullable(),
+  new_words: newWordsSchema.nullable(),
   created_at: z.string(),
 });
 
@@ -85,6 +92,13 @@ export function toSession(row: unknown): Session | null {
 export function toSessionStart(row: unknown): string | null {
   const parsed = sessionStartRowSchema.safeParse(row);
   return parsed.success ? parsed.data.created_at : null;
+}
+
+export function toSessionCost(row: unknown): { createdAt: string; costUsd: number } | null {
+  const parsed = sessionCostRowSchema.safeParse(row);
+  return parsed.success
+    ? { createdAt: parsed.data.created_at, costUsd: parsed.data.cost_usd }
+    : null;
 }
 
 export function toMessage(row: unknown): Message | null {

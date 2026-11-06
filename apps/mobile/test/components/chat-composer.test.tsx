@@ -5,6 +5,7 @@
 // Tested:
 // - The composer: input and the Send icon button, enabled, disabled or locked
 // - The typed text and the send press are reported
+// - Busy keeps the open input and disables Send
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -60,6 +61,19 @@ describe("ChatComposer", () => {
     expect(screen.getByPlaceholderText("Type here").props.placeholderTextColor).toBe(
       colors.textDisabled,
     );
+  });
+
+  it("disables Send while busy and keeps the input open and editable", async () => {
+    await render(composer({ value: "Hello", busy: true }));
+    expect(screen.getByRole("button", { name: "Send", disabled: true })).toBeTruthy();
+    const input = screen.getByPlaceholderText("Type here");
+    expect(input.props.editable).toBe(true);
+    expect(input.props.placeholderTextColor).toBe(colors.textPlaceholder);
+  });
+
+  it("limits the text to the longest message the API saves", async () => {
+    await render(composer());
+    expect(screen.getByPlaceholderText("Type here").props.maxLength).toBe(4000);
   });
 
   it("draws Send as the paper-plane icon with no text label", async () => {

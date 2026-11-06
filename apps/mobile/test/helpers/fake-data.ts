@@ -3,7 +3,8 @@
 // jest.mock("@/data", () => ({ data: fake.fakeData })), where fake is
 // jest.requireActual of this file. Call resetFakeData() in beforeEach: it makes
 // getProfile answer with a completed profile, getActiveSession with no active
-// session and getSessionWeek with an empty week (Home reads all three), so a
+// session and getSessionWeek with an empty week (Home reads all three), and
+// getMonthSpend with 0 spent (Chat reads it), so a
 // signed in user lands on Home.
 
 import { jest } from "@jest/globals";
@@ -16,7 +17,11 @@ export const fakeData = {
   updateProfile: jest.fn<DataPort["updateProfile"]>(),
   getActiveSession: jest.fn<DataPort["getActiveSession"]>(),
   createSession: jest.fn<DataPort["createSession"]>(),
-  listMessages: jest.fn<DataPort["listMessages"]>(),
+  openSession: jest.fn<DataPort["openSession"]>(),
+  addMessage: jest.fn<DataPort["addMessage"]>(),
+  addUsage: jest.fn<DataPort["addUsage"]>(),
+  endSession: jest.fn<DataPort["endSession"]>(),
+  getMonthSpend: jest.fn<DataPort["getMonthSpend"]>(),
   getSessionWeek: jest.fn<DataPort["getSessionWeek"]>(),
 } satisfies DataPort;
 
@@ -84,4 +89,8 @@ export function resetFakeData(): void {
   fakeData.getProfile.mockResolvedValue({ ok: true, value: completedProfile() });
   fakeData.getActiveSession.mockResolvedValue({ ok: true, value: null });
   fakeData.getSessionWeek.mockResolvedValue({ ok: true, value: weekWith([]) });
+  fakeData.getMonthSpend.mockResolvedValue({
+    ok: true,
+    value: { monthStart: "2026-11-01", spentUsd: 0 },
+  });
 }

@@ -17,8 +17,8 @@ import { useHome } from "@/hooks/use-home";
 import { dataFailureMessage } from "@/utils/data-message";
 import { avatarInitial, continueCard, greeting } from "@/utils/home";
 
-function openChat(topic?: string) {
-  router.push(topic === undefined ? "/chat" : { pathname: "/chat", params: { topic } });
+function openChat(params?: { starter: string } | { session: string }) {
+  router.push(params === undefined ? "/chat" : { pathname: "/chat", params });
 }
 
 function openAll() {
@@ -49,8 +49,8 @@ export default function Home() {
   }
 
   const { profile } = state;
-  const card =
-    state.activeSession === null ? null : continueCard(state.activeSession, state.loadedAt);
+  const { activeSession } = state;
+  const card = activeSession === null ? null : continueCard(activeSession, state.loadedAt);
   return (
     <Screen edges={["left", "right"]}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -65,7 +65,7 @@ export default function Home() {
         </View>
         <WeekStrip week={state.week} />
         <HeroCard onPress={() => openChat()} />
-        {card === null ? null : (
+        {card === null || activeSession === null ? null : (
           <View style={styles.section}>
             <SectionHeader title="Continue" />
             <ActionCard
@@ -73,7 +73,7 @@ export default function Home() {
               meta={card.meta}
               icon={card.icon}
               action="Resume"
-              onPress={() => openChat(card.title)}
+              onPress={() => openChat({ session: activeSession.session.id })}
             />
           </View>
         )}
@@ -91,7 +91,7 @@ export default function Home() {
                 key={suggestion.id}
                 suggestion={suggestion}
                 layout="carousel"
-                onPress={() => openChat(suggestion.title)}
+                onPress={() => openChat({ starter: suggestion.id })}
               />
             ))}
           </ScrollView>

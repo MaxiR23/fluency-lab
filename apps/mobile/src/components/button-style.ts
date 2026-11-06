@@ -66,10 +66,15 @@ function palette(variant: ButtonVariant, state: ButtonState): Palette {
   };
 }
 
+function minHeight(options: { compact?: boolean; small?: boolean }): number {
+  if (options.small === true) return size.controlSmall;
+  return options.compact === true ? size.controlCompact : size.control;
+}
+
 export function buttonStyle(
   variant: ButtonVariant = "primary",
   state: ButtonState = {},
-  options: { compact?: boolean } = {},
+  options: { compact?: boolean; small?: boolean } = {},
 ): { container: ViewStyle; label: TextStyle } {
   const { background, border, label } = palette(variant, state);
   return {
@@ -78,15 +83,15 @@ export function buttonStyle(
       borderColor: border,
       borderWidth: borderWidth.thin,
       borderRadius: radius.control,
-      minHeight: options.compact === true ? size.controlCompact : size.control,
-      paddingHorizontal: spacing.lg,
+      minHeight: minHeight(options),
+      paddingHorizontal: options.small === true ? spacing.card : spacing.lg,
       alignItems: "center",
       justifyContent: "center",
     },
     label: {
       color: label,
       fontFamily: fontFamily.semibold,
-      fontSize: fontSize.body,
+      fontSize: options.small === true ? fontSize.caption : fontSize.body,
     },
   };
 }

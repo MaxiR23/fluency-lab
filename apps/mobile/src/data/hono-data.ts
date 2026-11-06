@@ -2,8 +2,10 @@ import {
   type Profile,
   type ProfileUpdate,
   activeSessionResponseSchema,
-  messagesResponseSchema,
+  messageSchema,
+  monthSpendSchema,
   profileSchema,
+  sessionMessagesResponseSchema,
   sessionSchema,
   sessionWeekSchema,
 } from "@fluency-lab/shared";
@@ -13,6 +15,7 @@ import { hc } from "hono/client";
 
 import type { DataOutcome, DataPort } from "@/data/data-port";
 import { toDataFailure } from "@/utils/data-error";
+import { DEADLINE, withinDeadline } from "@/utils/deadline";
 import type { TokenRead } from "@/utils/data-token";
 
 type Client = ReturnType<typeof hc<AppType>>;
@@ -28,31 +31,6 @@ export type HonoDataConfig = {
 };
 
 const DEFAULT_TIMEOUT_MS = 10000;
-
-const DEADLINE = Symbol("deadline");
-
-// INFO: AbortController and setTimeout instead of AbortSignal.timeout, whose
-// presence in the React Native runtime is not verified. The timer stays on
-// until the work ends, so it covers the body read too; the race settles even
-// when the body never does.
-async function withinDeadline<T>(
-  timeoutMs: number,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T | typeof DEADLINE> {
-  const controller = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const expired = new Promise<typeof DEADLINE>((resolve) => {
-    timer = setTimeout(() => {
-      controller.abort();
-      resolve(DEADLINE);
-    }, timeoutMs);
-  });
-  try {
-    return await Promise.race([work(controller.signal), expired]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 export function createHonoData(config: HonoDataConfig): DataPort {
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -107,12 +85,28 @@ export function createHonoData(config: HonoDataConfig): DataPort {
       call((client) => client.sessions.$post({ json: input }), sessionSchema),
     getSessionWeek: (timeZone) =>
       call((client) => client.sessions.week.$get({ query: { tz: timeZone } }), sessionWeekSchema),
-    async listMessages(sessionId) {
-      const outcome = await call(
+    openSession: (sessionId) =>
+      call(
         (client) => client.sessions[":id"].messages.$get({ param: { id: sessionId } }),
-        messagesResponseSchema,
-      );
-      return outcome.ok ? { ok: true, value: outcome.value.messages } : outcome;
-    },
+        sessionMessagesResponseSchema,
+      ),
+    addMessage: (sessionId, input) =>
+      call(
+        (client) =>
+          client.sessions[":id"].messages.$post({ param: { id: sessionId }, json: input }),
+        messageSchema,
+      ),
+    addUsage: (sessionId, usage) =>
+      call(
+        (client) => client.sessions[":id"].usage.$post({ param: { id: sessionId }, json: usage }),
+        sessionSchema,
+      ),
+    endSession: (sessionId) =>
+      call(
+        (client) => client.sessions[":id"].end.$post({ param: { id: sessionId } }),
+        sessionSchema,
+      ),
+    getMonthSpend: (timeZone) =>
+      call((client) => client.sessions.spend.$get({ query: { tz: timeZone } }), monthSpendSchema),
   };
 }

@@ -3,7 +3,7 @@
 // Tests for ChatHeader.
 //
 // Tested:
-// - The title, the provider line and Back
+// - The title, the provider line, Back and the optional End action
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -35,5 +35,30 @@ describe("ChatHeader", () => {
     await render(<ChatHeader title="Free chat" subtitle="Claude" onBack={() => {}} />);
     expect(screen.queryByText("End")).toBeNull();
     expect(screen.queryByText(/\$/)).toBeNull();
+  });
+
+  it("draws End when onEnd is given and calls it", async () => {
+    const onEnd = jest.fn();
+    await render(
+      <ChatHeader title="Free chat" subtitle="Claude" onBack={() => {}} onEnd={onEnd} />,
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "End" }));
+    expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables End with endDisabled", async () => {
+    const onEnd = jest.fn();
+    await render(
+      <ChatHeader
+        title="Free chat"
+        subtitle="Claude"
+        onBack={() => {}}
+        onEnd={onEnd}
+        endDisabled
+      />,
+    );
+    expect(screen.getByRole("button", { name: "End", disabled: true })).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "End", disabled: true }));
+    expect(onEnd).not.toHaveBeenCalled();
   });
 });

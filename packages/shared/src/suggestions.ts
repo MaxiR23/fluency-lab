@@ -505,6 +505,16 @@ export function suggestTopics(
   return picked;
 }
 
+export function starterById(id: string): Starter | undefined {
+  return STARTERS.find((entry) => entry.id === id);
+}
+
+// INFO: a non-empty tuple, the shape z.enum needs.
+export const STARTER_IDS = STARTERS.map((entry) => entry.id) as unknown as readonly [
+  string,
+  ...string[],
+];
+
 export function allSuggestions(
   input: SuggestionInput,
   catalog: readonly Starter[] = STARTERS,

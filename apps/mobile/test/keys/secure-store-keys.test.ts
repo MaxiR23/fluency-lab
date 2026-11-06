@@ -6,6 +6,7 @@
 // - saveApiKey: the item name, the accessibility option and the stored value
 // - deleteApiKey: the item name, a missing item, a rejected delete
 // - hasApiKey: a stored key, no key, an empty item, a rejected read
+// - readApiKey: the stored key, no key, an empty item, a rejected read
 // - A rejected write, a thrown non-Error value
 // - The key never reaches the failure cause
 //
@@ -202,5 +203,45 @@ describe("hasApiKey", () => {
     const { port } = setup(undefined, undefined, async () => key);
 
     expect(JSON.stringify(await port.hasApiKey())).not.toContain(key);
+  });
+});
+
+describe("readApiKey", () => {
+  it("returns the stored key and reads the api_key item", async () => {
+    const key = generatedSecret("api-key");
+    const { port, read } = setup(undefined, undefined, async () => key);
+
+    expect(await port.readApiKey()).toEqual({ ok: true, value: key });
+    expect(read).toHaveBeenCalledWith("api_key");
+  });
+
+  it("returns null when there is no key", async () => {
+    const { port } = setup(undefined, undefined, async () => null);
+
+    expect(await port.readApiKey()).toEqual({ ok: true, value: null });
+  });
+
+  it("returns null for an empty item", async () => {
+    const { port } = setup(undefined, undefined, async () => "");
+
+    expect(await port.readApiKey()).toEqual({ ok: true, value: null });
+  });
+
+  it("returns not_read without the key when the read rejects", async () => {
+    const key = generatedSecret("api-key");
+    const { port } = setup(undefined, undefined, async () => {
+      const error = new TypeError(`Network request failed ${key}`);
+      error.name = "TypeError";
+      throw error;
+    });
+
+    const outcome = await port.readApiKey();
+
+    expect(outcome).toEqual({
+      ok: false,
+      failure: "not_read",
+      cause: { name: "TypeError", detail: null },
+    });
+    expect(JSON.stringify(outcome)).not.toContain(key);
   });
 });

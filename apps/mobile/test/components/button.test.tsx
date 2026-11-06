@@ -108,4 +108,10 @@ describe("Button", () => {
     const style = StyleSheet.flatten(screen.getByRole("button").props.style);
     expect(style.minHeight).toBe(size.controlCompact);
   });
+
+  it("draws the small height when small", async () => {
+    await render(<Button label="End" variant="secondary" small />);
+    const style = StyleSheet.flatten(screen.getByRole("button").props.style);
+    expect(style.minHeight).toBe(size.controlSmall);
+  });
 });

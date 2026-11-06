@@ -5,6 +5,7 @@
 // Tested:
 // - toProfile, toSession and toMessage rename snake_case rows and reject bad rows
 // - toSessionStart reads the start time of a session row
+// - toSessionCost reads the start time and the cost of a session row
 // - toProfilePatch renames an update to columns
 //
 // What is covered:
@@ -15,7 +16,14 @@
 // SEE: apps/api/src/rows.ts
 
 import { describe, expect, it } from "vitest";
-import { toMessage, toProfile, toProfilePatch, toSession, toSessionStart } from "../src/rows";
+import {
+  toMessage,
+  toProfile,
+  toProfilePatch,
+  toSession,
+  toSessionCost,
+  toSessionStart,
+} from "../src/rows";
 
 const id = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5e6f";
 const stamp = "2026-01-01T10:00:00+00:00";
@@ -50,8 +58,8 @@ const messageRow = {
   session_id: id,
   role: "tutor",
   text: "Hi",
-  corrections: [{ from: "a", to: "b" }],
-  new_words: null,
+  corrections: { items: [{ original: "a", corrected: "b" }], explanation: "Because." },
+  new_words: ["word"],
   created_at: stamp,
 };
 
@@ -146,14 +154,20 @@ describe("toMessage", () => {
       sessionId: id,
       role: "tutor",
       text: "Hi",
-      corrections: [{ from: "a", to: "b" }],
-      newWords: null,
+      corrections: { items: [{ original: "a", corrected: "b" }], explanation: "Because." },
+      newWords: ["word"],
       createdAt: stamp,
     });
   });
 
+  it("returns null for corrections that are not the saved shape", () => {
+    expect(toMessage({ ...messageRow, corrections: "a" })).toBeNull();
+    expect(toMessage({ ...messageRow, corrections: [{ from: "a", to: "b" }] })).toBeNull();
+    expect(toMessage({ ...messageRow, new_words: "a" })).toBeNull();
+  });
+
   it("keeps null corrections and new words", () => {
-    const result = toMessage({ ...messageRow, corrections: null });
+    const result = toMessage({ ...messageRow, corrections: null, new_words: null });
     expect(result?.corrections).toBeNull();
     expect(result?.newWords).toBeNull();
   });
@@ -223,5 +237,23 @@ describe("toSessionStart", () => {
 
   it("returns null for a number", () => {
     expect(toSessionStart({ created_at: 1 })).toBeNull();
+  });
+});
+
+describe("toSessionCost", () => {
+  it("maps a cost row", () => {
+    expect(toSessionCost({ created_at: stamp, cost_usd: 0.000145 })).toEqual({
+      createdAt: stamp,
+      costUsd: 0.000145,
+    });
+  });
+
+  it("maps a zero cost", () => {
+    expect(toSessionCost({ created_at: stamp, cost_usd: 0 })?.costUsd).toBe(0);
+  });
+
+  it("returns null for a row without a cost or with a bad date", () => {
+    expect(toSessionCost({ created_at: stamp })).toBeNull();
+    expect(toSessionCost({ created_at: "yesterday", cost_usd: 1 })).toBeNull();
   });
 });

@@ -1,0 +1,554 @@
+// apps/mobile/test/ai/claude-ai.test.ts
+//
+// Tests for the provider adapter of the AI port, over an injected fetch and key reader.
+//
+// Tested:
+// - The request: endpoint, headers, body, the key only in x-api-key
+// - The output schema constant
+// - Success, the expected empty reply, and each failure the screen branches on
+// - Transport failures: rejected fetch, deadline, bad bodies, bad usage
+// - The key never reaches an outcome or a log
+//
+// What is covered:
+// - Normal case, empty case, edges
+//
+// Run with: pnpm exec jest apps/mobile/test/ai/claude-ai.test.ts
+//
+// SEE: apps/mobile/src/ai/claude-ai.ts
+
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { TUTOR_MODEL } from "@fluency-lab/shared";
+
+import { TUTOR_REPLY_JSON_SCHEMA, createClaudeAi } from "@/ai/claude-ai";
+import type { KeyReadOutcome } from "@/keys/key-port";
+import { generatedSecret } from "../helpers/generated-secret";
+
+const ENDPOINT = "https://api.anthropic.com/v1/messages";
+const key = generatedSecret("api-key");
+
+type Seen = { url: string; method: string; headers: Headers; body: string };
+
+const payload = {
+  reply: "Nice! Where did you go?",
+  corrections: [{ original: "I never been", corrected: "I've never been" }],
+  explanation: "Use the present perfect.",
+  newWords: ["definitely"],
+};
+
+function success(body: unknown = payload, usage: unknown = {}) {
+  return new Response(
+    JSON.stringify({
+      type: "message",
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: JSON.stringify(body) }],
+      usage: { input_tokens: 700, output_tokens: 150, ...(usage as object) },
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
+function rawResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function errorResponse(status: number, type: string, message = "nope") {
+  return rawResponse({ type: "error", error: { type, message }, request_id: "req_1" }, status);
+}
+
+function setup(
+  answer: Response | Error = success(),
+  options: { read?: KeyReadOutcome; timeoutMs?: number } = {},
+) {
+  const seen: Seen[] = [];
+  const fetchFn = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = new Request(input, init);
+    seen.push({
+      url: request.url,
+      method: request.method,
+      headers: request.headers,
+      body: await request.text(),
+    });
+    if (answer instanceof Error) throw answer;
+    return answer;
+  });
+  const readKey = jest.fn(async () => options.read ?? ({ ok: true, value: key } as KeyReadOutcome));
+  const ai = createClaudeAi({
+    fetchFn: fetchFn as unknown as typeof fetch,
+    readKey,
+    timeoutMs: options.timeoutMs,
+  });
+  return { ai, seen, fetchFn, readKey };
+}
+
+const request = {
+  system: "You are a tutor.",
+  turns: [
+    { role: "tutor", text: "Hi! What would you like to talk about?" },
+    { role: "user", text: "I never been to Japan" },
+  ],
+} as const;
+
+const logs = ["log", "info", "warn", "error", "debug"] as const;
+const spies = logs.map((name) => jest.spyOn(console, name).mockImplementation(() => {}));
+
+beforeEach(() => {
+  for (const spy of spies) spy.mockClear();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+describe("the request", () => {
+  it("goes to the endpoint with POST and the 3 headers, the key in x-api-key", async () => {
+    const { ai, seen } = setup();
+
+    await ai.reply({ system: request.system, turns: [...request.turns] });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].url).toBe(ENDPOINT);
+    expect(seen[0].method).toBe("POST");
+    expect(seen[0].headers.get("x-api-key")).toBe(key);
+    expect(seen[0].headers.get("anthropic-version")).toBe("2026-10-21");
+    expect(seen[0].headers.get("content-type")).toBe("application/json");
+  });
+
+  it("sends the model, thinking off, the json schema output and the mapped messages", async () => {
+    const { ai, seen } = setup();
+
+    await ai.reply({ system: request.system, turns: [...request.turns] });
+    const body = JSON.parse(seen[0].body);
+
+    expect(body.model).toBe("claude-haiku-5-5");
+    expect(body.model).toBe(TUTOR_MODEL);
+    expect(body.max_tokens).toBe(1024);
+    expect(body.system).toBe("You are a tutor.");
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.output_config.format.type).toBe("json_schema");
+    expect(body.output_config.format.schema).toEqual(TUTOR_REPLY_JSON_SCHEMA);
+    expect(body.messages).toEqual([{ role: "user", content: "I never been to Japan" }]);
+  });
+
+  it("sends no sampling parameters", async () => {
+    const { ai, seen } = setup();
+
+    await ai.reply({ system: request.system, turns: [...request.turns] });
+    const body = JSON.parse(seen[0].body);
+
+    expect(body).not.toHaveProperty("temperature");
+    expect(body).not.toHaveProperty("top_p");
+    expect(body).not.toHaveProperty("top_k");
+  });
+
+  it("does not put the key in the body or the url", async () => {
+    const { ai, seen } = setup();
+
+    await ai.reply({ system: request.system, turns: [...request.turns] });
+
+    expect(seen[0].body).not.toContain(key);
+    expect(seen[0].url).not.toContain(key);
+  });
+});
+
+describe("TUTOR_REPLY_JSON_SCHEMA", () => {
+  const unsupported = ["minLength", "maxLength", "minimum", "maximum", "minItems", "$ref"];
+
+  function walk(node: unknown, visit: (node: Record<string, unknown>) => void) {
+    if (typeof node !== "object" || node === null) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, visit);
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    visit(record);
+    for (const value of Object.values(record)) walk(value, visit);
+  }
+
+  it("closes every object and requires all of its properties", () => {
+    let objects = 0;
+    walk(TUTOR_REPLY_JSON_SCHEMA, (node) => {
+      if (node.type !== "object") return;
+      objects += 1;
+      expect(node.additionalProperties).toBe(false);
+      expect(node.required).toEqual(Object.keys(node.properties as object));
+    });
+    expect(objects).toBe(2);
+  });
+
+  it("uses no unsupported keyword", () => {
+    walk(TUTOR_REPLY_JSON_SCHEMA, (node) => {
+      for (const keyword of unsupported) expect(node).not.toHaveProperty(keyword);
+    });
+  });
+
+  it("describes the four fields of the reply", () => {
+    expect(Object.keys(TUTOR_REPLY_JSON_SCHEMA.properties)).toEqual([
+      "reply",
+      "corrections",
+      "explanation",
+      "newWords",
+    ]);
+  });
+});
+
+describe("a successful reply", () => {
+  it("parses the reply, corrections, explanation, new words, model and usage", async () => {
+    const { ai } = setup(
+      success(payload, { cache_creation_input_tokens: 5, cache_read_input_tokens: 7 }),
+    );
+
+    const outcome = await ai.reply({ system: request.system, turns: [...request.turns] });
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: {
+        reply: "Nice! Where did you go?",
+        corrections: [{ original: "I never been", corrected: "I've never been" }],
+        explanation: "Use the present perfect.",
+        newWords: ["definitely"],
+        model: TUTOR_MODEL,
+        usage: {
+          inputTokens: 700,
+          outputTokens: 150,
+          cacheCreationInputTokens: 5,
+          cacheReadInputTokens: 7,
+        },
+      },
+    });
+  });
+
+  it("defaults the cache fields to 0 when they are absent or null", async () => {
+    const { ai } = setup(success(payload, { cache_creation_input_tokens: null }));
+
+    const outcome = await ai.reply({ system: request.system, turns: [...request.turns] });
+
+    expect(outcome.ok && outcome.value.usage).toEqual({
+      inputTokens: 700,
+      outputTokens: 150,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+    });
+  });
+
+  it("is a success with empty lists and a null explanation when there is nothing to correct", async () => {
+    const { ai } = setup(
+      success({ reply: "Great!", corrections: [], explanation: "", newWords: [] }),
+    );
+
+    const outcome = await ai.reply({ system: request.system, turns: [...request.turns] });
+
+    expect(outcome).toMatchObject({
+      ok: true,
+      value: { reply: "Great!", corrections: [], explanation: null, newWords: [] },
+    });
+  });
+});
+
+const sample = {
+  inputTokens: 700,
+  outputTokens: 150,
+  cacheCreationInputTokens: 0,
+  cacheReadInputTokens: 0,
+};
+
+const billed = {
+  inputTokens: 1,
+  outputTokens: 1,
+  cacheCreationInputTokens: 0,
+  cacheReadInputTokens: 0,
+};
+
+describe("the failures the screen branches on", () => {
+  async function failureFor(answer: Response) {
+    const { ai } = setup(answer);
+    return ai.reply({ system: request.system, turns: [...request.turns] });
+  }
+
+  it("401 is invalid_key with the error type as the cause code", async () => {
+    expect(await failureFor(errorResponse(401, "authentication_error"))).toEqual({
+      ok: false,
+      failure: "invalid_key",
+      cause: { name: "HttpError", code: "authentication_error", detail: null },
+    });
+  });
+
+  it("429 is rate_limited", async () => {
+    expect(await failureFor(errorResponse(429, "rate_limit_error"))).toMatchObject({
+      ok: false,
+      failure: "rate_limited",
+    });
+  });
+
+  it("529 is overloaded", async () => {
+    expect(await failureFor(errorResponse(529, "overloaded_error"))).toMatchObject({
+      ok: false,
+      failure: "overloaded",
+    });
+  });
+
+  it("400, 402 and 403 are rejected", async () => {
+    for (const status of [400, 402, 403]) {
+      expect(await failureFor(errorResponse(status, "invalid_request_error"))).toMatchObject({
+        ok: false,
+        failure: "rejected",
+      });
+    }
+  });
+
+  it("500 and 504 are unavailable", async () => {
+    expect(await failureFor(errorResponse(500, "api_error"))).toMatchObject({
+      ok: false,
+      failure: "unavailable",
+    });
+    expect(await failureFor(errorResponse(504, "timeout_error"))).toMatchObject({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("maps by status when the error body cannot be read", async () => {
+    const outcome = await failureFor(new Response("<html>", { status: 429 }));
+    expect(outcome).toEqual({
+      ok: false,
+      failure: "rate_limited",
+      cause: { name: "HttpError", code: "http_429", detail: null },
+    });
+  });
+
+  it("ignores an error type that is not a plain identifier", async () => {
+    const outcome = await failureFor(errorResponse(500, `Bad Type ${key}`));
+    expect(outcome).toEqual({
+      ok: false,
+      failure: "unavailable",
+      cause: { name: "HttpError", code: "http_500", detail: null },
+    });
+  });
+
+  it("a refusal is refused", async () => {
+    const body = {
+      stop_reason: "refusal",
+      content: [],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    };
+    expect(await failureFor(rawResponse(body))).toMatchObject({
+      ok: false,
+      failure: "refused",
+      usage: billed,
+    });
+  });
+
+  it("max_tokens is bad_response", async () => {
+    const body = {
+      stop_reason: "max_tokens",
+      content: [{ type: "text", text: "{" }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    };
+    expect(await failureFor(rawResponse(body))).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: billed,
+    });
+  });
+
+  it("a 401 and a 500 carry no usage", async () => {
+    for (const status of [401, 500]) {
+      const outcome = await failureFor(errorResponse(status, "api_error"));
+      expect(outcome).not.toHaveProperty("usage");
+    }
+  });
+});
+
+describe("the key", () => {
+  it("no saved key is missing_key without a request", async () => {
+    const { ai, fetchFn } = setup(success(), { read: { ok: true, value: null } });
+
+    expect(await ai.reply({ system: request.system, turns: [...request.turns] })).toMatchObject({
+      ok: false,
+      failure: "missing_key",
+    });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("a failed key read is key_unreadable without a request", async () => {
+    const { ai, fetchFn } = setup(success(), { read: { ok: false, failure: "not_read" } });
+
+    expect(await ai.reply({ system: request.system, turns: [...request.turns] })).toEqual({
+      ok: false,
+      failure: "key_unreadable",
+      cause: { name: "KeyRead", detail: null },
+    });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("a 401 whose message echoes the key leaves no key in the outcome", async () => {
+    const { ai } = setup(errorResponse(401, "authentication_error", `invalid x-api-key: ${key}`));
+
+    const outcome = await ai.reply({ system: request.system, turns: [...request.turns] });
+
+    expect(JSON.stringify(outcome)).not.toContain(key);
+  });
+
+  it("a rejected fetch whose message echoes the key leaves no key in the outcome", async () => {
+    const { ai } = setup(new TypeError(`Network request failed ${key}`));
+
+    const outcome = await ai.reply({ system: request.system, turns: [...request.turns] });
+
+    expect(outcome).toEqual({
+      ok: false,
+      failure: "network",
+      cause: { name: "TypeError", detail: null },
+    });
+    expect(JSON.stringify(outcome)).not.toContain(key);
+  });
+
+  it("an error name that could carry text becomes unknown", async () => {
+    const thrown = new Error("x");
+    thrown.name = `bad name ${key}`;
+    const { ai } = setup(thrown);
+
+    const outcome = await ai.reply({ system: request.system, turns: [...request.turns] });
+
+    expect(outcome).toMatchObject({ failure: "network", cause: { name: "unknown" } });
+    expect(JSON.stringify(outcome)).not.toContain(key);
+  });
+
+  it("logs nothing", async () => {
+    await setup(errorResponse(401, "authentication_error", key)).ai.reply({
+      system: request.system,
+      turns: [...request.turns],
+    });
+    await setup(new TypeError(key)).ai.reply({
+      system: request.system,
+      turns: [...request.turns],
+    });
+    await setup().ai.reply({ system: request.system, turns: [...request.turns] });
+
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("transport failures", () => {
+  it("a rejected fetch is network", async () => {
+    const { ai } = setup(new TypeError("Network request failed"));
+
+    expect(await ai.reply({ system: request.system, turns: [...request.turns] })).toEqual({
+      ok: false,
+      failure: "network",
+      cause: { name: "TypeError", detail: null },
+    });
+  });
+
+  it("the deadline is network", async () => {
+    jest.useFakeTimers();
+    const hang = jest.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const ai = createClaudeAi({
+      fetchFn: hang as unknown as typeof fetch,
+      readKey: async () => ({ ok: true, value: key }),
+      timeoutMs: 50,
+    });
+
+    const pending = ai.reply({ system: request.system, turns: [...request.turns] });
+    await jest.advanceTimersByTimeAsync(60);
+
+    expect(await pending).toEqual({
+      ok: false,
+      failure: "network",
+      cause: { name: "Timeout", detail: null },
+    });
+  });
+
+  it("a non-JSON body is bad_response", async () => {
+    const { ai } = setup(new Response("<html>", { status: 200 }));
+    expect(await ai.reply({ system: request.system, turns: [...request.turns] })).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+    });
+  });
+
+  it("a text that is not JSON is bad_response", async () => {
+    const body = {
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: "not json" }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    };
+    const { ai } = setup(rawResponse(body));
+    expect(await ai.reply({ system: request.system, turns: [...request.turns] })).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: billed,
+    });
+  });
+
+  it("a wrong shape is bad_response", async () => {
+    const { ai } = setup(success({ reply: "x" }));
+    expect(await ai.reply({ system: request.system, turns: [...request.turns] })).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: sample,
+    });
+  });
+
+  it("an empty reply is bad_response", async () => {
+    const { ai } = setup(success({ ...payload, reply: "  " }));
+    expect(await ai.reply({ system: request.system, turns: [...request.turns] })).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: sample,
+    });
+  });
+
+  it("no text block is bad_response", async () => {
+    const body = {
+      stop_reason: "end_turn",
+      content: [{ type: "thinking" }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    };
+    const { ai } = setup(rawResponse(body));
+    expect(await ai.reply({ system: request.system, turns: [...request.turns] })).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: billed,
+    });
+  });
+
+  it("bad usage is bad_response", async () => {
+    for (const usage of [{ input_tokens: -1 }, { output_tokens: 1.5 }, { input_tokens: "7" }]) {
+      const { ai } = setup(success(payload, usage));
+      const outcome = await ai.reply({ system: request.system, turns: [...request.turns] });
+      expect(outcome).toMatchObject({ ok: false, failure: "bad_response" });
+      expect(outcome).not.toHaveProperty("usage");
+    }
+  });
+
+  it("missing usage is bad_response", async () => {
+    const body = {
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: JSON.stringify(payload) }],
+    };
+    const { ai } = setup(rawResponse(body));
+    expect(await ai.reply({ system: request.system, turns: [...request.turns] })).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+    });
+  });
+
+  it("a request with no user turn is bad_response without a request", async () => {
+    const { ai, fetchFn } = setup();
+
+    const outcome = await ai.reply({
+      system: request.system,
+      turns: [{ role: "tutor", text: "Hi" }],
+    });
+
+    expect(outcome).toMatchObject({ ok: false, failure: "bad_response" });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+});

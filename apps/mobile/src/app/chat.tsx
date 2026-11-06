@@ -1,5 +1,4 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, StyleSheet, View } from "react-native";
 
 import { Button } from "@/components/button";
@@ -9,14 +8,21 @@ import { ConnectAiCard } from "@/components/connect-ai-card";
 import { FailureMessage } from "@/components/failure-message";
 import { MessageList } from "@/components/message-list";
 import { Screen } from "@/components/screen";
+import { Text } from "@/components/text";
 import { colors, spacing } from "@/constants/theme";
 import { useChat } from "@/hooks/use-chat";
-import { chatTitle, noKeyProviderLine, providerLine } from "@/utils/chat-state";
+import { busy, sendState } from "@/utils/chat-conversation";
+import { chatItems } from "@/utils/chat-items";
+import { chatOrigin } from "@/utils/chat-opening";
+import { chatNotice, noKeyProviderLine, originTitle, providerLine } from "@/utils/chat-state";
 
 export default function Chat() {
-  const { view, retry } = useChat();
-  const params = useLocalSearchParams<{ topic?: string | string[] }>();
-  const [draft, setDraft] = useState("");
+  const params = useLocalSearchParams<{
+    starter?: string | string[];
+    session?: string | string[];
+  }>();
+  const origin = chatOrigin(params);
+  const { view, setDraft, send, retry, end, updateKey } = useChat(origin);
 
   if (view.kind === "loading") {
     return (
@@ -37,30 +43,64 @@ export default function Chat() {
       </Screen>
     );
   }
-  const ready = view.kind === "ready";
+  const conversation = view.kind === "ready" ? view.conversation : null;
+  const notice = conversation === null ? null : chatNotice(conversation);
+  const locked = conversation === null ? true : sendState(conversation).locked;
+  const waiting = conversation === null ? false : busy(conversation);
   // INFO: edges left and right only: the design's top and bottom already clear the safe area.
   return (
     <Screen edges={["left", "right"]}>
       <KeyboardAvoidingView behavior="padding" style={styles.fill} testID="chat-keyboard-view">
         <ChatHeader
-          title={chatTitle(params.topic)}
-          subtitle={ready ? providerLine(view.provider) : noKeyProviderLine}
+          title={conversation === null ? originTitle(origin) : conversation.title}
+          subtitle={conversation === null ? noKeyProviderLine : providerLine(conversation.provider)}
           onBack={() => router.back()}
+          onEnd={conversation === null ? undefined : () => void end()}
+          endDisabled={waiting}
         />
-        {ready ? (
-          <MessageList items={[]} />
-        ) : (
+        {conversation === null ? (
           <View style={styles.center}>
             <ConnectAiCard onAddKey={() => router.push("/api-key")} />
           </View>
+        ) : (
+          <MessageList items={chatItems(conversation)} />
+        )}
+        {notice === null ? null : (
+          <View style={styles.notices}>
+            {notice.kind === "failure" ? (
+              <>
+                <FailureMessage message={notice.view.message} cause={notice.view.cause} />
+                {notice.view.action === null ? null : (
+                  <Button
+                    variant="deep"
+                    compact
+                    label={notice.view.action === "update_key" ? "Update key" : "Try again"}
+                    onPress={() =>
+                      notice.view.action === "update_key" ? updateKey() : void retry()
+                    }
+                  />
+                )}
+              </>
+            ) : null}
+            {notice.kind === "unsupported" ? (
+              <>
+                <Text variant="muted">{notice.message}</Text>
+                <Button variant="deep" compact label="Update key" onPress={updateKey} />
+              </>
+            ) : null}
+            {notice.kind === "limit" ? (
+              <FailureMessage message={notice.view.message} cause={notice.view.cause} />
+            ) : null}
+            {notice.kind === "warning" ? <Text variant="caption">{notice.message}</Text> : null}
+          </View>
         )}
         <ChatComposer
-          value={draft}
+          value={conversation === null ? "" : conversation.draft}
           onChangeText={setDraft}
-          // INFO: sending is issue 3; the draft stays until then.
-          onSend={() => {}}
-          placeholder={ready ? "Write in English…" : "Add a key to start chatting"}
-          locked={!ready}
+          onSend={() => void send()}
+          placeholder={conversation === null ? "Add a key to start chatting" : "Write in English…"}
+          locked={locked}
+          busy={waiting}
         />
       </KeyboardAvoidingView>
     </Screen>
@@ -78,4 +118,5 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.screenSide,
   },
+  notices: { gap: spacing.sm, paddingHorizontal: spacing.md },
 });
