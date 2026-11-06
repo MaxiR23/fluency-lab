@@ -61,6 +61,12 @@ export function readTokenUser(payload: unknown): TokenUser | null {
   return { id: sub, email: typeof email === "string" && email !== "" ? email : null };
 }
 
+export function readBearerToken(header: string | undefined): string | null {
+  if (header === undefined) return null;
+  const match = /^bearer +(\S+)\s*$/i.exec(header);
+  return match === null ? null : match[1];
+}
+
 export function authConfigFromEnv(
   env: Record<string, string | undefined>,
   fetchFn: typeof fetch,

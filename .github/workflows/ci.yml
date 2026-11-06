@@ -33,3 +33,24 @@ jobs:
 
       - name: Tests
         run: pnpm test
+
+  database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start the database
+        run: pnpm exec supabase db start
+
+      - name: Database tests
+        run: pnpm exec supabase test db

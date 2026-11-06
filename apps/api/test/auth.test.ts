@@ -4,6 +4,7 @@
 //
 // Tested:
 // - readTokenUser reads the user out of a verified payload
+// - readBearerToken reads the raw token out of the Authorization header
 // - authConfigFromEnv builds the issuer and the JWKS path from SUPABASE_URL
 // - fetchJwks turns the JWKS response into a typed outcome
 //
@@ -15,7 +16,7 @@
 // SEE: apps/api/src/auth.ts
 
 import { describe, expect, it, vi } from "vitest";
-import { authConfigFromEnv, fetchJwks, readTokenUser } from "../src/auth";
+import { authConfigFromEnv, fetchJwks, readBearerToken, readTokenUser } from "../src/auth";
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), init);
@@ -142,5 +143,28 @@ describe("fetchJwks", () => {
       ok: false,
       reason: "bad_body",
     });
+  });
+});
+
+describe("readBearerToken", () => {
+  it("reads the token after Bearer", () => {
+    expect(readBearerToken("Bearer abc.def")).toBe("abc.def");
+  });
+
+  it("accepts a lowercase bearer scheme", () => {
+    expect(readBearerToken("bearer abc.def")).toBe("abc.def");
+  });
+
+  it("returns null without a header", () => {
+    expect(readBearerToken(undefined)).toBeNull();
+  });
+
+  it("returns null for another scheme", () => {
+    expect(readBearerToken("Basic abc")).toBeNull();
+  });
+
+  it("returns null for an empty token", () => {
+    expect(readBearerToken("Bearer ")).toBeNull();
+    expect(readBearerToken("Bearer    ")).toBeNull();
   });
 });

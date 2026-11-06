@@ -26,10 +26,10 @@ palette and the Home design are decided.
 - Auth and storage: Supabase Auth and Postgres behind `apps/api`,
   reached only through a port
 - Test runners: jest-expo (app), vitest (`packages/shared`, `apps/api`),
-  `node --test` (repo scripts)
+  `node --test` (repo scripts), pgTAP (database, `supabase/tests/`)
 - App layout in `apps/mobile/src/`: `app/` (routes), `auth/` (the auth
   port and its adapter), `components/`, `constants/` (theme tokens),
-  `hooks/`, `utils/` (pure functions)
+  `data/` (the data port and its adapter), `hooks/`, `utils/` (pure functions)
 - App identifier: `com.maxirebolo.fluencylab`
 
 ## Pending
@@ -61,8 +61,10 @@ the status output. Filter it so that no other secret is printed:
     apps/mobile/.env.local
       EXPO_PUBLIC_SUPABASE_URL              http://<LAN IP>:54321
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY  PUBLISHABLE_KEY
+      EXPO_PUBLIC_API_URL                   http://<LAN IP>:3000
     apps/api/.env.local
       SUPABASE_URL                          http://127.0.0.1:54321
+      SUPABASE_PUBLISHABLE_KEY              PUBLISHABLE_KEY
 
 The phone reaches the stack on the Mac's LAN IP (`ipconfig getifaddr en0`);
 update the mobile URL when the network changes. `SUPABASE_URL` in `apps/api`
@@ -73,17 +75,33 @@ a mobile env file or a doc. Read the emails the stack sends in Mailpit at
 `supabase/templates/recovery.html`; restart the stack (`pnpm supabase:stop`,
 then `pnpm supabase:start`) after changing it.
 
+### Running the API with the local stack
+
+    pnpm supabase:start        brings the stack up
+    pnpm supabase db reset     applies supabase/migrations/ (wipes local users and data)
+    pnpm --filter api dev      the API on port 3000, on every interface
+    pnpm supabase test db      the database tests (pgTAP), they need the stack
+
+Fill `apps/api/.env.local` first. The API listens on every interface, so the
+phone reaches it on the LAN IP.
+
 ## Layout
 
     apps/mobile        the Expo app; routes in src/app/
     apps/api           the Hono backend (Node); routes in src/app.ts
     packages/shared    types and pure logic shared by the app and the backend
-    supabase/          local Supabase config (config.toml) and email templates
+    supabase/          local Supabase config (config.toml), email templates,
+                       migrations/ and the database tests in tests/
     scripts/           repo scripts and their tests
 
 `apps/api` has `GET /health` and `GET /me` (the user of a valid Supabase
 token; 401 when the token is missing or invalid, 500 when the signing keys
 cannot be loaded, so an outage never tells the client its token is bad).
+It also has `GET /profile`, `PUT /profile`, `GET /sessions/active`,
+`POST /sessions` and `GET /sessions/:id/messages`: 401 without a valid token,
+400 on invalid input, 404 when the row is not the caller's, 503 when the
+database cannot be reached. The API reads the database as the signed-in user,
+so row level security applies.
 `pnpm --filter api dev` needs `apps/api/.env.local`. Its routes are chained on one `Hono`
 expression and the type of the app (`AppType`) is exported for the typed
 client (RPC). Run it with `pnpm --filter api dev`.

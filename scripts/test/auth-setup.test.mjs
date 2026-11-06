@@ -129,8 +129,12 @@ describe("env files", () => {
     assert.deepEqual(envKeys("apps/mobile/.env.example"), [
       "EXPO_PUBLIC_SUPABASE_URL=",
       "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=",
+      "EXPO_PUBLIC_API_URL=",
     ]);
-    assert.deepEqual(envKeys("apps/api/.env.example"), ["SUPABASE_URL="]);
+    assert.deepEqual(envKeys("apps/api/.env.example"), [
+      "SUPABASE_URL=",
+      "SUPABASE_PUBLISHABLE_KEY=",
+    ]);
   });
 
   it("does not ignore the env examples", () => {
