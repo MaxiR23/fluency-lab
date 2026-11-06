@@ -15,7 +15,7 @@ const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_TOKENS = 1024;
 
 // INFO: no minLength, maxLength, minimum, maximum or minItems: the provider does not
-// support them in structured outputs. Limits are applied by toTutorReply.
+// support them in structured outputs. Limits (the 80 characters of rule included) are applied by toTutorReply.
 export const TUTOR_REPLY_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -27,8 +27,12 @@ export const TUTOR_REPLY_JSON_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["original", "corrected"],
-        properties: { original: { type: "string" }, corrected: { type: "string" } },
+        required: ["original", "corrected", "rule"],
+        properties: {
+          original: { type: "string" },
+          corrected: { type: "string" },
+          rule: { type: "string" },
+        },
       },
     },
     explanation: { type: "string" },

@@ -9,7 +9,7 @@
 // - A saved session from Continue draws its messages and corrections
 // - Each AI failure draws its message and action; the cause line shows in development only
 // - The 80% warning, the 100% block and the provider OpenAI notice
-// - The X asks to confirm; End saves and goes Home, where Continue no longer shows the session
+// - The X asks to confirm; End saves and opens the session's Summary
 // - Cancel keeps the chat open; Back keeps the session open and Home offers Continue
 // - The no key state: card, locked input and Send, Add API key opens the key step
 // - The ready state: Send follows the draft, the composer sits in the keyboard footer
@@ -27,6 +27,7 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { STARTERS, type Message, type Session } from "@fluency-lab/shared";
 import { act, fireEvent, screen, within } from "@testing-library/react-native";
+import { type Href, router } from "expo-router";
 import { Alert, type AlertButton } from "react-native";
 
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
@@ -468,7 +469,7 @@ describe("Chat", () => {
     expect(screen).toHavePathname("/api-key");
   });
 
-  it("End after a turn saves, goes Home and leaves no Continue card", async () => {
+  it("End after a turn saves and opens the session's Summary", async () => {
     withKey();
     await renderAppAt("/chat", fakeSession());
     await sendMessage("Hello");
@@ -476,8 +477,27 @@ describe("Chat", () => {
     await confirmEnd();
 
     expect(fakeData.endSession).toHaveBeenCalledWith("session-1");
+    expect(screen).toHavePathname("/summary");
+    expect(screen).toHaveSearchParams({ session: "session-1" });
+    expect(await screen.findByText("Nice work, Ada!")).toBeTruthy();
+  });
+
+  it.each([
+    ["Home", [] as string[]],
+    ["Suggestions", ["/suggestions"]],
+    ["Open chats", ["/chats"]],
+  ])("going back from Summary lands on Home when the chat came from %s", async (_name, via) => {
+    withKey();
+    await renderApp("/", fakeSession());
+    for (const path of via) await act(async () => router.push(path as Href));
+    await act(async () => router.push("/chat"));
+    await sendMessage("Hello");
+
+    await confirmEnd();
+    expect(screen).toHavePathname("/summary");
+    await act(async () => router.back());
+
     expect(screen).toHavePathname("/");
-    expect(screen.queryByText("Continue")).toBeNull();
   });
 
   it("asks to confirm before ending", async () => {

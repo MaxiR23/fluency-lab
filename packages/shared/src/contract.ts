@@ -33,6 +33,7 @@ export const sessionCreateSchema = z.union([
 export const correctionSchema = z.strictObject({
   original: z.string().trim().min(1).max(300),
   corrected: z.string().trim().min(1).max(300),
+  rule: z.string().trim().min(1).max(80).optional(),
 });
 
 export const messageCorrectionsSchema = z.strictObject({
@@ -43,10 +44,13 @@ export const messageCorrectionsSchema = z.strictObject({
 export const newWordsSchema = z.array(z.string().trim().min(1).max(60)).max(10);
 
 // INFO: the shape of the structured output of the tutor. It is parsed loosely
-// here and normalized by the app before it is saved.
+// here and normalized by the app before it is saved. rule is optional here so
+// a paid reply that lacks it is kept.
 export const tutorReplySchema = z.object({
   reply: z.string(),
-  corrections: z.array(z.object({ original: z.string(), corrected: z.string() })),
+  corrections: z.array(
+    z.object({ original: z.string(), corrected: z.string(), rule: z.string().optional() }),
+  ),
   explanation: z.string(),
   newWords: z.array(z.string()),
 });
@@ -133,6 +137,13 @@ export const sessionMessagesResponseSchema = z.object({
   messages: z.array(messageSchema),
 });
 
+export const sessionSummarySchema = z.object({
+  session: sessionSchema,
+  messageCount: z.int().min(0),
+  corrections: z.array(correctionSchema),
+  newWords: z.array(z.string()),
+});
+
 export const monthSpendSchema = z.object({
   monthStart: z.iso.date(),
   spentUsd: z.number().min(0),
@@ -160,5 +171,6 @@ export type SessionUsage = z.infer<typeof sessionUsageSchema>;
 export type TutorReplyPayload = z.infer<typeof tutorReplySchema>;
 export type MonthSpend = z.infer<typeof monthSpendSchema>;
 export type SessionWithMessages = z.infer<typeof sessionMessagesResponseSchema>;
+export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type ProfileStats = z.infer<typeof profileStatsSchema>;
 export type AccountDeleted = z.infer<typeof accountDeletedSchema>;

@@ -3,6 +3,7 @@ import type { Correction, TutorReplyPayload } from "@fluency-lab/shared";
 const MAX_CORRECTIONS = 10;
 const MAX_REPLY = 4000;
 const MAX_SIDE = 300;
+const MAX_RULE = 80;
 const MAX_EXPLANATION = 300;
 const MAX_WORDS = 10;
 const MAX_WORD = 60;
@@ -24,10 +25,14 @@ export function toTutorReply(payload: TutorReplyPayload): NormalizedReply | null
   const reply = cap(payload.reply, MAX_REPLY);
   if (reply === "") return null;
   const corrections = payload.corrections
-    .map((item) => ({
-      original: cap(item.original, MAX_SIDE),
-      corrected: cap(item.corrected, MAX_SIDE),
-    }))
+    .map((item) => {
+      const rule = cap(item.rule ?? "", MAX_RULE);
+      return {
+        original: cap(item.original, MAX_SIDE),
+        corrected: cap(item.corrected, MAX_SIDE),
+        ...(rule === "" ? {} : { rule }),
+      };
+    })
     .filter(
       (item) => item.original !== "" && item.corrected !== "" && item.original !== item.corrected,
     )

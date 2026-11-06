@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The value and the label, in a bordered surface
+// - The compact card: group padding, note radius, small value
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -45,5 +46,30 @@ describe("StatCard", () => {
       borderColor: colors.border,
       borderWidth: borderWidth.thin,
     });
+  });
+
+  it("draws a compact card with group padding, the note radius and the small stat value", async () => {
+    await render(<StatCard compact value="14" label="Messages" />);
+    expect(StyleSheet.flatten(screen.getByTestId("stat-card").props.style)).toMatchObject({
+      flex: 1,
+      gap: spacing.xs,
+      padding: spacing.group,
+      borderRadius: radius.note,
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderWidth: borderWidth.thin,
+    });
+    expect(StyleSheet.flatten(screen.getByText("14").props.style)).toMatchObject(
+      textStyle("statSmall"),
+    );
+  });
+
+  it("keeps the card padding, the large badge radius and the stat value when not compact", async () => {
+    await render(<StatCard compact={false} value="14" label="Messages" />);
+    expect(StyleSheet.flatten(screen.getByTestId("stat-card").props.style)).toMatchObject({
+      padding: spacing.card,
+      borderRadius: radius.badgeLarge,
+    });
+    expect(StyleSheet.flatten(screen.getByText("14").props.style)).toMatchObject(textStyle("stat"));
   });
 });

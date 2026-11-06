@@ -30,7 +30,9 @@ type Seen = { url: string; method: string; headers: Headers; body: string };
 
 const payload = {
   reply: "Nice! Where did you go?",
-  corrections: [{ original: "I never been", corrected: "I've never been" }],
+  corrections: [
+    { original: "I never been", corrected: "I've never been", rule: "Present perfect" },
+  ],
   explanation: "Use the present perfect.",
   newWords: ["definitely"],
 };
@@ -184,6 +186,12 @@ describe("TUTOR_REPLY_JSON_SCHEMA", () => {
     });
   });
 
+  it("asks for original, corrected and rule on each correction, all required", () => {
+    const items = TUTOR_REPLY_JSON_SCHEMA.properties.corrections.items;
+    expect(items.required).toEqual(["original", "corrected", "rule"]);
+    expect(items.properties.rule).toEqual({ type: "string" });
+  });
+
   it("describes the four fields of the reply", () => {
     expect(Object.keys(TUTOR_REPLY_JSON_SCHEMA.properties)).toEqual([
       "reply",
@@ -206,7 +214,9 @@ describe("a successful reply", () => {
       ok: true,
       value: {
         reply: "Nice! Where did you go?",
-        corrections: [{ original: "I never been", corrected: "I've never been" }],
+        corrections: [
+          { original: "I never been", corrected: "I've never been", rule: "Present perfect" },
+        ],
         explanation: "Use the present perfect.",
         newWords: ["definitely"],
         model: TUTOR_MODEL,
@@ -230,6 +240,22 @@ describe("a successful reply", () => {
       outputTokens: 150,
       cacheCreationInputTokens: 0,
       cacheReadInputTokens: 0,
+    });
+  });
+
+  it("is a success without the rule when the provider leaves it out", async () => {
+    const { ai } = setup(
+      success({
+        ...payload,
+        corrections: [{ original: "I never been", corrected: "I've never been" }],
+      }),
+    );
+
+    const outcome = await ai.reply({ system: request.system, turns: [...request.turns] });
+
+    expect(outcome).toMatchObject({
+      ok: true,
+      value: { corrections: [{ original: "I never been", corrected: "I've never been" }] },
     });
   });
 

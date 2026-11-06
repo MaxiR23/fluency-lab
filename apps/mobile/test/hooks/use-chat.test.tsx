@@ -33,7 +33,7 @@ import { fakeKeys, resetFakeKeys } from "../helpers/fake-keys";
 
 jest.mock("expo-router", () => ({
   useIsFocused: jest.fn(() => true),
-  router: { dismissTo: jest.fn(), push: jest.fn() },
+  router: { dismissAll: jest.fn(), dismissTo: jest.fn(), push: jest.fn(), replace: jest.fn() },
 }));
 jest.mock("@/data", () => ({
   data: jest.requireActual<typeof import("../helpers/fake-data")>("../helpers/fake-data").fakeData,
@@ -112,6 +112,8 @@ describe("useChat", () => {
     jest.mocked(useIsFocused).mockReturnValue(true);
     jest.mocked(router.dismissTo).mockClear();
     jest.mocked(router.push).mockClear();
+    jest.mocked(router.replace).mockClear();
+    jest.mocked(router.dismissAll).mockClear();
   });
 
   describe("loading", () => {
@@ -624,7 +626,7 @@ describe("useChat", () => {
   });
 
   describe("End and Update key", () => {
-    it("ends a session through the API and goes home", async () => {
+    it("ends a session through the API and opens its Summary", async () => {
       withKey();
       fakeData.endSession.mockResolvedValue({ ok: true, value: { ...session, status: "ended" } });
       const hook = await ready();
@@ -633,7 +635,11 @@ describe("useChat", () => {
       await act(async () => hook.result.current.end());
 
       expect(fakeData.endSession).toHaveBeenCalledWith("session-1");
-      expect(router.dismissTo).toHaveBeenCalledWith("/");
+      expect(router.dismissAll).toHaveBeenCalled();
+      expect(router.push).toHaveBeenCalledWith({
+        pathname: "/summary",
+        params: { session: "session-1" },
+      });
     });
 
     it("End after a failed save sends the queued writes first, usage included", async () => {
@@ -648,7 +654,11 @@ describe("useChat", () => {
 
       expect(fakeData.addUsage).toHaveBeenCalledTimes(2);
       expect(fakeData.endSession).toHaveBeenCalledWith("session-1");
-      expect(router.dismissTo).toHaveBeenCalledWith("/");
+      expect(router.dismissAll).toHaveBeenCalled();
+      expect(router.push).toHaveBeenCalledWith({
+        pathname: "/summary",
+        params: { session: "session-1" },
+      });
     });
 
     it("End stays and keeps the writes when the flush fails again", async () => {
@@ -661,6 +671,7 @@ describe("useChat", () => {
 
       expect(fakeData.endSession).not.toHaveBeenCalled();
       expect(router.dismissTo).not.toHaveBeenCalled();
+      expect(router.replace).not.toHaveBeenCalled();
       const c = conversationOf(hook.result.current.view);
       expect(c.writes).toHaveLength(1);
       expect(c.failure).toEqual({ source: "data", failure: "network" });
@@ -686,6 +697,7 @@ describe("useChat", () => {
       await act(async () => hook.result.current.end());
 
       expect(router.dismissTo).not.toHaveBeenCalled();
+      expect(router.replace).not.toHaveBeenCalled();
       expect(conversationOf(hook.result.current.view).failure).toEqual({
         source: "data",
         failure: "network",
@@ -703,7 +715,11 @@ describe("useChat", () => {
       await act(async () => hook.result.current.retry());
 
       expect(fakeData.endSession).toHaveBeenCalledTimes(2);
-      expect(router.dismissTo).toHaveBeenCalledWith("/");
+      expect(router.dismissAll).toHaveBeenCalled();
+      expect(router.push).toHaveBeenCalledWith({
+        pathname: "/summary",
+        params: { session: "session-1" },
+      });
     });
 
     it("opens the key step from updateKey", async () => {

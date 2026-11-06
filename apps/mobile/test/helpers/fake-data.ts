@@ -5,10 +5,18 @@
 // getProfile answer with a completed profile, listOpenSessions with no open
 // session and getSessionWeek with an empty week (Home reads all three), and
 // getMonthSpend with 0 spent (Chat reads it), getProfileStats with zeros (Profile reads it)
-// and deleteAccount with success, so a signed in user lands on Home.
+// deleteAccount with success, so a signed in user lands on Home, and getSessionSummary with an
+// empty ended session (Summary reads it).
 
 import { jest } from "@jest/globals";
-import type { ActiveSession, Message, Profile, Session, SessionWeek } from "@fluency-lab/shared";
+import type {
+  ActiveSession,
+  Message,
+  Profile,
+  Session,
+  SessionSummary,
+  SessionWeek,
+} from "@fluency-lab/shared";
 
 import type { DataPort } from "@/data/data-port";
 
@@ -26,6 +34,7 @@ export const fakeData = {
   getMonthSpend: jest.fn<DataPort["getMonthSpend"]>(),
   getSessionWeek: jest.fn<DataPort["getSessionWeek"]>(),
   getProfileStats: jest.fn<DataPort["getProfileStats"]>(),
+  getSessionSummary: jest.fn<DataPort["getSessionSummary"]>(),
   deleteAccount: jest.fn<DataPort["deleteAccount"]>(),
 } satisfies DataPort;
 
@@ -82,6 +91,29 @@ export function activeSessionWith(
   };
 }
 
+export function summaryWith(
+  overrides: Partial<SessionSummary> = {},
+  session: Partial<Session> = {},
+): SessionSummary {
+  return {
+    session: {
+      id: "session-1",
+      topicId: null,
+      title: "Travel",
+      status: "ended",
+      summary: null,
+      costUsd: 0,
+      createdAt: "2026-11-05T09:00:00Z",
+      updatedAt: "2026-11-05T09:30:00Z",
+      ...session,
+    },
+    messageCount: 0,
+    corrections: [],
+    newWords: [],
+    ...overrides,
+  };
+}
+
 export function weekWith(days: string[], overrides: Partial<SessionWeek> = {}): SessionWeek {
   return { weekStart: "2026-11-02", today: "2026-11-05", days, ...overrides };
 }
@@ -103,4 +135,5 @@ export function resetFakeData(): void {
     value: { sessions: 0, dayStreak: 0, newWords: 0 },
   });
   fakeData.deleteAccount.mockResolvedValue({ ok: true, value: null });
+  fakeData.getSessionSummary.mockResolvedValue({ ok: true, value: summaryWith() });
 }

@@ -4,6 +4,7 @@
 //
 // Tested:
 // - Container and label colors per variant and state
+// - The strong variant: accent-line fill, pill radius, control height
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -145,5 +146,31 @@ describe("buttonStyle", () => {
     expect(buttonStyle("secondary", {}, { compact: true }).container.paddingHorizontal).toBe(
       spacing.lg,
     );
+  });
+
+  it("draws idle strong on accent-line with an accent-pressed border, a text label and a pill radius", () => {
+    const { container, label } = buttonStyle("strong");
+    expect(container.backgroundColor).toBe(colors.accentLine);
+    expect(container.borderColor).toBe(colors.accentPressed);
+    expect(container.borderRadius).toBe(radius.pill);
+    expect(label.color).toBe(colors.text);
+  });
+
+  it("draws pressed strong like pressed primary, with the pill radius", () => {
+    const strong = buttonStyle("strong", { pressed: true });
+    const primary = buttonStyle("primary", { pressed: true });
+    expect(strong.container).toEqual({ ...primary.container, borderRadius: radius.pill });
+    expect(strong.label).toEqual(primary.label);
+  });
+
+  it("draws disabled strong like disabled primary, with the pill radius", () => {
+    const strong = buttonStyle("strong", { disabled: true });
+    const primary = buttonStyle("primary", { disabled: true });
+    expect(strong.container).toEqual({ ...primary.container, borderRadius: radius.pill });
+    expect(strong.label).toEqual(primary.label);
+  });
+
+  it("gives strong the control min height", () => {
+    expect(buttonStyle("strong").container.minHeight).toBe(size.control);
   });
 });

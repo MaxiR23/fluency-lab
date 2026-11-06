@@ -3,7 +3,7 @@
 // Tests for tagStyle.
 //
 // Tested:
-// - The box and label variant of the tint and the outline tag
+// - The box and label variant of the tint, the outline and the word tag
 //
 // What is covered:
 // - Normal case, edges
@@ -43,6 +43,21 @@ describe("tagStyle", () => {
         justifyContent: "center",
       },
       label: "tagOutline",
+    });
+  });
+
+  it("draws the word chip on accent-soft with an accent-chip-line border, 34 high, a footer-link label", () => {
+    expect(tagStyle("word")).toEqual({
+      box: {
+        backgroundColor: colors.accentSoft,
+        borderColor: colors.accentChipLine,
+        borderWidth: borderWidth.thin,
+        borderRadius: radius.pill,
+        minHeight: size.wordChip,
+        paddingHorizontal: spacing.card,
+        justifyContent: "center",
+      },
+      label: "footerLink",
     });
   });
 });

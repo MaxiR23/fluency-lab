@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The Back to Home button, its back icon and its press
+// - A label given by the caller
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -39,5 +40,11 @@ describe("BackButton", () => {
     await render(<BackButton onPress={onPress} />);
     await fireEvent.press(screen.getByRole("button", { name: "Back to Home" }));
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("is named by the label it is given", async () => {
+    await render(<BackButton label="Back to Progress" onPress={() => {}} />);
+    expect(screen.getByRole("button", { name: "Back to Progress" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Back to Home" })).toBeNull();
   });
 });

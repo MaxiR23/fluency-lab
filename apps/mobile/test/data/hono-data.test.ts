@@ -9,6 +9,7 @@
 // - The chat calls: createSession with a starter, openSession, addMessage, addUsage,
 //   endSession and getMonthSpend
 // - listOpenSessions and deleteSession
+// - getSessionSummary
 // - getProfileStats and deleteAccount
 //
 // What is covered:
@@ -439,6 +440,62 @@ describe("openSession", () => {
   it("returns bad_response for the wrong shape", async () => {
     const { data } = setup(reply({ messages: [] }));
     expect(await data.openSession(id)).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("getSessionSummary", () => {
+  const summary = {
+    session,
+    messageCount: 4,
+    corrections: [{ original: "a", corrected: "b", rule: "Articles" }],
+    newWords: ["word"],
+  };
+
+  it("gets /sessions/:id/summary with the token and returns the parsed summary", async () => {
+    const { data, seen } = setup(reply(summary));
+
+    expect(await data.getSessionSummary(id)).toEqual({ ok: true, value: summary });
+    expect(seen[0].method).toBe("GET");
+    expect(seen[0].url).toBe(`http://api.test/sessions/${id}/summary`);
+    expect(seen[0].headers.get("Authorization")).toBe("Bearer token-1");
+  });
+
+  it("returns a summary with no corrections and no words as a success", async () => {
+    const empty = { session, messageCount: 0, corrections: [], newWords: [] };
+    const { data } = setup(reply(empty));
+    expect(await data.getSessionSummary(id)).toEqual({ ok: true, value: empty });
+  });
+
+  it("returns not_found on 404 and unauthorized on 401", async () => {
+    const notFound = setup(reply({ error: "not_found" }, 404));
+    expect(await notFound.data.getSessionSummary(id)).toEqual({ ok: false, failure: "not_found" });
+    const unauthorized = setup(reply({ error: "unauthorized" }, 401));
+    expect(await unauthorized.data.getSessionSummary(id)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns network on a rejected fetch and on the deadline, and bad_response on a wrong shape", async () => {
+    const rejected = setup(new TypeError("Network request failed"));
+    expect(await rejected.data.getSessionSummary(id)).toEqual({ ok: false, failure: "network" });
+
+    const hang = jest.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const slow = createHonoData({
+      baseUrl: "http://api.test",
+      fetchFn: hang as unknown as typeof fetch,
+      readToken: async () => ({ ok: true, token: "token-1" }),
+      timeoutMs: 20,
+    });
+    expect(await slow.getSessionSummary(id)).toEqual({ ok: false, failure: "network" });
+
+    const wrong = setup(reply({ session, corrections: [], newWords: [] }));
+    expect(await wrong.data.getSessionSummary(id)).toEqual({ ok: false, failure: "bad_response" });
   });
 });
 

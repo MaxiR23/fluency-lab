@@ -136,7 +136,7 @@ client (RPC). Run it with `pnpm --filter api dev`.
     Suggestions     the full list of suggested topics, opened from Home
     Chat            the session, corrections inline, end session
     Open chats      the active chats, open or delete one, from Home
-    Summary         after a session: mistakes, new words, topic, cost
+    Summary         after a session: mistakes, new words, topic
     Plan            optional, off by default
     Progress        session history, frequent mistakes, vocabulary
     Session detail  one session, opened from Progress

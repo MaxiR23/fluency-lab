@@ -47,6 +47,7 @@ export type TextVariant =
   | "avatarLarge"
   | "profileName"
   | "stat"
+  | "statSmall"
   | "bodyDanger";
 
 const variants: Record<TextVariant, TextStyle> = {
@@ -287,6 +288,11 @@ const variants: Record<TextVariant, TextStyle> = {
   stat: {
     fontFamily: fontFamily.bold,
     fontSize: fontSize.stat,
+    color: colors.text,
+  },
+  statSmall: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.name,
     color: colors.text,
   },
   bodyDanger: {

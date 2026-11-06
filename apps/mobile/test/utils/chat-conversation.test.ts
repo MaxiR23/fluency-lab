@@ -3,7 +3,7 @@
 // Tests for the conversation state machine of the chat.
 //
 // Tested:
-// - startConversation for a free chat, a starter and a resumed session
+// - startConversation for a free chat, a starter, a topic and a resumed session
 // - conversationReducer and nextStep: the order of the outside calls of a turn
 // - Failures: an AI failure restores the draft, a save failure resumes at the failed write
 // - retryKind, sendState and busy
@@ -37,7 +37,7 @@ import {
   MAX_MESSAGE_LENGTH,
   type ConversationEvent,
 } from "@/utils/chat-conversation";
-import { freeChatGreeting } from "@/utils/chat-opening";
+import { freeChatGreeting, topicGreeting } from "@/utils/chat-opening";
 import { tutorPrompt } from "@/utils/tutor-prompt";
 
 const starter = STARTERS[0];
@@ -182,6 +182,36 @@ describe("startConversation", () => {
     expect(c.topicTitle).toBe(starter.title);
     expect(c.opening).toBe(starter.opener);
     expect(c.messages.map((m) => m.text)).toEqual([starter.opener]);
+  });
+
+  it("starts a topic chat titled by the topic, with the topic in the prompt and the topic greeting", () => {
+    const c = startConversation({
+      origin: { kind: "topic", topicId: "job_interviews" },
+      profile,
+      spentUsd: 0,
+    });
+    const greeting = topicGreeting("Ada", "job_interviews");
+    expect(c.title).toBe("Job interviews");
+    expect(c.topicTitle).toBe("Job interviews");
+    expect(c.opening).toBe(greeting);
+    expect(c.messages.map((m) => m.text)).toEqual([greeting]);
+    const step = nextStep(
+      apply(typed(c, "Hello"), { type: "session_created", session }, { type: "write_done" }),
+    );
+    if (step.kind !== "ask") throw new Error("expected ask");
+    expect(step.request.system).toContain("Job interviews");
+  });
+
+  it("creates a topic chat's session with its topic id", () => {
+    const c = typed(
+      startConversation({
+        origin: { kind: "topic", topicId: "job_interviews" },
+        profile,
+        spentUsd: 0,
+      }),
+      "Hello",
+    );
+    expect(nextStep(c)).toEqual({ kind: "create", body: { topicId: "job_interviews" } });
   });
 
   it("resumes a saved session with its messages, corrections and new words", () => {

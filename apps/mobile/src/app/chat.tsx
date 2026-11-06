@@ -30,6 +30,7 @@ export default function Chat() {
   const params = useLocalSearchParams<{
     starter?: string | string[];
     session?: string | string[];
+    topic?: string | string[];
   }>();
   const origin = chatOrigin(params);
   const { view, setDraft, send, retry, end, updateKey } = useChat(origin);
