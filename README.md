@@ -46,6 +46,7 @@ Nothing is pending.
 Requires Node 24 and pnpm.
 
     pnpm install
+    pnpm dev                   Supabase, the API and Expo in one terminal (needs Docker)
     pnpm start                 Expo dev server (apps/mobile)
 
 Open it in Expo Go by scanning the printed QR code.
