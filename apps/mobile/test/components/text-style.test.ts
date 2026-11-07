@@ -4,6 +4,7 @@
 //
 // Tested:
 // - Each text variant maps to its family, size and color
+// - The gap slot: the empty slot's explicit size and underline, the filled slot's underline
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -14,8 +15,16 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { textStyle, type TextVariant } from "@/components/text-style";
-import { colors, fontFamily, fontSize, letterSpacing, lineHeight } from "@/constants/theme";
+import { gapSlotStyle, textStyle, type TextVariant } from "@/components/text-style";
+import {
+  borderWidth,
+  colors,
+  fontFamily,
+  fontSize,
+  letterSpacing,
+  lineHeight,
+  size,
+} from "@/constants/theme";
 
 describe("textStyle", () => {
   it("draws title in bold with its line height and letter spacing", () => {
@@ -510,7 +519,7 @@ describe("textStyle", () => {
     });
   });
 
-  it("draws the prompt and its gap slot in the same type, the slot in accent", () => {
+  it("draws the prompt and its filled gap in the same type, the gap in accent and underlined", () => {
     const prompt = {
       fontFamily: fontFamily.semibold,
       fontSize: fontSize.prompt,
@@ -519,7 +528,12 @@ describe("textStyle", () => {
       letterSpacing: letterSpacing.prompt,
     };
     expect(textStyle("prompt")).toEqual(prompt);
-    expect(textStyle("promptSlot")).toEqual({ ...prompt, color: colors.accent });
+    expect(textStyle("promptSlot")).toEqual({
+      ...prompt,
+      color: colors.accent,
+      textDecorationLine: "underline",
+      textDecorationColor: colors.accent,
+    });
   });
 
   it("draws the option, the source card, the sheet title, the score and the result title", () => {
@@ -574,5 +588,26 @@ describe("textStyle", () => {
       color: colors.text,
       lineHeight: lineHeight.explanation,
     });
+  });
+});
+
+describe("gapSlotStyle", () => {
+  it("draws the empty gap 120 wide with its 2 point accent underline", () => {
+    expect(gapSlotStyle()).toEqual({
+      width: size.gapSlot,
+      height: borderWidth.slot,
+      borderBottomWidth: borderWidth.slot,
+      borderBottomColor: colors.accent,
+    });
+  });
+
+  it("sizes the empty gap with an explicit width, never a min width a nested view loses", () => {
+    expect(gapSlotStyle()).not.toHaveProperty("minWidth");
+    expect(gapSlotStyle().width).toBe(120);
+  });
+
+  it("keeps the empty gap as tall as its underline so the prompt's line height does not move", () => {
+    expect(gapSlotStyle().height).toBe(gapSlotStyle().borderBottomWidth);
+    expect(gapSlotStyle().height).toBeLessThan(lineHeight.prompt);
   });
 });

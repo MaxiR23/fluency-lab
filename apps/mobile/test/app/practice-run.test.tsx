@@ -5,7 +5,8 @@
 // Tested:
 // - Loading, no key with Add API key, the failed state with Try again, and generating
 // - A choose exercise: the kind, the rule, the prompt with its gap, three options, the progress
-// - The filled gap is drawn with the prompt slot font
+// - The header: the bar takes the leftover width, the count keeps one line and never shrinks
+// - The gap: the empty 120 point slot, the filled answer underlined in the prompt slot font
 // - Submitting a typed answer, by return or Check, closes the keyboard
 // - A right pick raises Nice one and plays right, a wrong pick raises Not quite and plays miss, Continue goes on
 // - A fix exercise: the source card, the answer field, Check disabled while empty
@@ -26,7 +27,8 @@ import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals
 import { act, fireEvent, screen, within } from "@testing-library/react-native";
 import { Keyboard, StyleSheet } from "react-native";
 
-import { textStyle } from "@/components/text-style";
+import { segmentedProgressBar } from "@/components/segmented-progress-style";
+import { gapSlotStyle, textStyle } from "@/components/text-style";
 
 import { dataFailureMessage } from "@/utils/data-message";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
@@ -250,17 +252,33 @@ describe("Practice run", () => {
     expect(screen.getByRole("button", { name: "was", disabled: true })).toBeTruthy();
   });
 
-  it("draws the filled gap with the prompt slot font", async () => {
+  it("fits the progress bar and keeps the count whole in the header", async () => {
+    withKey();
+    await renderAppAt(start, fakeSession());
+    const bar = StyleSheet.flatten(screen.getByRole("progressbar").props.style);
+    expect(bar).toMatchObject(segmentedProgressBar("exercise"));
+    expect(bar).toMatchObject({ flex: 1, minWidth: 0 });
+    expect(bar).not.toHaveProperty("flexGrow");
+    const count = screen.getByText("1/5");
+    expect(count.props.numberOfLines).toBe(1);
+    expect(StyleSheet.flatten(count.props.style)).toMatchObject({ flexShrink: 0 });
+  });
+
+  it("draws the empty gap as a 120 point slot with its underline", async () => {
+    withKey();
+    await renderAppAt(start, fakeSession());
+    expect(StyleSheet.flatten(screen.getByTestId("gap-slot").props.style)).toEqual(gapSlotStyle());
+  });
+
+  it("draws the filled gap as the underlined answer and drops the empty slot", async () => {
     withKey();
     await renderAppAt(start, fakeSession());
     await fireEvent.press(screen.getByRole("button", { name: "have been" }));
-    const slot = textStyle("promptSlot");
-    const fonts = screen
+    const styles = screen
       .getAllByText("have been")
       .map((node) => StyleSheet.flatten(node.props.style));
-    expect(fonts).toContainEqual(
-      expect.objectContaining({ fontFamily: slot.fontFamily, fontSize: slot.fontSize }),
-    );
+    expect(styles).toContainEqual(textStyle("promptSlot"));
+    expect(screen.queryByTestId("gap-slot")).toBeNull();
   });
 
   it("raises Not quite on a wrong pick with the answer and plays miss", async () => {

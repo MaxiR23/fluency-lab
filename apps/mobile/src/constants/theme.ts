@@ -294,8 +294,7 @@ export const shadow = {
 // 24% (980, 420, 280). practice-focus.html: the rise is 14% (840). The exercises are anchored
 // at the answer: exercise-choose.html at the pick (24%): the fill 20% to 40% is 1000, the pick
 // 24% to 30% is 300, the check 28% to 34% to 38% starts 200 after the pick and takes 300 and
-// 200, the slot 28% to 36% starts 200 after and takes 400, the sheet 34% to 44% starts 500
-// after and takes 500. exercise-not-quite.html at the shake (20%): five steps of 4% (200 each),
+// 200, the sheet 34% to 44% starts 500 after and takes 500. exercise-not-quite.html at the shake (20%): five steps of 4% (200 each),
 // the wrong border 20% to 24% (200), the sheet starts 700 after. practice-result.html: the ring
 // 6% to 34% (360 then 1680), the rise 30% to 42% (1800 then 720), the sparks 30% to 45% to 70%
 // (1800, then 900 in and 1500 out). The cubic-beziers are the CSS ones of each file.
@@ -349,9 +348,6 @@ export const motion = {
     checkUp: 300,
     checkScale: 1.25,
     checkSettle: 200,
-    slotDelay: 200,
-    slotDuration: 400,
-    slotOffset: 6,
     sheetDelayRight: 500,
     sheetDelayMiss: 700,
     sheetDuration: 500,

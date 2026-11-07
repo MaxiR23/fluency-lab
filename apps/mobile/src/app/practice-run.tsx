@@ -24,16 +24,8 @@ import { selectableStyle } from "@/components/selectable-style";
 import { Tag } from "@/components/tag";
 import { Text } from "@/components/text";
 import { TextField } from "@/components/text-field";
-import { textStyle } from "@/components/text-style";
-import {
-  borderWidth,
-  colors,
-  motion as tokens,
-  shadow,
-  size,
-  spacing,
-  strokeWidth,
-} from "@/constants/theme";
+import { gapSlotStyle } from "@/components/text-style";
+import { colors, motion as tokens, shadow, size, spacing, strokeWidth } from "@/constants/theme";
 import { useHaptics } from "@/hooks/use-haptics";
 import { usePracticeMotion } from "@/hooks/use-practice-motion";
 import { usePracticeRun } from "@/hooks/use-practice-run";
@@ -298,9 +290,10 @@ function ExerciseHeader({
             look="exercise"
             label={progress.label}
             fill={progress.fill}
-            style={styles.progress}
           />
-          <Text variant="label">{progress.count}</Text>
+          <Text variant="label" numberOfLines={1} style={styles.count}>
+            {progress.count}
+          </Text>
         </>
       )}
     </View>
@@ -341,7 +334,7 @@ function ExerciseBody({
           ) : (
             <>
               {view.gap.before}
-              <GapSlot fill={fill} motion={motion} />
+              <GapSlot fill={fill} />
               {view.gap.after}
             </>
           )}
@@ -385,29 +378,14 @@ function ExerciseBody({
   );
 }
 
-// INFO: the gap is an underlined slot inside the prompt; once answered it holds the answer, which
-// rises into place after the pick (exercise-choose.html).
-function GapSlot({ fill, motion }: { fill: string | null; motion: ExerciseMotion | null }) {
-  return (
-    <View style={styles.slot}>
-      {fill === null ? null : (
-        <Animated.Text
-          key={fill}
-          entering={enterTransition(
-            motion === null
-              ? null
-              : {
-                  duration: motion.slot.duration,
-                  offset: motion.slot.offset,
-                  delay: motion.slot.delay,
-                },
-          )}
-          style={textStyle("promptSlot")}
-        >
-          {fill}
-        </Animated.Text>
-      )}
-    </View>
+// INFO: the gap is a view of explicit size inside the prompt while empty (a nested view keeps only
+// an explicit width and height); once answered it is a span of the prompt, so the answer wraps
+// with the sentence (exercise-choose.html).
+function GapSlot({ fill }: { fill: string | null }) {
+  return fill === null ? (
+    <View testID="gap-slot" style={gapSlotStyle()} />
+  ) : (
+    <Text variant="promptSlot">{fill}</Text>
   );
 }
 
@@ -498,7 +476,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.group,
     paddingLeft: spacing.sm,
   },
-  progress: { flexGrow: 1 },
+  count: { flexShrink: 0 },
   body: {
     gap: spacing.section,
     paddingVertical: spacing.md,
@@ -507,12 +485,6 @@ const styles = StyleSheet.create({
   kindRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   source: { gap: spacing.sm, paddingVertical: spacing.card, paddingHorizontal: spacing.md },
   options: { gap: spacing.cluster },
-  slot: {
-    minWidth: size.gapSlot,
-    borderBottomWidth: borderWidth.slot,
-    borderBottomColor: colors.accent,
-    alignItems: "center",
-  },
   noticeRow: { backgroundColor: colors.background },
   check: { paddingTop: spacing.group, paddingHorizontal: spacing.screenSide },
   resultHeader: {
