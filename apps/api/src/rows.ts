@@ -211,6 +211,21 @@ export function toSessionStart(row: unknown): string | null {
   return parsed.success ? parsed.data.created_at : null;
 }
 
+const finishedRunRowSchema = z.object({
+  finished_at: z.iso.datetime({ offset: true }),
+  practice_items: z.array(z.object({ correct: z.boolean().nullable() })),
+});
+
+export function toFinishedRun(row: unknown): { finishedAt: string; missed: boolean } | null {
+  const parsed = finishedRunRowSchema.safeParse(row);
+  return parsed.success
+    ? {
+        finishedAt: parsed.data.finished_at,
+        missed: parsed.data.practice_items.some((item) => item.correct === false),
+      }
+    : null;
+}
+
 export function toSessionCost(row: unknown): { createdAt: string; costUsd: number } | null {
   const parsed = sessionCostRowSchema.safeParse(row);
   return parsed.success

@@ -119,7 +119,7 @@ without a valid token, 400 on invalid input, 404 when the row is not the
 caller's, 503 when the database cannot be reached. `GET /profile` creates the
 caller's profile when it is missing instead of answering 404. `GET
 /sessions/week?tz=<IANA zone>` answers the days of the current week (Monday
-first, in that zone) that have a session; 400 for an unknown zone. `GET
+first, in that zone) that have a session or a finished practice run, and among them the perfect days (a finished run with no missed item); 400 for an unknown zone. `GET
 /sessions/spend?tz=<IANA zone>` answers the month's spend, which keeps the cost of deleted sessions and adds the cost of
 practice runs (`practice_runs.cost_usd`). `GET
 /profile/stats?tz=<IANA zone>` answers the session count, the day streak and the new words. The day streak counts consecutive days with a session back from today, or from yesterday when today has none yet (it stays alive until today ends), in the device's time zone. `DELETE

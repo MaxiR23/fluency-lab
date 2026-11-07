@@ -34,6 +34,12 @@ export const colors = {
   miss: "#C77D44",
   missSurface: "#1F1408",
   missLine: "#6B4423",
+  flameLight: "#9CC4D6",
+  flameMid: "#2E8C93",
+  flameCore: "#F2FBFD",
+  flameHighlight: "#FFFFFF",
+  flameShade: "rgba(0,0,0,0.25)",
+  accentFlame: "rgba(109,165,192,0.6)",
 } as const;
 
 export const spacing = {
@@ -145,6 +151,8 @@ export const size = {
   sparkLarge: 6,
   sparkMedium: 5,
   sparkSmall: 4,
+  flameWidth: 44,
+  flameHeight: 40,
 } as const;
 export const strokeWidth = {
   icon: 1.8,
@@ -215,7 +223,8 @@ export const letterSpacing = {
 // like the others. The done badge's glow (blur 24) is shadowRadius 12, iOS only. The practice
 // card's glow (blur 22 at its peak) is shadowRadius 11, the week's today glow (blur 12) is
 // shadowRadius 6 and the result halo (blur 40 at its peak) is shadowRadius 20; all three are iOS
-// only, and their opacity is animated where the design animates them.
+// only, and their opacity is animated where the design animates them. The perfect day's flame
+// glow (blur 10) is shadowRadius 5, iOS only like the others.
 export const shadow = {
   raised: {
     shadowColor: colors.shadow,
@@ -280,6 +289,27 @@ export const shadow = {
     shadowOpacity: 1,
     shadowRadius: 20,
   },
+  flameGlow: {
+    shadowColor: colors.accentFlame,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 5,
+  },
+} as const;
+export const gradient = {
+  flameBody: [
+    { offset: 0, color: colors.flameLight },
+    { offset: 0.5, color: colors.flameMid },
+    { offset: 1, color: colors.accentLine },
+  ],
+  flameCore: [
+    { offset: 0, color: colors.flameCore },
+    { offset: 1, color: colors.accent },
+  ],
+  flameHighlight: [
+    { offset: 0, color: colors.flameHighlight, opacity: 0.5 },
+    { offset: 1, color: colors.flameHighlight, opacity: 0 },
+  ],
 } as const;
 // INFO: the durations follow the issue (200 to 250 ms); the offset, scale and dot keyframes
 // follow chat-typing.html; the beziers are CSS ease-out and ease-in-out. Times are in ms,
@@ -303,6 +333,8 @@ export const shadow = {
 // note-in-chat.html runs 5 s: the tutor row's enter goes from 10% to 24% (700) with the 12 point rise
 // (motion.enterOffset), and the saved line starts at 30%, which is 1000 after the enter starts, and
 // takes 400 from scale .8 (30% to 38%), both with ease-out (motion.easeOut).
+// home-perfect-day.html: the flick runs 1.2 s in four ease-in-out steps of 300 from the base
+// (transform-origin 50% 95%).
 export const motion = {
   enterDuration: 240,
   enterOffset: 12,
@@ -364,6 +396,13 @@ export const motion = {
     savedDelay: 1000,
     savedDuration: 400,
     savedScale: 0.8,
+  },
+  flame: {
+    cycle: 1200,
+    scaleX: [0.94, 1.04, 0.97, 1],
+    scaleY: [1.07, 0.95, 1.05, 1],
+    skewX: [-3, 2, -1.5, 0],
+    origin: "50% 95%",
   },
   result: {
     ringDelay: 360,

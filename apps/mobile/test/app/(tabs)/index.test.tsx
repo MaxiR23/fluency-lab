@@ -5,6 +5,7 @@
 // Tested:
 // - Loading, with data, expected empty (no Continue, empty week) and error states
 // - The greeting, the avatar (a Profile button), today's practice card, the week, the Free chat and Pick a topic tiles and Continue
+// - The perfect days of the week: the flame and the count
 // - Today's card: a run today (unfinished or finished), and the start state with no run
 // - The card opens the run or the focus screen; Free chat opens the suggestions; Pick a topic opens Practice; Continue opens Chat
 // - There is no Suggested for you carousel
@@ -210,6 +211,17 @@ describe("Home", () => {
     await renderApp("/", fakeSession());
     expect(screen.getByText(greeting(null, new Date()))).toBeTruthy();
     expect(screen.getByTestId("icon-person", { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it("shows the perfect days of the week with their count", async () => {
+    fakeData.getSessionWeek.mockResolvedValue({
+      ok: true,
+      value: weekWith(["2026-11-02", "2026-11-04"], { perfectDays: ["2026-11-04"] }),
+    });
+    await renderApp("/", fakeSession());
+    expect(screen.getByText("2 of 7 days · 1 perfect")).toBeTruthy();
+    expect(screen.getByLabelText("Wednesday, perfect practice")).toBeTruthy();
+    expect(screen.getAllByTestId("flame", { includeHiddenElements: true })).toHaveLength(1);
   });
 
   it("draws the expected empty state: no Continue and an empty week", async () => {

@@ -88,7 +88,11 @@ export default function Home() {
           <TodayPracticeCard card={state.today} onPress={openToday} motion={home} />
         </Animated.View>
         <Animated.View entering={enterTransition(rise(2))}>
-          <WeekStrip week={state.week} pop={home === null ? null : home.pop} />
+          <WeekStrip
+            week={state.week}
+            pop={home === null ? null : home.pop}
+            flame={home === null ? null : home.flame}
+          />
         </Animated.View>
         <Animated.View entering={enterTransition(rise(3))} style={styles.tiles}>
           <IconCard

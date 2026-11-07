@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { noteDeletedSchema, type Message } from "@fluency-lab/shared";
 import {
+  toFinishedRun,
   toHistoryRow,
   toMessage,
   toMistakeRow,
@@ -341,6 +342,15 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
             .gte("created_at", since)
             .order("created_at", { ascending: true });
           return readPage(result, toPracticeRunWithItems);
+        },
+
+        async listFinishedRunsSince(since) {
+          const result = await client
+            .from("practice_runs")
+            .select("finished_at, practice_items(correct)")
+            .gte("finished_at", since)
+            .order("finished_at", { ascending: true });
+          return readPage(result, toFinishedRun);
         },
 
         async createPracticeRun(input) {

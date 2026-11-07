@@ -96,6 +96,11 @@ export type UserStore = {
   addSessionCost(sessionId: string, amountUsd: number): Promise<StoreOutcome<Session | null>>;
   endSession(sessionId: string): Promise<StoreOutcome<Session | null>>;
   listSessionStarts(since: string): Promise<StoreOutcome<string[]>>;
+  // INFO: the caller's runs finished since the given time, each with whether an item was
+  // missed; [] is the expected empty. An unfinished run is never returned.
+  listFinishedRunsSince(
+    since: string,
+  ): Promise<StoreOutcome<{ finishedAt: string; missed: boolean }[]>>;
   // INFO: the cost of each session, deleted session and practice run since the given time.
   listSessionCostsSince(
     since: string,

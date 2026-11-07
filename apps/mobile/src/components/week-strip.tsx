@@ -1,5 +1,5 @@
 import type { SessionWeek } from "@fluency-lab/shared";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -9,17 +9,27 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { Flame } from "@/components/flame";
 import { Icon } from "@/components/icon";
 import { selectableStyle } from "@/components/selectable-style";
 import { Text } from "@/components/text";
 import { dayCircleStyle, dayLetterVariant } from "@/components/week-strip-style";
 import { colors, motion, size, spacing, strokeWidth } from "@/constants/theme";
 import { easing } from "@/utils/chat-transitions";
-import { popSteps, type PopMotion } from "@/utils/practice-motion";
+import { popSteps, type FlameMotion, type PopMotion } from "@/utils/practice-motion";
 import { weekStrip, type DayCell } from "@/utils/week-strip";
 
-// INFO: pop is today's check scaling 0 to 1.2 to 1 (home.html); null draws it still.
-export function WeekStrip({ week, pop = null }: { week: SessionWeek; pop?: PopMotion | null }) {
+// INFO: pop is today's check scaling 0 to 1.2 to 1 (home.html); null draws it still. flame is
+// the perfect day's flick; null draws it still.
+export function WeekStrip({
+  week,
+  pop = null,
+  flame = null,
+}: {
+  week: SessionWeek;
+  pop?: PopMotion | null;
+  flame?: FlameMotion | null;
+}) {
   const { days, countLabel } = weekStrip(week);
   return (
     <View style={[selectableStyle({ selected: false }), styles.card]}>
@@ -27,19 +37,31 @@ export function WeekStrip({ week, pop = null }: { week: SessionWeek; pop?: PopMo
         <Text variant="label">This week</Text>
         <Text variant="labelStrong">{countLabel}</Text>
       </View>
-      <View style={styles.row}>
+      <View testID="week-row" style={styles.row}>
         {days.map((cell) => (
           <View key={cell.date} style={styles.day} accessible accessibilityLabel={cell.label}>
             {pop !== null && cell.practiced && cell.isToday ? (
-              <PoppingCircle cell={cell} pop={pop} />
+              <Popping pop={pop}>
+                <DayMark cell={cell} flame={flame} />
+              </Popping>
             ) : (
-              <DayCircle cell={cell} />
+              <DayMark cell={cell} flame={flame} />
             )}
             <Text variant={dayLetterVariant(cell)}>{cell.letter}</Text>
           </View>
         ))}
       </View>
     </View>
+  );
+}
+
+function DayMark({ cell, flame }: { cell: DayCell; flame: FlameMotion | null }) {
+  return cell.perfect ? (
+    <View style={styles.flameSlot}>
+      <Flame flick={flame} />
+    </View>
+  ) : (
+    <DayCircle cell={cell} />
   );
 }
 
@@ -58,7 +80,7 @@ function DayCircle({ cell }: { cell: DayCell }) {
   );
 }
 
-function PoppingCircle({ cell, pop }: { cell: DayCell; pop: PopMotion }) {
+function Popping({ pop, children }: { pop: PopMotion; children: ReactNode }) {
   const scale = useSharedValue(0);
 
   useEffect(() => {
@@ -79,7 +101,7 @@ function PoppingCircle({ cell, pop }: { cell: DayCell; pop: PopMotion }) {
 
   return (
     <Animated.View testID="week-pop" style={animatedStyle}>
-      <DayCircle cell={cell} />
+      {children}
     </Animated.View>
   );
 }
@@ -92,6 +114,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
-  row: { flexDirection: "row", justifyContent: "space-between" },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
+  flameSlot: {
+    width: size.dayCircle,
+    height: size.flameHeight,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
   day: { alignItems: "center", gap: spacing.stack },
 });

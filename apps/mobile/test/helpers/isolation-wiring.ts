@@ -228,7 +228,7 @@ function apiAnswer(method: string, pathname: string): Response {
   if (pathname === "/sessions/spend") return json({ monthStart: "2026-11-01", spentUsd: 0 });
   if (pathname === "/sessions/active") return json({ activeSession: null });
   if (pathname === "/sessions/week") {
-    return json({ weekStart: "2026-11-02", today: "2026-11-05", days: [] });
+    return json({ weekStart: "2026-11-02", today: "2026-11-05", days: [], perfectDays: [] });
   }
   if (pathname === "/sessions" && method === "POST") return json(sessionBody, 201);
   if (pathname.endsWith("/messages") && method === "POST") return json(messageBody, 201);

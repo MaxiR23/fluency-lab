@@ -38,11 +38,29 @@ export function currentWeek(now: Date, timeZone: string): { weekStart: string; t
   return { weekStart: addDays(today, -((weekday + 6) % 7)), today };
 }
 
-export function sessionDays(
+export type FinishedRun = { finishedAt: string | null; missed: boolean };
+
+// INFO: a day counts with a chat or a finished run; it is perfect with at least one
+// finished run without a missed item. perfectDays is a subset of days by construction.
+export function weekDays(
   starts: readonly string[],
+  runs: readonly FinishedRun[],
   timeZone: string,
   weekStart: string,
-): string[] {
-  const days = new Set(starts.map((start) => localDate(new Date(start), timeZone)));
-  return weekDates(weekStart).filter((date) => days.has(date));
+): { days: string[]; perfectDays: string[] } {
+  const finished = runs.flatMap((run) =>
+    run.finishedAt === null
+      ? []
+      : [{ date: localDate(new Date(run.finishedAt), timeZone), missed: run.missed }],
+  );
+  const counted = new Set([
+    ...starts.map((start) => localDate(new Date(start), timeZone)),
+    ...finished.map((run) => run.date),
+  ]);
+  const perfect = new Set(finished.filter((run) => !run.missed).map((run) => run.date));
+  const week = weekDates(weekStart);
+  return {
+    days: week.filter((date) => counted.has(date)),
+    perfectDays: week.filter((date) => perfect.has(date)),
+  };
 }

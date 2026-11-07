@@ -35,6 +35,7 @@ export function createFakeStore() {
     addSessionCost: vi.fn<UserStore["addSessionCost"]>(),
     endSession: vi.fn<UserStore["endSession"]>(),
     listSessionStarts: vi.fn<UserStore["listSessionStarts"]>(),
+    listFinishedRunsSince: vi.fn<UserStore["listFinishedRunsSince"]>(),
     listSessionCostsSince: vi.fn<UserStore["listSessionCostsSince"]>(),
     getStats: vi.fn<UserStore["getStats"]>(),
     getMonthProgress: vi.fn<UserStore["getMonthProgress"]>(),
