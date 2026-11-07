@@ -15,7 +15,13 @@
 // SEE: apps/mobile/src/utils/progress.ts
 
 import { describe, expect, it } from "@jest/globals";
-import type { HistoryPage, MistakePage, MonthProgress, WordPage } from "@fluency-lab/shared";
+import type {
+  HistoryPage,
+  MistakePage,
+  MonthProgress,
+  NotePage,
+  WordPage,
+} from "@fluency-lab/shared";
 
 import type { DataOutcome } from "@/data/data-port";
 import {
@@ -48,12 +54,22 @@ function ok<T>(value: T): DataOutcome<T> {
 const historyPage = (page: HistoryPage = { items: [], nextOffset: null }) => ok(page);
 const mistakePage = (page: MistakePage = { items: [], nextOffset: null }) => ok(page);
 const wordPage = (page: WordPage = { items: [], nextOffset: null }) => ok(page);
+const noteItem = (id: string, day = "2026-11-05", kind: "table" | "summary" = "table") => ({
+  id,
+  kind,
+  title: `Note ${id}`,
+  topic: "Going to, will",
+  day,
+});
+const notePage = (page: NotePage = { items: [], nextOffset: null, today: "2026-11-07" }) =>
+  ok(page);
 
 function ready(
   overrides: {
     history?: HistoryPage;
     mistakes?: MistakePage;
     words?: WordPage;
+    notes?: NotePage;
   } = {},
 ): ProgressState {
   return progressFromReads(
@@ -61,6 +77,7 @@ function ready(
     historyPage(overrides.history),
     mistakePage(overrides.mistakes),
     wordPage(overrides.words),
+    notePage(overrides.notes),
   );
 }
 
@@ -91,32 +108,43 @@ describe("progressFromReads", () => {
 
   it("is failed with the first failure when any of the four reads fails", () => {
     const failed: DataOutcome<never> = { ok: false, failure: "network" };
-    expect(progressFromReads(failed, historyPage(), mistakePage(), wordPage())).toEqual({
+    expect(progressFromReads(failed, historyPage(), mistakePage(), wordPage(), notePage())).toEqual(
+      {
+        kind: "failed",
+        failure: "network",
+      },
+    );
+    expect(progressFromReads(ok(month), failed, mistakePage(), wordPage(), notePage())).toEqual({
       kind: "failed",
       failure: "network",
     });
-    expect(progressFromReads(ok(month), failed, mistakePage(), wordPage())).toEqual({
+    expect(progressFromReads(ok(month), historyPage(), failed, wordPage(), notePage())).toEqual({
       kind: "failed",
       failure: "network",
     });
-    expect(progressFromReads(ok(month), historyPage(), failed, wordPage())).toEqual({
-      kind: "failed",
-      failure: "network",
-    });
-    expect(progressFromReads(ok(month), historyPage(), mistakePage(), failed)).toEqual({
+    expect(progressFromReads(ok(month), historyPage(), mistakePage(), failed, notePage())).toEqual({
       kind: "failed",
       failure: "network",
     });
     expect(
-      progressFromReads({ ok: false, failure: "unauthorized" }, historyPage(), mistakePage(), {
-        ok: false,
-        failure: "unavailable",
-      }),
+      progressFromReads(
+        { ok: false, failure: "unauthorized" },
+        historyPage(),
+        mistakePage(),
+        { ok: false, failure: "unavailable" },
+        notePage(),
+      ),
     ).toEqual({ kind: "failed", failure: "unauthorized" });
   });
 
   it("is ready, not failed, when every page is empty and the month is zeros", () => {
-    const state = progressFromReads(ok(zeros), historyPage(), mistakePage(), wordPage());
+    const state = progressFromReads(
+      ok(zeros),
+      historyPage(),
+      mistakePage(),
+      wordPage(),
+      notePage(),
+    );
     expect(state.kind).toBe("ready");
   });
 });
@@ -133,6 +161,7 @@ describe("progressReducer", () => {
       history: historyPage(),
       mistakes: mistakePage(),
       words: wordPage(),
+      notes: notePage(),
     });
     expect(state.kind).toBe("ready");
   });
@@ -419,11 +448,16 @@ describe("progressRows", () => {
     expect(progressRows(ready(), "history")).toEqual([]);
     expect(progressRows(ready(), "mistakes")).toEqual([]);
     expect(progressRows(ready(), "words")).toEqual([]);
+    expect(progressRows(ready(), "notes")).toEqual([]);
     expect(progressRows(initialProgress, "history")).toEqual([]);
   });
 });
 
 describe("emptyText", () => {
+  it("shows No notes yet. on an empty Notes section", () => {
+    expect(emptyText("notes")).toBe("No notes yet.");
+  });
+
   it("says No finished chats yet., No mistakes yet. and No new words yet.", () => {
     expect(emptyText("history")).toBe("No finished chats yet.");
     expect(emptyText("mistakes")).toBe("No mistakes yet.");
@@ -432,11 +466,132 @@ describe("emptyText", () => {
 });
 
 describe("progressSections", () => {
-  it("lists History, Mistakes and Words in the design's order", () => {
+  it("lists History, Mistakes, Words and Notes in the design's order", () => {
     expect(progressSections).toEqual([
       { id: "history", label: "History" },
       { id: "mistakes", label: "Mistakes" },
       { id: "words", label: "Words" },
+      { id: "notes", label: "Notes" },
     ]);
+  });
+
+  it("adds Notes as the fourth section", () => {
+    expect(progressSections.map((section) => section.id)).toEqual([
+      "history",
+      "mistakes",
+      "words",
+      "notes",
+    ]);
+    expect(progressSections[3]?.label).toBe("Notes");
+  });
+});
+
+describe("the Notes section", () => {
+  it("fails Progress when the notes read fails", () => {
+    expect(
+      progressFromReads(ok(month), historyPage(), mistakePage(), wordPage(), {
+        ok: false,
+        failure: "unavailable",
+      }),
+    ).toEqual({ kind: "failed", failure: "unavailable" });
+  });
+
+  it("lists notes newest first as the API sends them", () => {
+    const state = ready({
+      notes: {
+        items: [noteItem("b", "2026-11-07"), noteItem("a", "2026-11-05")],
+        nextOffset: null,
+        today: "2026-11-07",
+      },
+    });
+    expect(progressRows(state, "notes").map((row) => row.key)).toEqual(["b", "a"]);
+  });
+
+  it("draws a note row with its kind and topic, icon and date", () => {
+    const state = ready({
+      notes: {
+        items: [noteItem("a", "2026-11-05"), noteItem("b", "2026-11-04", "summary")],
+        nextOffset: null,
+        today: "2026-11-07",
+      },
+    });
+    const rows = progressRows(state, "notes");
+    expect(rows[0]).toEqual({
+      kind: "note",
+      key: "a",
+      id: "a",
+      title: "Note a",
+      subtitle: "Table · Going to, will",
+      date: "Nov 5",
+      icon: "table",
+    });
+    expect(rows[1]).toMatchObject({ subtitle: "Summary · Going to, will", icon: "list" });
+  });
+
+  it("reads Today for a note of today", () => {
+    const state = ready({
+      notes: { items: [noteItem("a", "2026-11-07")], nextOffset: null, today: "2026-11-07" },
+    });
+    expect(progressRows(state, "notes")[0]).toMatchObject({ date: "Today" });
+  });
+
+  it("appends the next notes page, skips ids already listed and takes the newest today", () => {
+    const state = readyOnly(
+      progressReducer(
+        ready({ notes: { items: [noteItem("a")], nextOffset: 20, today: "2026-11-07" } }),
+        {
+          type: "more_loaded",
+          section: "notes",
+          offset: 20,
+          outcome: ok({
+            items: [noteItem("a"), noteItem("b")],
+            nextOffset: null,
+            today: "2026-11-08",
+          }),
+        },
+      ),
+    );
+    expect(state.notes.items.map((item) => item.id)).toEqual(["a", "b"]);
+    expect(state.notes.nextOffset).toBeNull();
+    expect(state.notes.today).toBe("2026-11-08");
+  });
+
+  it("drops a stale notes page", () => {
+    const start = ready({
+      notes: { items: [noteItem("a")], nextOffset: 20, today: "2026-11-07" },
+    });
+    const state = progressReducer(start, {
+      type: "more_loaded",
+      section: "notes",
+      offset: 40,
+      outcome: ok({ items: [noteItem("z")], nextOffset: null, today: "2026-11-07" }),
+    });
+    expect(state).toEqual(start);
+  });
+
+  it("keeps the notes and stores the failure when the next page fails", () => {
+    const start = ready({
+      notes: { items: [noteItem("a")], nextOffset: 20, today: "2026-11-07" },
+    });
+    const state = readyOnly(
+      progressReducer(start, {
+        type: "more_loaded",
+        section: "notes",
+        offset: 20,
+        outcome: { ok: false, failure: "network" },
+      }),
+    );
+    expect(state.notes.items).toHaveLength(1);
+    expect(state.notes.moreFailure).toBe("network");
+    expect(state.notes.today).toBe("2026-11-07");
+  });
+
+  it("gives the next notes offset", () => {
+    const start = ready({
+      notes: { items: [noteItem("a")], nextOffset: 20, today: "2026-11-07" },
+    });
+    expect(nextPageOffset(start, "notes", "auto")).toBe(20);
+    const loading = progressReducer(start, { type: "more_started", section: "notes" });
+    expect(nextPageOffset(loading, "notes", "retry")).toBeNull();
   });
 });

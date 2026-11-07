@@ -10,6 +10,8 @@ import type {
   PracticeRunCreate,
   PracticeRunWithItems,
   SessionWithMessages,
+  StudyNote,
+  StudyNoteCreate,
   Profile,
   ProfileUpdate,
   Session,
@@ -37,7 +39,7 @@ export type UserStore = {
   // The thread counts travel apart (listThreadCounts), so the main chat read never touches the thread table.
   getSessionWithMessages(
     sessionId: string,
-  ): Promise<StoreOutcome<Omit<SessionWithMessages, "threadReplies"> | null>>;
+  ): Promise<StoreOutcome<Omit<SessionWithMessages, "threadReplies" | "notes"> | null>>;
   addMessage(sessionId: string, input: MessageCreate): Promise<StoreOutcome<Message | null>>;
   // INFO: null means the message is not visible to the caller (missing or another user's);
   // a message with no thread is the expected empty: messages is [].
@@ -53,7 +55,8 @@ export type UserStore = {
   listThreadCounts(sessionId: string): Promise<StoreOutcome<ThreadReplies>>;
   // INFO: the caller's runs created since the given time, each with its items; [] is the expected empty.
   listPracticeRunsSince(since: string): Promise<StoreOutcome<PracticeRunWithItems[]>>;
-  createPracticeRun(input: PracticeRunCreate): Promise<StoreOutcome<PracticeRun>>;
+  // INFO: null means the note of a note run is not visible to the caller (missing or another user's).
+  createPracticeRun(input: PracticeRunCreate): Promise<StoreOutcome<PracticeRun | null>>;
   // INFO: null means the run is not visible to the caller (missing or another user's);
   // a run with no items is the expected empty: items is [].
   getPracticeRun(runId: string): Promise<StoreOutcome<PracticeRunWithItems | null>>;
@@ -73,6 +76,23 @@ export type UserStore = {
   addPracticeCost(runId: string, amountUsd: number): Promise<StoreOutcome<PracticeRun | null>>;
   setPracticeTarget(runId: string, target: 10 | 15): Promise<StoreOutcome<PracticeRun | null>>;
   finishPracticeRun(runId: string, finishedAt: string): Promise<StoreOutcome<PracticeRun | null>>;
+  // INFO: null means the named session is not visible to the caller (missing or another user's).
+  createNote(input: StudyNoteCreate): Promise<StoreOutcome<StudyNote | null>>;
+  // INFO: null means the note is not visible to the caller (missing or another user's).
+  getNote(noteId: string): Promise<StoreOutcome<StudyNote | null>>;
+  // INFO: null means the note is not visible to the caller (missing or another user's).
+  deleteNote(noteId: string): Promise<StoreOutcome<{ id: string } | null>>;
+  // INFO: the caller's notes newest first, up to limit rows from offset; [] is the expected empty.
+  listNotes(
+    offset: number,
+    limit: number,
+  ): Promise<
+    StoreOutcome<
+      { id: string; kind: "table" | "summary"; title: string; topic: string; createdAt: string }[]
+    >
+  >;
+  // INFO: the notes saved in the session, oldest first; [] is the expected empty.
+  listSessionNotes(sessionId: string): Promise<StoreOutcome<StudyNote[]>>;
   addSessionCost(sessionId: string, amountUsd: number): Promise<StoreOutcome<Session | null>>;
   endSession(sessionId: string): Promise<StoreOutcome<Session | null>>;
   listSessionStarts(since: string): Promise<StoreOutcome<string[]>>;

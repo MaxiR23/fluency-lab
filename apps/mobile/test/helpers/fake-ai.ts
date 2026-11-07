@@ -3,16 +3,17 @@
 // fake is jest.requireActual of this file. Call resetFakeAi() in beforeEach: it
 // makes reply answer with tutorReplyWith({}), a normal reply, and replyInThread
 // with threadReplyWith({}), a normal thread reply, practiceRound with five choose exercises and
-// gradeAnswer with a wrong verdict and an explanation.
+// gradeAnswer with a wrong verdict and an explanation, and studyNote with a table note.
 
 import { jest } from "@jest/globals";
-import { TUTOR_MODEL } from "@fluency-lab/shared";
+import { TUTOR_MODEL, type StudyNoteDraft } from "@fluency-lab/shared";
 
 import type {
   AiPort,
   AnswerGrade,
   PracticeExercise,
   PracticeRound,
+  StudyNoteReply,
   ThreadReply,
   TutorReply,
 } from "@/ai/ai-port";
@@ -22,6 +23,7 @@ export const fakeAi = {
   replyInThread: jest.fn<AiPort["replyInThread"]>(),
   practiceRound: jest.fn<AiPort["practiceRound"]>(),
   gradeAnswer: jest.fn<AiPort["gradeAnswer"]>(),
+  studyNote: jest.fn<AiPort["studyNote"]>(),
 } satisfies AiPort;
 
 export function tutorReplyWith(overrides: Partial<TutorReply> = {}): TutorReply {
@@ -30,6 +32,7 @@ export function tutorReplyWith(overrides: Partial<TutorReply> = {}): TutorReply 
     corrections: [],
     explanation: null,
     newWords: [],
+    note: null,
     model: TUTOR_MODEL,
     usage: {
       inputTokens: 700,
@@ -90,6 +93,33 @@ export function practiceRoundWith(overrides: Partial<PracticeRound> = {}): Pract
   };
 }
 
+// INFO: a table note on going to and will, as the tutor would make it.
+export function noteWith(overrides: Partial<StudyNoteDraft> = {}): StudyNoteDraft {
+  return {
+    kind: "table",
+    title: "Future forms",
+    topic: "Going to, will",
+    content: {
+      columns: ["Form", "When", "Example"],
+      rows: [
+        ["going to", "plans already made", "I'm going to study tonight."],
+        ["will", "decisions made now", "I'll help you with that."],
+      ],
+      remember: "Plans use going to; instant decisions use will.",
+    },
+    ...overrides,
+  } as StudyNoteDraft;
+}
+
+export function studyNoteReplyWith(overrides: Partial<StudyNoteReply> = {}): StudyNoteReply {
+  return {
+    note: noteWith(),
+    model: TUTOR_MODEL,
+    usage: { ...usage, inputTokens: 300, outputTokens: 350 },
+    ...overrides,
+  };
+}
+
 export function answerGradeWith(overrides: Partial<AnswerGrade> = {}): AnswerGrade {
   return {
     correct: false,
@@ -109,4 +139,6 @@ export function resetFakeAi(): void {
   fakeAi.practiceRound.mockResolvedValue({ ok: true, value: practiceRoundWith() });
   fakeAi.gradeAnswer.mockReset();
   fakeAi.gradeAnswer.mockResolvedValue({ ok: true, value: answerGradeWith() });
+  fakeAi.studyNote.mockReset();
+  fakeAi.studyNote.mockResolvedValue({ ok: true, value: studyNoteReplyWith() });
 }

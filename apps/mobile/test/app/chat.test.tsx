@@ -17,6 +17,7 @@
 // - Send plays the send haptic, and nothing plays when haptics are off
 // - Swiping a tutor message opens the reply preview with one reply haptic; its X cancels it
 // - A sent reply draws the quote, a resumed chat draws it again, a learner message or a locked chat cannot be swiped
+// - A tutor reply with a table is saved as a note before the tutor message, the card shows Saved to Notes and opens the note
 // - A saved message with corrections offers Ask about this with its reply count, and opens its thread
 // - Coming back from a thread draws the new count and a withdrawn correction; thread text never shows in the chat
 // - The state updates when the key step goes back to Chat
@@ -41,11 +42,12 @@ import { composerMaxHeight } from "@/components/chat-composer-style";
 import { radius, size } from "@/constants/theme";
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
-import { fakeAi, resetFakeAi, tutorReplyWith } from "../helpers/fake-ai";
+import { fakeAi, noteWith, resetFakeAi, tutorReplyWith } from "../helpers/fake-ai";
 import {
   activeSessionWith,
   completedProfile,
   fakeData,
+  noteWith as storedNoteWith,
   profileWith,
   resetFakeData,
 } from "../helpers/fake-data";
@@ -118,6 +120,7 @@ function saved(role: Message["role"], text: string, extra: Partial<Message> = {}
     corrections: null,
     newWords: null,
     replyToId: null,
+    noteId: null,
     createdAt: "2026-11-05T09:00:00Z",
     ...extra,
   };
@@ -349,6 +352,7 @@ describe("Chat", () => {
         session,
         messages: [tutor, saved("user", "To Rome", { replyToId: tutor.id })],
         threadReplies: [],
+        notes: [],
       },
     });
     await renderAppAt({ pathname: "/chat", params: { session: "session-1" } }, fakeSession());
@@ -398,6 +402,110 @@ describe("Chat", () => {
     expect(screen.queryByTestId("typing-indicator")).toBeNull();
   });
 
+  describe("study notes", () => {
+    const withNote = tutorReplyWith({
+      reply: "Here is your table.",
+      note: noteWith(),
+    });
+
+    it("saves the tutor's table as a note, then the tutor message with its id, and shows Saved to Notes", async () => {
+      withKey();
+      fakeAi.reply.mockResolvedValue({ ok: true, value: withNote });
+      fakeData.createNote.mockResolvedValue({
+        ok: true,
+        value: storedNoteWith({ id: "note-9" }),
+      });
+      const order: string[] = [];
+      fakeData.createNote.mockImplementation(async (input) => {
+        order.push("note");
+        return { ok: true, value: storedNoteWith({ ...input, id: "note-9" } as never) };
+      });
+      fakeData.addMessage.mockImplementation(async (_id, input) => {
+        order.push(`message:${input.role}`);
+        return { ok: true, value: saved(input.role, input.text) };
+      });
+      fakeData.addUsage.mockImplementation(async () => {
+        order.push("usage");
+        return { ok: true, value: session };
+      });
+      await renderAppAt("/chat", fakeSession());
+      await sendMessage("Can you make me a table to study?");
+
+      expect(order).toEqual(["message:tutor", "message:user", "note", "message:tutor", "usage"]);
+      expect(fakeData.createNote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "session-1",
+          kind: "table",
+          title: "Future forms",
+          topic: "Going to, will",
+        }),
+      );
+      expect(fakeData.addMessage).toHaveBeenLastCalledWith("session-1", {
+        role: "tutor",
+        text: "Here is your table.",
+        noteId: "note-9",
+      });
+      expect(screen.getByText("Future forms")).toBeTruthy();
+      expect(screen.getByText("Going to, will")).toBeTruthy();
+      expect(screen.getByText("Saved to Notes")).toBeTruthy();
+    });
+
+    it("opens the note when its card is pressed", async () => {
+      withKey();
+      fakeAi.reply.mockResolvedValue({ ok: true, value: withNote });
+      fakeData.createNote.mockResolvedValue({ ok: true, value: storedNoteWith({ id: "note-9" }) });
+      await renderAppAt("/chat", fakeSession());
+      await sendMessage("A table, please");
+      await fireEvent.press(screen.getByRole("button", { name: "Future forms, study note" }));
+
+      expect(screen).toHavePathname("/note");
+      expect(screen).toHaveSearchParams({ id: "note-9" });
+      expect(fakeData.getNote).toHaveBeenCalledWith("note-9");
+    });
+
+    it("shows a resumed chat's note card", async () => {
+      withKey();
+      const stored = storedNoteWith({ id: "note-7" });
+      fakeData.openSession.mockResolvedValue({
+        ok: true,
+        value: {
+          session,
+          messages: [saved("tutor", "Here you go.", { noteId: "note-7" })],
+          threadReplies: [],
+          notes: [stored],
+        },
+      });
+      await renderAppAt({ pathname: "/chat", params: { session: "session-1" } }, fakeSession());
+
+      expect(screen.getByText("Future forms")).toBeTruthy();
+      expect(screen.getByText("Saved to Notes")).toBeTruthy();
+    });
+
+    it("retries a failed note save before the tutor message", async () => {
+      withKey();
+      fakeAi.reply.mockResolvedValue({ ok: true, value: withNote });
+      fakeData.createNote.mockResolvedValueOnce({ ok: false, failure: "network" });
+      fakeData.createNote.mockResolvedValue({ ok: true, value: storedNoteWith({ id: "note-9" }) });
+      await renderAppAt("/chat", fakeSession());
+      await sendMessage("A table, please");
+
+      expect(screen.queryByText("Saved to Notes")).toBeNull();
+      expect(fakeData.addMessage).not.toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({ role: "tutor", text: "Here is your table." }),
+      );
+      await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+
+      expect(fakeData.createNote).toHaveBeenCalledTimes(2);
+      expect(fakeData.addMessage).toHaveBeenLastCalledWith("session-1", {
+        role: "tutor",
+        text: "Here is your table.",
+        noteId: "note-9",
+      });
+      expect(screen.getByText("Saved to Notes")).toBeTruthy();
+    });
+  });
+
   it("shows the typing indicator while the reply is pending", async () => {
     withKey();
     let finish!: (value: Awaited<ReturnType<typeof fakeAi.reply>>) => void;
@@ -433,6 +541,7 @@ describe("Chat", () => {
           }),
         ],
         threadReplies: [],
+        notes: [],
       },
     });
     await renderAppAt({ pathname: "/chat", params: { session: "session-1" } }, fakeSession());
@@ -463,7 +572,7 @@ describe("Chat", () => {
     ) {
       fakeData.openSession.mockResolvedValue({
         ok: true,
-        value: { session, messages, threadReplies },
+        value: { session, messages, threadReplies, notes: [] },
       });
     }
 
@@ -597,7 +706,12 @@ describe("Chat", () => {
     withKey();
     fakeData.openSession.mockResolvedValue({
       ok: true,
-      value: { session: { ...session, status: "ended" }, messages: [], threadReplies: [] },
+      value: {
+        session: { ...session, status: "ended" },
+        messages: [],
+        threadReplies: [],
+        notes: [],
+      },
     });
     await renderAppAt({ pathname: "/chat", params: { session: "session-1" } }, fakeSession());
     expect(screen.getByText("This conversation has ended.")).toBeTruthy();

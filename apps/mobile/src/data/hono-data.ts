@@ -9,6 +9,8 @@ import {
   monthProgressSchema,
   messageSchema,
   monthSpendSchema,
+  noteDeletedSchema,
+  notePageSchema,
   openSessionsResponseSchema,
   practiceItemSchema,
   practiceItemsResponseSchema,
@@ -21,6 +23,7 @@ import {
   sessionSchema,
   sessionSummarySchema,
   sessionWeekSchema,
+  studyNoteSchema,
   threadMessageSchema,
   wordPageSchema,
 } from "@fluency-lab/shared";
@@ -129,6 +132,16 @@ export function createHonoData(config: HonoDataConfig): DataPort {
       call(
         (client) => client.sessions[":id"].end.$post({ param: { id: sessionId } }),
         sessionSchema,
+      ),
+    createNote: (input) => call((client) => client.notes.$post({ json: input }), studyNoteSchema),
+    getNote: (noteId) =>
+      call((client) => client.notes[":id"].$get({ param: { id: noteId } }), studyNoteSchema),
+    deleteNote: (noteId) =>
+      call((client) => client.notes[":id"].$delete({ param: { id: noteId } }), noteDeletedSchema),
+    listNotes: (timeZone, offset) =>
+      call(
+        (client) => client.progress.notes.$get({ query: { tz: timeZone, offset: String(offset) } }),
+        notePageSchema,
       ),
     openThread: (messageId) =>
       call(

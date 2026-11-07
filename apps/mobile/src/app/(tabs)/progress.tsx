@@ -10,7 +10,7 @@ import { SessionCard } from "@/components/session-card";
 import { StatCard } from "@/components/stat-card";
 import { Text } from "@/components/text";
 import { WordCard } from "@/components/word-card";
-import { colors, spacing } from "@/constants/theme";
+import { colors, size, spacing } from "@/constants/theme";
 import { useProgress } from "@/hooks/use-progress";
 import { useTabScreenPadding } from "@/hooks/use-tab-screen-padding";
 import { dataFailureMessage } from "@/utils/data-message";
@@ -51,6 +51,18 @@ function Row({ row }: { row: ProgressRow }) {
       );
     case "word":
       return <WordCard word={row.word} sentence={row.sentence} date={row.date} />;
+    case "note":
+      return (
+        <SessionCard
+          title={row.title}
+          time={row.date}
+          detail={row.subtitle}
+          icon={row.icon}
+          iconSize={size.iconCard}
+          timePlacement="end"
+          onPress={() => router.push({ pathname: "/note", params: { id: row.id } })}
+        />
+      );
   }
 }
 

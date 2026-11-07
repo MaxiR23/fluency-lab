@@ -12,7 +12,7 @@ use. Following a plan is optional; free practice is the default.
 Status: Expo project in a pnpm monorepo. The design layer exists (tokens
 and base components); email sign-in, sign-up, password reset, onboarding, Home
 with the tab bar, Settings, Profile, Progress (history, mistakes and words), the Chat screen (chat with the
-tutor, replying to a tutor message, asking about a correction in its own thread, saved sessions and the no-key state), the Summary after ending a chat, the daily practice (focus, exercises, result) and Home v3 are built, the other screens are not. The screen map, the
+tutor, replying to a tutor message, asking about a correction in its own thread, saved sessions and the no-key state), the Summary after ending a chat, the daily practice (focus, exercises, result), Home v3 and the study notes (the note screen, Progress · Notes and the notes in the chat) are built, the other screens are not. The screen map, the
 palette and the Home design are decided (see README.md).
 
 ## Stack

@@ -12,6 +12,7 @@ import { messageListContentStyle, type MessageListLayout } from "@/components/me
 import { MessageBubble } from "@/components/message-bubble";
 import { messageBubbleStyle } from "@/components/message-bubble-style";
 import { NewWord } from "@/components/new-word";
+import { NoteCard } from "@/components/note-card";
 import { ReplySwipe } from "@/components/reply-swipe";
 import { TypingIndicator } from "@/components/typing-indicator";
 import { spacing } from "@/constants/theme";
@@ -20,6 +21,7 @@ import { chatKeyboardLayout } from "@/utils/chat-keyboard";
 import type { ChatMotion } from "@/utils/chat-motion";
 import { quoteScrollY } from "@/utils/chat-reply";
 import { enterTransition } from "@/utils/chat-transitions";
+import { savedTransition } from "@/utils/note-transitions";
 
 export function MessageList({
   items,
@@ -27,6 +29,7 @@ export function MessageList({
   onReply,
   onArm,
   onAsk,
+  onOpenNote,
   layout = "chat",
 }: {
   items: ChatItem[];
@@ -36,6 +39,8 @@ export function MessageList({
   onArm?: () => void;
   // INFO: without onAsk no learner row asks about its corrections.
   onAsk?: (messageId: string) => void;
+  // INFO: without onOpenNote a note card is drawn but cannot be opened.
+  onOpenNote?: (noteId: string) => void;
   layout?: MessageListLayout;
 }) {
   const list = useRef<KeyboardChatScrollViewRef>(null);
@@ -65,24 +70,54 @@ export function MessageList({
           if (item.kind === "typing") return <TypingIndicator key={item.id} motion={motion} />;
           if (item.kind === "new_word") return <NewWord key={item.id} word={item.word} />;
           if (item.kind === "tutor") {
+            const { note } = item;
+            const noteId = note === null ? null : note.noteId;
+            const bubble = (
+              <MessageBubble
+                role="tutor"
+                text={item.text}
+                note={
+                  note === null ? undefined : (
+                    <NoteCard
+                      title={note.title}
+                      topic={note.topic}
+                      icon={note.icon}
+                      preview={note.preview}
+                      saved={note.noteId !== null}
+                      onPress={
+                        noteId === null || onOpenNote === undefined
+                          ? undefined
+                          : () => onOpenNote(noteId)
+                      }
+                      savedEntering={savedTransition(motion.saved)}
+                    />
+                  )
+                }
+              />
+            );
             return (
               <Animated.View
                 key={item.id}
                 testID={`row-${item.id}`}
-                style={onReply === undefined ? messageBubbleStyle("tutor").row : styles.swipeRow}
-                entering={enterTransition(motion.enter)}
+                style={
+                  onReply === undefined
+                    ? messageBubbleStyle("tutor", { note: note !== null }).row
+                    : styles.swipeRow
+                }
+                entering={enterTransition(note === null ? motion.enter : motion.noteEnter)}
                 onLayout={(event) => rows.current.set(item.id, event.nativeEvent.layout.y)}
               >
                 {onReply === undefined ? (
-                  <MessageBubble role="tutor" text={item.text} />
+                  bubble
                 ) : (
                   <ReplySwipe
                     testID={`reply-swipe-${item.id}`}
                     onReply={() => onReply(item.id)}
                     onArm={onArm ?? noop}
                     back={motion.swipeBack}
+                    note={note !== null}
                   >
-                    <MessageBubble role="tutor" text={item.text} />
+                    {bubble}
                   </ReplySwipe>
                 )}
               </Animated.View>

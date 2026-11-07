@@ -34,7 +34,10 @@ export type IconName =
   | "ask"
   | "pen"
   | "review"
-  | "words";
+  | "words"
+  | "table"
+  | "list"
+  | "trashPlain";
 
 // INFO: shapes the source draws as a circle or a rect are written as path data,
 // so Icon only draws Path.
@@ -124,6 +127,13 @@ const paths: Record<IconName, readonly string[]> = {
     "M4 19.5A2.5 2.5 0 0 1 6.5 17H20",
     "M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z",
   ],
+  table: [
+    "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+    "M3 9h18M3 15h18M9 3v18",
+  ],
+  list: ["M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"],
+  // INFO: the note screen's trash is a different drawing from the rounded trash of chats-open.html.
+  trashPlain: ["M3 6h18", "M8 6V4h8v2", "M19 6l-1 14H6L5 6"],
 };
 
 export function Icon({

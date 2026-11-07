@@ -2,11 +2,24 @@ import type { StoredCorrection } from "@fluency-lab/shared";
 
 import type { Conversation } from "@/utils/chat-conversation";
 import { quoteFor, type Quote } from "@/utils/chat-reply";
+import { noteIcon, notePreview, type NotePreviewLine } from "@/utils/note";
 
 export type { StoredCorrection };
 
 export type ChatItem =
-  | { kind: "tutor"; id: string; text: string }
+  | {
+      kind: "tutor";
+      id: string;
+      text: string;
+      // INFO: noteId is null until the note is saved: the card is drawn without "Saved to Notes".
+      note: {
+        noteId: string | null;
+        title: string;
+        topic: string;
+        icon: "table" | "list";
+        preview: NotePreviewLine[];
+      } | null;
+    }
   | {
       kind: "user";
       id: string;
@@ -69,7 +82,21 @@ export function chatItems(c: Conversation): ChatItem[] {
   const items: ChatItem[] = [];
   for (const message of c.messages) {
     if (message.role === "tutor") {
-      items.push({ kind: "tutor", id: message.id, text: message.text });
+      items.push({
+        kind: "tutor",
+        id: message.id,
+        text: message.text,
+        note:
+          message.note === null
+            ? null
+            : {
+                noteId: message.note.savedId,
+                title: message.note.draft.title,
+                topic: message.note.draft.topic,
+                icon: noteIcon(message.note.draft.kind),
+                preview: notePreview(message.note.draft),
+              },
+      });
       continue;
     }
     items.push({

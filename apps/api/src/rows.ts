@@ -3,6 +3,7 @@ import {
   LEVELS,
   GRAMMAR_TOPIC_IDS,
   MESSAGE_ROLES,
+  NOTE_KINDS,
   PRACTICE_FOCUSES,
   PRACTICE_KINDS,
   PROVIDERS,
@@ -10,6 +11,7 @@ import {
   TOPIC_IDS,
   newWordsSchema,
   storedMessageCorrectionsSchema,
+  studyNoteShapeSchema,
   type ActiveSession,
   type Message,
   type PracticeItem,
@@ -18,6 +20,7 @@ import {
   type Profile,
   type ProfileUpdate,
   type Session,
+  type StudyNote,
   type ThreadMessage,
 } from "@fluency-lab/shared";
 import { z } from "zod";
@@ -91,6 +94,7 @@ const messageRowSchema = z.object({
   corrections: storedMessageCorrectionsSchema.nullable(),
   new_words: newWordsSchema.nullable(),
   reply_to_id: z.string().nullable(),
+  note_id: z.string().nullable(),
   created_at: z.string(),
 });
 
@@ -109,6 +113,7 @@ const practiceRunRowSchema = z.object({
   id: z.string(),
   focus: z.enum(PRACTICE_FOCUSES),
   topic_id: z.enum(GRAMMAR_TOPIC_IDS).nullable(),
+  note_id: z.string().nullable(),
   target: practiceTarget,
   cost_usd: z.number(),
   created_at: z.string(),
@@ -132,6 +137,25 @@ const practiceItemRowSchema = z.object({
 });
 
 const practiceRunItemsRowSchema = z.object({ practice_items: z.array(z.unknown()) });
+
+const noteRowSchema = z.object({
+  id: z.string(),
+  session_id: z.string().nullable(),
+  kind: z.enum(NOTE_KINDS),
+  title: z.string(),
+  topic: z.string(),
+  content: z.unknown(),
+  created_at: z.string(),
+  sessions: z.object({ title: z.string() }).nullable(),
+});
+
+const noteListRowSchema = z.object({
+  id: z.string(),
+  kind: z.enum(NOTE_KINDS),
+  title: z.string(),
+  topic: z.string(),
+  created_at: z.iso.datetime({ offset: true }),
+});
 
 const threadCountRowSchema = z.object({ message_id: z.string(), reply_count: z.number() });
 
@@ -262,6 +286,7 @@ export function toMessage(row: unknown): Message | null {
     corrections: r.corrections,
     newWords: r.new_words,
     replyToId: r.reply_to_id,
+    noteId: r.note_id,
     createdAt: r.created_at,
   };
 }
@@ -287,6 +312,38 @@ export function toThreadCount(row: unknown): { messageId: string; count: number 
     : null;
 }
 
+// INFO: a note row with its session's title embedded (null when the session is gone). The
+// content is checked against the shape of its kind, so a row that does not match is null.
+export function toStudyNote(row: unknown): StudyNote | null {
+  const parsed = noteRowSchema.safeParse(row);
+  if (!parsed.success) return null;
+  const r = parsed.data;
+  const shape = studyNoteShapeSchema.safeParse({ kind: r.kind, content: r.content });
+  if (!shape.success) return null;
+  return {
+    ...shape.data,
+    id: r.id,
+    sessionId: r.session_id,
+    sessionTitle: r.sessions === null ? null : r.sessions.title,
+    title: r.title,
+    topic: r.topic,
+    createdAt: r.created_at,
+  };
+}
+
+export function toNoteRow(row: unknown): {
+  id: string;
+  kind: "table" | "summary";
+  title: string;
+  topic: string;
+  createdAt: string;
+} | null {
+  const parsed = noteListRowSchema.safeParse(row);
+  if (!parsed.success) return null;
+  const r = parsed.data;
+  return { id: r.id, kind: r.kind, title: r.title, topic: r.topic, createdAt: r.created_at };
+}
+
 export function toPracticeRun(row: unknown): PracticeRun | null {
   const parsed = practiceRunRowSchema.safeParse(row);
   if (!parsed.success) return null;
@@ -295,6 +352,7 @@ export function toPracticeRun(row: unknown): PracticeRun | null {
     id: r.id,
     focus: r.focus,
     topicId: r.topic_id,
+    noteId: r.note_id,
     target: r.target,
     costUsd: r.cost_usd,
     createdAt: r.created_at,

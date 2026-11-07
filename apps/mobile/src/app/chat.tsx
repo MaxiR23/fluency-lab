@@ -37,7 +37,8 @@ export default function Chat() {
     topic?: string | string[];
   }>();
   const origin = chatOrigin(params);
-  const { view, setDraft, startReply, cancelReply, send, retry, end, updateKey } = useChat(origin);
+  const { view, setDraft, startReply, cancelReply, send, retry, end, openNote, updateKey } =
+    useChat(origin);
   const motion = useChatMotion();
   const { play } = useHaptics();
 
@@ -96,6 +97,7 @@ export default function Chat() {
             onReply={locked ? undefined : startReply}
             onArm={() => play("reply")}
             onAsk={(messageId) => router.push(threadHref(messageId))}
+            onOpenNote={openNote}
           />
         )}
         <ChatFooter>

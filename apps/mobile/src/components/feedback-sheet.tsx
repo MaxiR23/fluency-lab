@@ -1,8 +1,12 @@
-import { StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import Animated from "react-native-reanimated";
 
 import { Button } from "@/components/button";
-import { feedbackSheetStyle, type FeedbackTone } from "@/components/feedback-sheet-style";
+import {
+  feedbackSheetStyle,
+  noteActionStyle,
+  type FeedbackTone,
+} from "@/components/feedback-sheet-style";
 import { Icon } from "@/components/icon";
 import { Text } from "@/components/text";
 import { colors, size, spacing, strokeWidth } from "@/constants/theme";
@@ -19,6 +23,7 @@ export function FeedbackSheet({
   onContinue,
   busy,
   motion,
+  note,
 }: {
   tone: FeedbackTone;
   title: string;
@@ -27,6 +32,8 @@ export function FeedbackSheet({
   onContinue: () => void;
   busy: boolean;
   motion: ExerciseMotion | null;
+  // INFO: the study note action of a miss; without it the sheet draws no such button.
+  note?: { onPress: () => void; busy: boolean; disabled: boolean };
 }) {
   const style = feedbackSheetStyle(tone);
   return (
@@ -56,6 +63,28 @@ export function FeedbackSheet({
         </Text>
       )}
       <Text variant="intro">{explanation}</Text>
+      {note === undefined ? null : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Make me a study note"
+          accessibilityState={{ busy: note.busy, disabled: note.disabled || note.busy }}
+          disabled={note.disabled || note.busy}
+          onPress={note.onPress}
+          style={noteActionStyle()}
+        >
+          {note.busy ? (
+            <ActivityIndicator color={colors.accent} />
+          ) : (
+            <Icon
+              name="table"
+              color={colors.accent}
+              size={size.iconAction}
+              strokeWidth={strokeWidth.icon}
+            />
+          )}
+          <Text variant="footerLink">Make me a study note</Text>
+        </Pressable>
+      )}
       <Button label="Continue" variant={style.button} large loading={busy} onPress={onContinue} />
     </Animated.View>
   );

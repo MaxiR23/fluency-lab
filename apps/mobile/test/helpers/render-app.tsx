@@ -17,6 +17,7 @@ import Progress from "@/app/(tabs)/progress";
 import Settings from "@/app/(tabs)/settings";
 import TabsLayout from "@/app/(tabs)/_layout";
 import EditProfile from "@/app/edit-profile";
+import Note from "@/app/note";
 import Onboarding from "@/app/onboarding";
 import Practice from "@/app/practice";
 import PracticeRun from "@/app/practice-run";
@@ -46,6 +47,7 @@ export async function renderApp(initialUrl: string, session: AuthSession | null)
       suggestions: Suggestions,
       summary: Summary,
       thread: Thread,
+      note: Note,
       "api-key": ApiKey,
       onboarding: Onboarding,
       "sign-in": SignIn,

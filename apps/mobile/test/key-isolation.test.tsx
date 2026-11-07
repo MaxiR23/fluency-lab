@@ -7,6 +7,7 @@
 // - The key never reaches the data port or any request to our API
 // - The same holds for a question asked in a correction thread
 // - The same holds for a practice round and the grading of a typed answer
+// - The same holds for a study note made from a missed exercise
 // - A 401 or a network error that echoes the key draws no key, cause line included
 // - Nothing is logged
 //   (that only the AI wiring reads the key is checked in scripts/test/key-reader.test.mjs)
@@ -29,6 +30,7 @@ import {
   data,
   provider,
   providerGradeSuccess,
+  providerNoteSuccess,
   providerRoundSuccess,
   providerSuccess,
   providerThreadSuccess,
@@ -198,6 +200,41 @@ describe("the user's key", () => {
       expect(entry.body).not.toContain(apiKey);
     }
     expect(toApi.some((entry) => entry.url.endsWith("/practice/runs"))).toBe(true);
+    expect(recorded).toHaveLength(toProvider.length + toApi.length);
+    for (const entry of toApi) {
+      expect(entry.url).not.toContain(apiKey);
+      expect(entry.body).not.toContain(apiKey);
+      expect(Object.values(entry.headers).join("\n")).not.toContain(apiKey);
+    }
+    expect(JSON.stringify(dataSpies.flatMap((spy) => spy.mock.calls))).not.toContain(apiKey);
+    expect(JSON.stringify(screen.toJSON())).not.toContain(apiKey);
+  });
+
+  it("sends the key only to the provider for a study note", async () => {
+    const answers = [providerRoundSuccess, providerGradeSuccess, providerNoteSuccess];
+    let calls = 0;
+    provider.answer = () => (answers[calls++] ?? providerNoteSuccess)();
+    await renderAppAt(
+      { pathname: "/practice-run", params: { focus: "mistakes", target: "5" } },
+      fakeSession(),
+    );
+    await fireEvent.changeText(screen.getByLabelText("Your answer"), "I never was to Japan.");
+    await fireEvent.press(screen.getByRole("button", { name: "Check" }));
+    await act(async () => {});
+    await fireEvent.press(screen.getByRole("button", { name: "Make me a study note" }));
+    await act(async () => {});
+
+    const toProvider = recorded.filter((entry) => entry.url.startsWith(PROVIDER_ORIGIN));
+    const toApi = recorded.filter((entry) => entry.url.startsWith("http://api.test"));
+    expect(toProvider).toHaveLength(3);
+    for (const entry of toProvider) {
+      expect(entry.headers["x-api-key"]).toBe(apiKey);
+      expect(entry.url).not.toContain(apiKey);
+      expect(entry.body).not.toContain(apiKey);
+    }
+    expect(toApi.some((entry) => entry.url.endsWith("/notes") && entry.method === "POST")).toBe(
+      true,
+    );
     expect(recorded).toHaveLength(toProvider.length + toApi.length);
     for (const entry of toApi) {
       expect(entry.url).not.toContain(apiKey);

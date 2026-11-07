@@ -47,7 +47,7 @@ describe("segmentedStyle", () => {
     expect(style.segmentRole).toBe("radio");
   });
 
-  it("draws the tabs look of progress-history.html", () => {
+  it("draws the tabs look of progress-notes.html: a 4 gap and 13 point semibold labels", () => {
     const style = segmentedStyle("tabs");
     expect(style.group).toEqual({
       flexDirection: "row",
@@ -56,7 +56,7 @@ describe("segmentedStyle", () => {
       borderWidth: borderWidth.thin,
       borderRadius: radius.control,
       padding: spacing.xs,
-      gap: spacing.stack,
+      gap: spacing.xs,
     });
     expect(style.segment).toEqual({
       flex: 1,
@@ -71,8 +71,8 @@ describe("segmentedStyle", () => {
       backgroundColor: colors.accentLine,
       borderColor: colors.accentPressed,
     });
-    expect(style.label(true)).toBe("action");
-    expect(style.label(false)).toBe("actionMuted");
+    expect(style.label(true)).toBe("labelStrong");
+    expect(style.label(false)).toBe("label");
     expect(style.groupRole).toBe("tablist");
     expect(style.segmentRole).toBe("tab");
   });

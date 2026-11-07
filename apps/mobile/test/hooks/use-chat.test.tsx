@@ -11,6 +11,7 @@
 // - A reopened session sends its saved messages as history
 // - A reply to a tutor message: its saved id on the write, the quote in the turn, cancel and failures
 // - End, Update key, the refocus refresh, and a reply that ends after unmount
+// - A reply with a note saves the note first, then the tutor message with its id, and the card opens its note
 // - A chat with a session re-reads it on refocus, to show the thread counts and withdrawn corrections
 //
 // What is covered:
@@ -29,8 +30,8 @@ import { useChat } from "@/hooks/use-chat";
 import type { Conversation } from "@/utils/chat-conversation";
 import type { ChatOrigin } from "@/utils/chat-opening";
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
-import { fakeAi, resetFakeAi, tutorReplyWith } from "../helpers/fake-ai";
-import { fakeData, profileWith, resetFakeData } from "../helpers/fake-data";
+import { fakeAi, noteWith, resetFakeAi, tutorReplyWith } from "../helpers/fake-ai";
+import { fakeData, noteWith as storedNote, profileWith, resetFakeData } from "../helpers/fake-data";
 import { fakeKeys, resetFakeKeys } from "../helpers/fake-keys";
 
 jest.mock("expo-router", () => ({
@@ -71,6 +72,7 @@ function saved(role: Message["role"], text: string): Message {
     corrections: null,
     newWords: null,
     replyToId: null,
+    noteId: null,
     createdAt: "2026-11-05T09:00:00Z",
   };
 }
@@ -155,6 +157,7 @@ describe("useChat", () => {
           session,
           messages: [saved("tutor", "Opening"), saved("user", "Hi")],
           threadReplies: [],
+          notes: [],
         },
       });
       const { result } = await ready({ kind: "resume", sessionId: "session-1" });
@@ -225,7 +228,12 @@ describe("useChat", () => {
       withKey();
       fakeData.openSession.mockResolvedValue({
         ok: true,
-        value: { session: { ...session, status: "ended" }, messages: [], threadReplies: [] },
+        value: {
+          session: { ...session, status: "ended" },
+          messages: [],
+          threadReplies: [],
+          notes: [],
+        },
       });
       const { result } = await renderHook(() => useChat({ kind: "resume", sessionId: "x" }));
       await waitFor(() =>
@@ -331,6 +339,61 @@ describe("useChat", () => {
       expect(c.spentUsd).toBe(0.000145);
     });
 
+    it("saves the note before the tutor message, names it there, and opens it", async () => {
+      withKey();
+      fakeAi.reply.mockResolvedValue({
+        ok: true,
+        value: tutorReplyWith({ reply: "Here is your table.", note: noteWith() }),
+      });
+      fakeData.createNote.mockResolvedValue({ ok: true, value: storedNote({ id: "note-9" }) });
+      const hook = await ready();
+      await sendText(hook, "A table, please");
+
+      const calls = [
+        ...fakeData.addMessage.mock.calls.map((call) => ({ at: "message", input: call[1] })),
+      ];
+      expect(calls.map((call) => call.input.role)).toEqual(["tutor", "user", "tutor"]);
+      expect(fakeData.createNote).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: "session-1", title: "Future forms" }),
+      );
+      const noteOrder = fakeData.createNote.mock.invocationCallOrder[0] ?? 0;
+      const userOrder = fakeData.addMessage.mock.invocationCallOrder[1] ?? 0;
+      const tutorOrder = fakeData.addMessage.mock.invocationCallOrder[2] ?? 0;
+      expect(noteOrder).toBeGreaterThan(userOrder);
+      expect(noteOrder).toBeLessThan(tutorOrder);
+      expect(fakeData.addMessage.mock.calls[2]?.[1]).toEqual({
+        role: "tutor",
+        text: "Here is your table.",
+        noteId: "note-9",
+      });
+      expect(fakeData.addUsage).toHaveBeenCalledTimes(1);
+      hook.result.current.openNote("note-9");
+      expect(router.push).toHaveBeenCalledWith({ pathname: "/note", params: { id: "note-9" } });
+    });
+
+    it("stops at a failed note save and resumes it on retry", async () => {
+      withKey();
+      fakeAi.reply.mockResolvedValue({
+        ok: true,
+        value: tutorReplyWith({ reply: "Here is your table.", note: noteWith() }),
+      });
+      fakeData.createNote.mockResolvedValueOnce({ ok: false, failure: "network" });
+      fakeData.createNote.mockResolvedValue({ ok: true, value: storedNote({ id: "note-9" }) });
+      const hook = await ready();
+      await sendText(hook, "A table, please");
+
+      expect(conversationOf(hook.result.current.view).failure).toMatchObject({
+        source: "data",
+        failure: "network",
+      });
+      expect(fakeData.addMessage).toHaveBeenCalledTimes(2);
+      await act(async () => hook.result.current.retry());
+
+      expect(fakeData.createNote).toHaveBeenCalledTimes(2);
+      expect(fakeData.addMessage).toHaveBeenCalledTimes(3);
+      expect(fakeAi.reply).toHaveBeenCalledTimes(1);
+    });
+
     it("saves a free chat's greeting as its first message", async () => {
       withKey();
       const hook = await ready(free);
@@ -416,6 +479,7 @@ describe("useChat", () => {
           session,
           messages: [saved("tutor", "Opening"), saved("user", "One"), saved("tutor", "Two")],
           threadReplies: [],
+          notes: [],
         },
       });
       const hook = await ready({ kind: "resume", sessionId: "session-1" });
@@ -660,7 +724,7 @@ describe("useChat", () => {
       withKey();
       fakeData.openSession.mockResolvedValue({
         ok: true,
-        value: { session, messages: [corrected(false)], threadReplies: [] },
+        value: { session, messages: [corrected(false)], threadReplies: [], notes: [] },
       });
       const hook = await ready(resume);
       expect(conversationOf(hook.result.current.view).messages[0].threadReplies).toBe(0);
@@ -670,6 +734,7 @@ describe("useChat", () => {
           session,
           messages: [corrected(true)],
           threadReplies: [{ messageId: "m-I goed", count: 2 }],
+          notes: [],
         },
       });
 
@@ -696,7 +761,7 @@ describe("useChat", () => {
       withKey();
       fakeData.openSession.mockResolvedValue({
         ok: true,
-        value: { session, messages: [corrected(false)], threadReplies: [] },
+        value: { session, messages: [corrected(false)], threadReplies: [], notes: [] },
       });
       const hook = await ready(resume);
       fakeData.openSession.mockResolvedValue({ ok: false, failure: "network" });

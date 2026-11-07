@@ -4,7 +4,8 @@
 //
 // Tested:
 // - Loading, with data, expected empty and error states, for each section
-// - The month's three stats and the History · Mistakes · Words tabs, History first
+// - The month's three stats and the History · Mistakes · Words · Notes tabs, History first
+// - The Notes tab: rows newest first with their kind, topic, icon and date, the empty text, opening a note, the next page and the failure
 // - A History row opens its Summary from history
 // - The next page loads at the end of the list, and its failure keeps the rows and offers Try again
 // - The end of Progress is padded by the tab bar clearance
@@ -199,6 +200,90 @@ describe("Progress", () => {
     expect(screen.getByText("No mistakes yet.")).toBeTruthy();
     await fireEvent.press(screen.getByRole("tab", { name: "Words" }));
     expect(screen.getByText("No new words yet.")).toBeTruthy();
+  });
+
+  describe("the Notes tab", () => {
+    const notePage = {
+      items: [
+        {
+          id: "n1",
+          kind: "table" as const,
+          title: "Future forms",
+          topic: "Going to, will",
+          day: "2026-11-07",
+        },
+        {
+          id: "n2",
+          kind: "summary" as const,
+          title: "Present perfect",
+          topic: "Experiences",
+          day: "2026-11-05",
+        },
+      ],
+      nextOffset: null,
+      today: "2026-11-07",
+    };
+
+    it("lists the notes newest first under the Notes tab", async () => {
+      fakeData.listNotes.mockResolvedValue({ ok: true, value: notePage });
+      await renderAppAt("/progress", fakeSession());
+      await fireEvent.press(await screen.findByRole("tab", { name: "Notes" }));
+
+      const titles = screen
+        .getAllByText(/^(Future forms|Present perfect)$/)
+        .map((n) => n.props.children);
+      expect(titles).toEqual(["Future forms", "Present perfect"]);
+      expect(screen.getByText("Table · Going to, will")).toBeTruthy();
+      expect(screen.getByText("Summary · Experiences")).toBeTruthy();
+      expect(screen.getByText("Today")).toBeTruthy();
+      expect(screen.getByText("Nov 5")).toBeTruthy();
+      expect(screen.getByTestId("icon-table", { includeHiddenElements: true })).toBeTruthy();
+      expect(screen.getByTestId("icon-list", { includeHiddenElements: true })).toBeTruthy();
+    });
+
+    it("shows No notes yet. on an empty Notes tab", async () => {
+      await renderAppAt("/progress", fakeSession());
+      await fireEvent.press(await screen.findByRole("tab", { name: "Notes" }));
+      expect(screen.getByText("No notes yet.")).toBeTruthy();
+    });
+
+    it("opens a note from its row", async () => {
+      fakeData.listNotes.mockResolvedValue({ ok: true, value: notePage });
+      await renderAppAt("/progress", fakeSession());
+      await fireEvent.press(await screen.findByRole("tab", { name: "Notes" }));
+      await fireEvent.press(screen.getByRole("button", { name: "Future forms" }));
+
+      expect(screen).toHavePathname("/note");
+      expect(screen).toHaveSearchParams({ id: "n1" });
+      expect(fakeData.getNote).toHaveBeenCalledWith("n1");
+    });
+
+    it("loads the next page of notes", async () => {
+      fakeData.listNotes.mockResolvedValueOnce({
+        ok: true,
+        value: { ...notePage, items: notePage.items.slice(0, 1), nextOffset: 20 },
+      });
+      fakeData.listNotes.mockResolvedValueOnce({
+        ok: true,
+        value: { ...notePage, items: notePage.items.slice(1), nextOffset: null },
+      });
+      await renderAppAt("/progress", fakeSession());
+      await fireEvent.press(await screen.findByRole("tab", { name: "Notes" }));
+      await fireEvent(screen.getByTestId("progress-content"), "endReached");
+
+      expect(await screen.findByText("Present perfect")).toBeTruthy();
+      expect(fakeData.listNotes).toHaveBeenLastCalledWith("America/Lima", 20);
+      expect(screen.getByText("Future forms")).toBeTruthy();
+    });
+
+    it("shows Try again when the notes read fails", async () => {
+      fakeData.listNotes.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+      await renderAppAt("/progress", fakeSession());
+
+      expect(await screen.findByText(dataFailureMessage("unavailable"))).toBeTruthy();
+      await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+      expect(await screen.findByText("This month")).toBeTruthy();
+    });
   });
 
   it("shows zeros, not an error, for a month with nothing", async () => {

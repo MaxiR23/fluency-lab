@@ -4,12 +4,14 @@ import {
   type Level,
   type MistakePage,
   type PracticeFocus,
+  type PracticeItem,
   type PracticeKind,
+  type StudyNoteDraft,
   type WordPage,
 } from "@fluency-lab/shared";
 
 import type { TutorRequest } from "@/ai/ai-port";
-import { RULE_NO_KEY } from "@/utils/tutor-prompt";
+import { NOTE_SHAPE, RULE_NO_KEY } from "@/utils/tutor-prompt";
 
 const MAX_CORRECTIONS = 10;
 const MAX_WORDS = 15;
@@ -22,7 +24,8 @@ export type FocusData =
       corrections: { original: string; corrected: string; rule: string | null }[];
     }
   | { kind: "words"; words: string[] }
-  | { kind: "topic"; topic: string; level: Level | null };
+  | { kind: "topic"; topic: string; level: Level | null }
+  | { kind: "note"; note: StudyNoteDraft };
 
 export const RULE_PRACTICE =
   "You are an English tutor. Write short practice exercises in English for the learner from the data in their message, at their level when it is given.";
@@ -37,6 +40,10 @@ export const RULE_PRACTICE_FIX_SOURCE =
 export const RULE_PRACTICE_EXPLANATION =
   "explanation is one short sentence saying why the answer is right.";
 export const RULE_PRACTICE_NO_TRANSLATE = "Use only choose, fix and gap.";
+export const RULE_PRACTICE_NOTE =
+  "When the focus is a note, every exercise practices the rules in that note.";
+export const RULE_STUDY_NOTE =
+  "You are an English tutor. Write one study note in English about the grammar rule in the learner's message, for a learner who just missed an exercise on it. Answer in the given JSON format.";
 export const RULE_PRACTICE_GRADE =
   "You are an English tutor. Decide whether the learner's answer to an exercise is correct English that fulfils the exercise, even when it differs from the accepted answers. Answer in the given JSON format: correct is the verdict and explanation is one short sentence about the answer.";
 
@@ -54,6 +61,7 @@ export function focusDataFrom(
   mistakes: MistakePage,
   words: WordPage,
   level: Level | null,
+  note: StudyNoteDraft | null,
 ): FocusData {
   if (focus === "mistakes") {
     return {
@@ -68,6 +76,7 @@ export function focusDataFrom(
   if (focus === "words") {
     return { kind: "words", words: words.items.slice(0, MAX_WORDS).map((item) => item.word) };
   }
+  if (focus === "note" && note !== null) return { kind: "note", note };
   return { kind: "topic", topic: topicId === null ? "" : grammarTopicLabel(topicId), level };
 }
 
@@ -79,6 +88,7 @@ export function roundRequest(input: {
 }): TutorRequest {
   const lines = [RULE_PRACTICE, RULE_NO_KEY];
   if (input.missedRules.length > 0) lines.push(missedRulesLine(input.missedRules));
+  if (input.focus.kind === "note") lines.push(RULE_PRACTICE_NOTE);
   lines.push(
     RULE_PRACTICE_KINDS,
     RULE_PRACTICE_MIX,
@@ -108,6 +118,27 @@ export function gradeRequest(
           prompt: item.prompt,
           accepted: item.accepted,
           answer,
+        }),
+      },
+    ],
+  };
+}
+
+// INFO: a study note request sends only the missed item's rule, prompt, first accepted
+// answer and explanation: no name, goals or chat text.
+export function studyNoteRequest(
+  item: Pick<PracticeItem, "rule" | "prompt" | "accepted" | "explanation">,
+): TutorRequest {
+  return {
+    system: [RULE_STUDY_NOTE, NOTE_SHAPE, RULE_NO_KEY].join("\n"),
+    turns: [
+      {
+        role: "user",
+        text: JSON.stringify({
+          rule: item.rule,
+          prompt: item.prompt,
+          answer: item.accepted[0] ?? "",
+          explanation: item.explanation,
         }),
       },
     ],

@@ -105,6 +105,11 @@ export function practiceParams(
     : { focus: choice.kind, target: String(target) };
 }
 
+// INFO: a practice on a note is always of five, as the first practice of any focus.
+export function notePracticeParams(noteId: string): Record<string, string> {
+  return { focus: "note", note: noteId, target: String(DEFAULT_TARGET) };
+}
+
 function isTarget(value: number): value is PracticeTarget {
   return PRACTICE_TARGETS.some((target) => target === value);
 }
@@ -114,7 +119,7 @@ function isGrammarTopic(value: string): value is GrammarTopicId {
 }
 
 function isFocus(value: string): value is PracticeFocus {
-  return value === "mistakes" || value === "words" || value === "topic";
+  return value === "mistakes" || value === "words" || value === "topic" || value === "note";
 }
 
 // INFO: a run id wins over a focus; an unknown focus, topic or target is null.
@@ -122,6 +127,7 @@ export function practiceOrigin(params: {
   run?: Param;
   focus?: Param;
   topic?: Param;
+  note?: Param;
   target?: Param;
 }): PracticeOrigin | null {
   const runId = firstOf(params.run);
@@ -131,6 +137,10 @@ export function practiceOrigin(params: {
   const targetText = firstOf(params.target);
   const target = targetText === undefined ? DEFAULT_TARGET : Number(targetText);
   if (!isTarget(target)) return null;
+  if (focus === "note") {
+    const noteId = firstOf(params.note);
+    return noteId === undefined ? null : { kind: "new", input: { focus, noteId, target } };
+  }
   if (focus !== "topic") return { kind: "new", input: { focus, target } };
   const topic = firstOf(params.topic);
   if (topic === undefined || !isGrammarTopic(topic)) return null;

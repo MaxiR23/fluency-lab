@@ -61,6 +61,7 @@ const opened = (
       updatedAt: "2026-11-05T09:00:00Z",
     },
     threadReplies: [],
+    notes: [],
     messages: Array.from({ length: messages }, (_, n) => ({
       id: `m${n}`,
       sessionId: "s1",
@@ -69,6 +70,7 @@ const opened = (
       corrections: null,
       newWords: null,
       replyToId: null,
+      noteId: null,
       createdAt: "2026-11-05T09:00:00Z",
     })),
   },

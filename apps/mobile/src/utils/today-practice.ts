@@ -3,6 +3,7 @@ import type { Level, MistakePage, PracticeRunWithItems } from "@fluency-lab/shar
 import { answeredCount } from "@/utils/practice-escalation";
 import { defaultFocus, focusLabel, focusModel, type FocusChoice } from "@/utils/practice-focus";
 
+export const NOTE_FOCUS_LABEL = "From your note";
 const START_TARGET = 5;
 const MAX_CHIPS = 2;
 
@@ -99,7 +100,7 @@ export function todayCard(input: {
     target: run.target,
     fraction: answered / run.target,
     ringLabel: `${answered}/${run.target}`,
-    title: focusLabel(runChoice(today)),
+    title: run.focus === "note" ? NOTE_FOCUS_LABEL : focusLabel(runChoice(today)),
     meta,
     chips: runChips(today),
     action: finished ? "Practice again" : "Keep going",

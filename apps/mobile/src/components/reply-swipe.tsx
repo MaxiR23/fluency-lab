@@ -25,12 +25,14 @@ export function ReplySwipe({
   onReply,
   onArm,
   back,
+  note,
   testID,
 }: {
   children: ReactNode;
   onReply: () => void;
   onArm: () => void;
   back: FadeMotion | null;
+  note?: boolean;
   testID?: string;
 }) {
   const offset = useSharedValue(0);
@@ -74,7 +76,9 @@ export function ReplySwipe({
         </View>
       </Animated.View>
       <GestureDetector gesture={pan} touchAction="pan-y">
-        <Animated.View style={[messageBubbleStyle("tutor").row, slide]}>{children}</Animated.View>
+        <Animated.View style={[messageBubbleStyle("tutor", { note: note === true }).row, slide]}>
+          {children}
+        </Animated.View>
       </GestureDetector>
     </View>
   );

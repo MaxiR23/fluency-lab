@@ -135,4 +135,55 @@ describe("FeedbackSheet", () => {
     );
     expect(screen.getByTestId("feedback-sheet").props.entering).toBeDefined();
   });
+
+  const sheet = (note?: { onPress: () => void; busy: boolean; disabled: boolean }) => (
+    <FeedbackSheet
+      tone="miss"
+      title="Not quite"
+      answer="a"
+      explanation="x"
+      onContinue={jest.fn()}
+      busy={false}
+      motion={null}
+      note={note}
+    />
+  );
+
+  it("draws Make me a study note before Continue on a miss and calls it", async () => {
+    const onPress = jest.fn();
+    await render(sheet({ onPress, busy: false, disabled: false }));
+    const button = screen.getByRole("button", { name: "Make me a study note" });
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.indexOf(button)).toBeLessThan(
+      buttons.indexOf(screen.getByRole("button", { name: "Continue" })),
+    );
+    expect(screen.getByTestId("icon-table", { includeHiddenElements: true })).toBeTruthy();
+    await fireEvent.press(button);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws no study note button without a note prop", async () => {
+    await render(sheet());
+    expect(screen.queryByRole("button", { name: "Make me a study note" })).toBeNull();
+    expect(screen.queryByText("Make me a study note")).toBeNull();
+  });
+
+  it("draws a spinner in place of the icon while busy and marks the button busy", async () => {
+    const onPress = jest.fn();
+    await render(sheet({ onPress, busy: true, disabled: false }));
+    const button = screen.getByRole("button", { name: "Make me a study note", busy: true });
+    expect(screen.queryByTestId("icon-table", { includeHiddenElements: true })).toBeNull();
+    expect(JSON.stringify(screen.toJSON())).toContain('"type":"ActivityIndicator"');
+    await fireEvent.press(button);
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it("does not call back while disabled", async () => {
+    const onPress = jest.fn();
+    await render(sheet({ onPress, busy: false, disabled: true }));
+    const button = screen.getByRole("button", { name: "Make me a study note" });
+    expect(button.props.accessibilityState).toMatchObject({ disabled: true });
+    await fireEvent.press(button);
+    expect(onPress).not.toHaveBeenCalled();
+  });
 });

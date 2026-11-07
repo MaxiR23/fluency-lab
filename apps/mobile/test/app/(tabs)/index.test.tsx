@@ -166,6 +166,19 @@ describe("Home", () => {
     expect(screen.getByText("Keep going")).toBeTruthy();
   });
 
+  it("titles a note run From your note", async () => {
+    fakeData.getTodayPractice.mockResolvedValue({
+      ok: true,
+      value: practiceTodayWith([practiceItemWith({ id: "i0", position: 0 })], {
+        focus: "note",
+        noteId: "note-1",
+      }),
+    });
+    await renderApp("/", fakeSession());
+    expect(screen.getByText("From your note")).toBeTruthy();
+    expect(screen.queryByText("From your mistakes")).toBeNull();
+  });
+
   it("draws the start state with no run today", async () => {
     fakeData.listMistakes.mockResolvedValue({
       ok: true,

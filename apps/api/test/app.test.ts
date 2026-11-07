@@ -15,6 +15,7 @@
 // - GET /sessions/:id/messages carries the thread reply counts
 // - GET /sessions/:id/summary counts the messages and collects the corrections and new words
 // - GET /sessions/spend still counts the cost of a deleted session
+// - the notes routes: create, read, delete and the Progress page, and the notes and note ids of the chat and practice routes
 // - the practice routes: today, create, read, items, answer, usage, target and finish
 // - the usage route prices the tokens, and the routes reject an apiKey field
 //
@@ -35,6 +36,7 @@ import {
   historyPageSchema,
   mistakePageSchema,
   monthProgressSchema,
+  notePageSchema,
   profileStatsSchema,
   usageCostUsd,
   wordPageSchema,
@@ -42,6 +44,7 @@ import {
   type Message,
   type PracticeItem,
   type PracticeRun,
+  type StudyNote,
   type Profile,
   type Session,
 } from "@fluency-lab/shared";
@@ -264,6 +267,7 @@ const message: Message = {
   corrections: null,
   newWords: null,
   replyToId: null,
+  noteId: null,
   createdAt: stamp,
 };
 
@@ -273,6 +277,7 @@ const practiceRun: PracticeRun = {
   id: runId,
   focus: "mistakes",
   topicId: null,
+  noteId: null,
   target: 5,
   costUsd: 0,
   createdAt: "2026-11-05T09:00:00+00:00",
@@ -304,6 +309,31 @@ const practiceItemBody = {
   source: null,
 };
 
+const noteId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ef1";
+const noteContent: {
+  columns: [string, string, string];
+  rows: [string, string, string][];
+  remember: string;
+} = {
+  columns: ["Form", "When", "Example"],
+  rows: [["going to", "plans", "I'm going to study."]],
+  remember: "Plans use going to.",
+};
+const noteBody = {
+  kind: "table",
+  title: "Future forms",
+  topic: "Going to, will",
+  sessionId,
+  content: noteContent,
+};
+const studyNote: StudyNote = {
+  ...noteBody,
+  kind: "table",
+  id: noteId,
+  sessionTitle: "Free chat",
+  createdAt: stamp,
+};
+
 function json(body: unknown) {
   return JSON.stringify(body);
 }
@@ -322,6 +352,10 @@ const routes: { name: string; path: string; method: string; body?: unknown }[] =
   { name: "GET /progress/history", path: "/progress/history?tz=UTC", method: "GET" },
   { name: "GET /progress/mistakes", path: "/progress/mistakes", method: "GET" },
   { name: "GET /progress/words", path: "/progress/words?tz=UTC", method: "GET" },
+  { name: "GET /progress/notes", path: "/progress/notes?tz=UTC", method: "GET" },
+  { name: "POST /notes", path: "/notes", method: "POST", body: noteBody },
+  { name: "GET /notes/:id", path: `/notes/${noteId}`, method: "GET" },
+  { name: "DELETE /notes/:id", path: `/notes/${noteId}`, method: "DELETE" },
   { name: "DELETE /account", path: "/account", method: "DELETE" },
   { name: "GET /sessions/active", path: "/sessions/active", method: "GET" },
   { name: "GET /sessions/open", path: "/sessions/open", method: "GET" },
@@ -1017,11 +1051,17 @@ describe("GET /sessions/:id/messages", () => {
       value: { session, messages: [message] },
     });
     fake.user.listThreadCounts.mockResolvedValue({ ok: true, value: [] });
+    fake.user.listSessionNotes.mockResolvedValue({ ok: true, value: [] });
 
     const res = await list(sessionId);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ session, messages: [message], threadReplies: [] });
+    expect(await res.json()).toEqual({
+      session,
+      messages: [message],
+      threadReplies: [],
+      notes: [],
+    });
     expect(fake.user.getSessionWithMessages).toHaveBeenCalledWith(sessionId);
   });
 
@@ -1031,11 +1071,12 @@ describe("GET /sessions/:id/messages", () => {
       value: { session, messages: [] },
     });
     fake.user.listThreadCounts.mockResolvedValue({ ok: true, value: [] });
+    fake.user.listSessionNotes.mockResolvedValue({ ok: true, value: [] });
 
     const res = await list(sessionId);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ session, messages: [], threadReplies: [] });
+    expect(await res.json()).toEqual({ session, messages: [], threadReplies: [], notes: [] });
   });
 
   it("carries the reply count of each message that has a thread", async () => {
@@ -1047,6 +1088,7 @@ describe("GET /sessions/:id/messages", () => {
       ok: true,
       value: [{ messageId: message.id, count: 2 }],
     });
+    fake.user.listSessionNotes.mockResolvedValue({ ok: true, value: [] });
 
     const res = await list(sessionId);
 
@@ -1074,6 +1116,31 @@ describe("GET /sessions/:id/messages", () => {
     fake.user.listThreadCounts.mockResolvedValue({ ok: false, failure: "unauthorized" });
 
     expect((await list(sessionId)).status).toBe(401);
+  });
+
+  it("carries the notes saved in the session", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [message] },
+    });
+    fake.user.listThreadCounts.mockResolvedValue({ ok: true, value: [] });
+    fake.user.listSessionNotes.mockResolvedValue({ ok: true, value: [studyNote] });
+
+    const res = await list(sessionId);
+
+    expect(await res.json()).toMatchObject({ notes: [studyNote] });
+    expect(fake.user.listSessionNotes).toHaveBeenCalledWith(sessionId);
+  });
+
+  it("responds 503 when the notes read fails", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [message] },
+    });
+    fake.user.listThreadCounts.mockResolvedValue({ ok: true, value: [] });
+    fake.user.listSessionNotes.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    expect((await list(sessionId)).status).toBe(503);
   });
 
   it("responds 400 for an id that is not a uuid", async () => {
@@ -2202,6 +2269,161 @@ describe("the practice routes", () => {
       expect((await call("POST", `/practice/items/${itemId}/answer`, body)).status).toBe(404);
       fake.user.answerPracticeItem.mockResolvedValue({ ok: false, failure: "unavailable" });
       expect((await call("POST", `/practice/items/${itemId}/answer`, body)).status).toBe(503);
+    });
+  });
+});
+
+describe("the notes routes", () => {
+  async function call(method: string, path: string, body?: unknown) {
+    return app.request(path, {
+      method,
+      headers: await authed(body === undefined ? {} : jsonType),
+      body: body === undefined ? undefined : json(body),
+    });
+  }
+
+  describe("POST /notes", () => {
+    it("answers 201 with the note", async () => {
+      fake.user.createNote.mockResolvedValue({ ok: true, value: studyNote });
+      const res = await call("POST", "/notes", noteBody);
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual(studyNote);
+      expect(fake.user.createNote).toHaveBeenCalledWith(noteBody);
+    });
+
+    it("answers 400 for a table with two columns, a bad session id and an unknown key", async () => {
+      const twoColumns = { ...noteBody, content: { ...noteContent, columns: ["a", "b"] } };
+      expect((await call("POST", "/notes", twoColumns)).status).toBe(400);
+      expect((await call("POST", "/notes", { ...noteBody, sessionId: "x" })).status).toBe(400);
+      expect((await call("POST", "/notes", { ...noteBody, apiKey: "x" })).status).toBe(400);
+      expect(fake.user.createNote).not.toHaveBeenCalled();
+    });
+
+    it("answers 404 when the session is not visible and 503 when the store is down", async () => {
+      fake.user.createNote.mockResolvedValueOnce({ ok: true, value: null });
+      expect((await call("POST", "/notes", noteBody)).status).toBe(404);
+      fake.user.createNote.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+      expect((await call("POST", "/notes", noteBody)).status).toBe(503);
+    });
+  });
+
+  describe("GET /notes/:id", () => {
+    it("answers 200 with the note", async () => {
+      fake.user.getNote.mockResolvedValue({ ok: true, value: studyNote });
+      const res = await call("GET", `/notes/${noteId}`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(studyNote);
+      expect(fake.user.getNote).toHaveBeenCalledWith(noteId);
+    });
+
+    it("answers 404, 400 and 503", async () => {
+      fake.user.getNote.mockResolvedValueOnce({ ok: true, value: null });
+      expect((await call("GET", `/notes/${noteId}`)).status).toBe(404);
+      expect((await call("GET", "/notes/abc")).status).toBe(400);
+      fake.user.getNote.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+      expect((await call("GET", `/notes/${noteId}`)).status).toBe(503);
+    });
+  });
+
+  describe("DELETE /notes/:id", () => {
+    it("answers 200 with the id", async () => {
+      fake.user.deleteNote.mockResolvedValue({ ok: true, value: { id: noteId } });
+      const res = await call("DELETE", `/notes/${noteId}`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ id: noteId });
+    });
+
+    it("answers 404 and 503", async () => {
+      fake.user.deleteNote.mockResolvedValueOnce({ ok: true, value: null });
+      expect((await call("DELETE", `/notes/${noteId}`)).status).toBe(404);
+      fake.user.deleteNote.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+      expect((await call("DELETE", `/notes/${noteId}`)).status).toBe(503);
+    });
+  });
+
+  describe("GET /progress/notes", () => {
+    const row = {
+      id: noteId,
+      kind: "table" as const,
+      title: "Future forms",
+      topic: "Going to, will",
+      createdAt: "2026-11-05T01:00:00+00:00",
+    };
+
+    it("answers the page with each day in the zone and today", async () => {
+      fake.user.listNotes.mockResolvedValue({ ok: true, value: [row] });
+      const res = await call("GET", "/progress/notes?tz=America%2FArgentina%2FBuenos_Aires");
+      expect(res.status).toBe(200);
+      expect(notePageSchema.parse(await res.json())).toEqual({
+        items: [
+          {
+            id: noteId,
+            kind: "table",
+            title: "Future forms",
+            topic: "Going to, will",
+            day: "2026-11-04",
+          },
+        ],
+        nextOffset: null,
+        today: "2026-11-05",
+      });
+      expect(fake.user.listNotes).toHaveBeenCalledWith(0, 21);
+    });
+
+    it("points to the next page when a row beyond the page comes back", async () => {
+      fake.user.listNotes.mockResolvedValue({
+        ok: true,
+        value: Array.from({ length: 21 }, () => row),
+      });
+      const page = notePageSchema.parse(
+        await (await call("GET", "/progress/notes?tz=UTC&offset=20")).json(),
+      );
+      expect(page.items).toHaveLength(20);
+      expect(page.nextOffset).toBe(40);
+      expect(fake.user.listNotes).toHaveBeenCalledWith(20, 21);
+    });
+
+    it("answers an empty page with no next offset", async () => {
+      fake.user.listNotes.mockResolvedValue({ ok: true, value: [] });
+      const res = await call("GET", "/progress/notes?tz=UTC");
+      expect(await res.json()).toEqual({ items: [], nextOffset: null, today: "2026-11-05" });
+    });
+
+    it("answers 400 for an unknown zone and 503 when the store is down", async () => {
+      expect((await call("GET", "/progress/notes?tz=Nowhere%2FAtlantis")).status).toBe(400);
+      expect(fake.user.listNotes).not.toHaveBeenCalled();
+      fake.user.listNotes.mockResolvedValue({ ok: false, failure: "unavailable" });
+      expect((await call("GET", "/progress/notes?tz=UTC")).status).toBe(503);
+    });
+  });
+
+  describe("the note id of a message and of a run", () => {
+    it("passes the note id of a message to the store", async () => {
+      fake.user.addMessage.mockResolvedValue({ ok: true, value: { ...message, noteId } });
+      const res = await call("POST", `/sessions/${sessionId}/messages`, {
+        role: "tutor",
+        text: "Here is your table.",
+        noteId,
+      });
+      expect(res.status).toBe(201);
+      expect(fake.user.addMessage).toHaveBeenCalledWith(sessionId, {
+        role: "tutor",
+        text: "Here is your table.",
+        noteId,
+      });
+    });
+
+    it("creates a note run and answers 404 when its note is not visible", async () => {
+      const run = { ...practiceRun, focus: "note" as const, noteId };
+      fake.user.createPracticeRun.mockResolvedValueOnce({ ok: true, value: run });
+      const created = await call("POST", "/practice/runs", { focus: "note", noteId, target: 5 });
+      expect(created.status).toBe(201);
+      expect(await created.json()).toEqual(run);
+      fake.user.createPracticeRun.mockResolvedValueOnce({ ok: true, value: null });
+      expect(
+        (await call("POST", "/practice/runs", { focus: "note", noteId, target: 5 })).status,
+      ).toBe(404);
+      expect((await call("POST", "/practice/runs", { focus: "note", target: 5 })).status).toBe(400);
     });
   });
 });

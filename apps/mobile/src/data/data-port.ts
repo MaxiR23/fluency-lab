@@ -7,6 +7,7 @@ import type {
   MistakePage,
   MonthProgress,
   MonthSpend,
+  NotePage,
   PracticeAnswer,
   PracticeItem,
   PracticeItemCreate,
@@ -22,6 +23,8 @@ import type {
   SessionUsage,
   SessionWeek,
   SessionWithMessages,
+  StudyNote,
+  StudyNoteCreate,
   ThreadMessage,
   ThreadMessageCreate,
   WordPage,
@@ -45,6 +48,13 @@ export type DataPort = {
   addMessage(sessionId: string, input: MessageCreate): Promise<DataOutcome<Message>>;
   addUsage(sessionId: string, usage: SessionUsage): Promise<DataOutcome<Session>>;
   endSession(sessionId: string): Promise<DataOutcome<Session>>;
+  // INFO: no expected empty: a note exists or is not_found.
+  createNote(input: StudyNoteCreate): Promise<DataOutcome<StudyNote>>;
+  getNote(noteId: string): Promise<DataOutcome<StudyNote>>;
+  deleteNote(noteId: string): Promise<DataOutcome<{ id: string }>>;
+  // INFO: an empty page is the expected empty. Newest first; nextOffset is null on the last page;
+  // today is the day the page was read, in the given zone.
+  listNotes(timeZone: string, offset: number): Promise<DataOutcome<NotePage>>;
   // INFO: a thread with no messages is the expected empty: the learner has not asked yet.
   openThread(messageId: string): Promise<DataOutcome<CorrectionThread>>;
   addThreadMessage(

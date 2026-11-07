@@ -81,6 +81,7 @@ export const radius = {
   message: 18,
   messageTail: 6,
   note: 14,
+  noteIcon: 10,
   badgeLarge: 16,
   segment: 3,
   sheet: 28,
@@ -97,6 +98,7 @@ export const size = {
   iconBadge: 20,
   dayCircle: 30,
   replyHint: 32,
+  noteIcon: 32,
   badgeSmall: 36,
   pill: 40,
   avatar: 44,
@@ -116,6 +118,7 @@ export const size = {
   tag: 28,
   typingDot: 7,
   messageMaxWidth: "82%",
+  messageNoteMaxWidth: "86%",
   listRow: 50,
   spendBar: 6,
   spendBarMin: 8,
@@ -296,6 +299,11 @@ export const shadow = {
 // the wrong border 20% to 24% (200), the sheet starts 700 after. practice-result.html: the ring
 // 6% to 34% (360 then 1680), the rise 30% to 42% (1800 then 720), the sparks 30% to 45% to 70%
 // (1800, then 900 in and 1500 out). The cubic-beziers are the CSS ones of each file.
+// The study note motion: note.html runs a 6 s cycle whose row keyframe goes from 0% to 14% (840),
+// with delays of .1 s, .25 s and .4 s, so 100 plus 150 for each row, from translateX -10 with ease-out.
+// note-in-chat.html runs 5 s: the tutor row's enter goes from 10% to 24% (700) with the 12 point rise
+// (motion.enterOffset), and the saved line starts at 30%, which is 1000 after the enter starts, and
+// takes 400 from scale .8 (30% to 38%), both with ease-out (motion.easeOut).
 export const motion = {
   enterDuration: 240,
   enterOffset: 12,
@@ -350,6 +358,16 @@ export const motion = {
     shakeStep: 200,
     shake: [-8, 7, -5, 3, 0],
     wrongDuration: 200,
+  },
+  note: {
+    rowDuration: 840,
+    rowDelay: 100,
+    rowStagger: 150,
+    rowOffset: -10,
+    enterDuration: 700,
+    savedDelay: 1000,
+    savedDuration: 400,
+    savedScale: 0.8,
   },
   result: {
     ringDelay: 360,

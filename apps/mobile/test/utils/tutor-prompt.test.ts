@@ -6,6 +6,7 @@
 // - tutorPrompt includes each rule, the level, the learner, the topic and the opening line
 // - tutorPrompt explains a quoted reply and tells the tutor not to correct the quote
 // - tutorPrompt asks for a rule label on each correction
+// - tutorPrompt asks for a note only when the learner asks for a table, a summary or a study note
 // - tutorPrompt requires originals copied exactly from the learner's last message
 //
 // What is covered:
@@ -18,6 +19,8 @@
 import { describe, expect, it } from "@jest/globals";
 
 import {
+  NOTE_GUIDE,
+  NOTE_SHAPE,
   OUTPUT_GUIDE,
   RULE_CORRECT_AND_ASK,
   RULE_DECLINE,
@@ -51,6 +54,23 @@ describe("tutorPrompt", () => {
     );
     expect(OUTPUT_GUIDE).toContain("Never correct anything outside the learner's last message");
     expect(tutorPrompt(input)).toContain(OUTPUT_GUIDE);
+  });
+
+  it("tells the tutor to fill note only when the learner asks for a table, a summary or a study note", () => {
+    expect(NOTE_GUIDE).toContain(
+      "Only when the learner asks for a table, a summary or a study note",
+    );
+    expect(NOTE_GUIDE).toContain("Leave note out otherwise");
+    const prompt = tutorPrompt(input);
+    expect(prompt).toContain(NOTE_GUIDE);
+    expect(prompt.indexOf(NOTE_GUIDE)).toBeGreaterThan(prompt.indexOf(OUTPUT_GUIDE));
+  });
+
+  it("describes both note shapes", () => {
+    expect(NOTE_SHAPE).toContain('"table"');
+    expect(NOTE_SHAPE).toContain('"summary"');
+    expect(NOTE_SHAPE).toContain("exactly three columns");
+    expect(NOTE_GUIDE).toContain(NOTE_SHAPE);
   });
 
   it("includes the English-only rule", () => {

@@ -11,6 +11,7 @@
 // - getStats calls profile_stats with the caller's token; deleteAccount deletes the caller through the admin API with the secret key and never the caller's token
 // - getMonthProgress, listEndedSessions, listMistakeGroups and listNewWords call their progress_* function with the caller's token
 // - getThread, addThreadMessage, withdrawCorrections and listThreadCounts read and write the thread table and its functions with the caller's token, and getSessionWithMessages never reads thread rows
+// - createNote, getNote, deleteNote, listNotes and listSessionNotes read and write study_notes with the caller's token
 // - Each store call: success, expected empty, 401, transport failure, bad row
 //
 // What is covered:
@@ -63,6 +64,7 @@ const messageRow = (n: number) => ({
   corrections: null,
   new_words: null,
   reply_to_id: null,
+  note_id: null,
   created_at: stamp,
 });
 
@@ -566,6 +568,7 @@ describe("addMessage", () => {
       corrections: input.corrections,
       new_words: ["definitely"],
       reply_to_id: null,
+      note_id: null,
     });
   });
 
@@ -586,6 +589,7 @@ describe("addMessage", () => {
       corrections: null,
       new_words: null,
       reply_to_id: replyToId,
+      note_id: null,
     });
   });
 
@@ -621,7 +625,19 @@ describe("addMessage", () => {
       corrections: null,
       new_words: null,
       reply_to_id: null,
+      note_id: null,
     });
+  });
+
+  it("inserts the id of the note the message came with", async () => {
+    const noteId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ef1";
+    const { user, requests } = setup([
+      ok([sessionRow]),
+      ok({ ...messageRow(1), note_id: noteId }, 201),
+    ]);
+    const outcome = await user.addMessage(sessionId, { role: "tutor", text: "Hi", noteId });
+    expect(outcome).toMatchObject({ ok: true, value: { noteId } });
+    expect(JSON.parse(requests[1].body ?? "null")).toMatchObject({ note_id: noteId });
   });
 
   it("returns null when the session is not visible", async () => {
@@ -1498,12 +1514,14 @@ describe("getSessionWithMessages and threads", () => {
 
 describe("practice methods", () => {
   const runId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5eb1";
+  const noteId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ef1";
   const itemId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ee1";
   const runRow = {
     id: runId,
     user_id: id,
     focus: "topic",
     topic_id: "conditionals",
+    note_id: null,
     target: 5,
     cost_usd: 0,
     created_at: stamp,
@@ -1592,6 +1610,7 @@ describe("practice methods", () => {
         user_id: id,
         focus: "topic",
         topic_id: "conditionals",
+        note_id: null,
         target: 5,
       });
     });
@@ -1599,7 +1618,37 @@ describe("practice methods", () => {
     it("sends a null topic for a mistakes run", async () => {
       const { user, requests } = setup([ok({ ...runRow, focus: "mistakes", topic_id: null }, 201)]);
       await user.createPracticeRun({ focus: "mistakes", target: 5 });
-      expect(JSON.parse(requests[0].body ?? "null")).toMatchObject({ topic_id: null });
+      expect(requests).toHaveLength(1);
+      expect(JSON.parse(requests[0].body ?? "null")).toMatchObject({
+        topic_id: null,
+        note_id: null,
+      });
+    });
+
+    it("reads the note of a note run first and inserts its id", async () => {
+      const { user, requests } = setup([
+        ok([{ id: noteId }]),
+        ok({ ...runRow, focus: "note", topic_id: null, note_id: noteId }, 201),
+      ]);
+      const outcome = await user.createPracticeRun({ focus: "note", noteId, target: 5 });
+      expect(outcome).toMatchObject({ ok: true, value: { noteId } });
+      expect(requests[0].url.pathname).toBe("/rest/v1/study_notes");
+      expect(requests[0].url.searchParams.get("id")).toBe(`eq.${noteId}`);
+      expect(requests[0].url.searchParams.get("select")).toBe("id");
+      expect(JSON.parse(requests[1].body ?? "null")).toMatchObject({
+        focus: "note",
+        note_id: noteId,
+        topic_id: null,
+      });
+    });
+
+    it("returns null and inserts nothing when the note is not visible", async () => {
+      const { user, requests } = setup([ok([])]);
+      expect(await user.createPracticeRun({ focus: "note", noteId, target: 5 })).toEqual({
+        ok: true,
+        value: null,
+      });
+      expect(requests).toHaveLength(1);
     });
 
     it("fails on a 401, a down fetch and a bad row", async () => {
@@ -1855,6 +1904,223 @@ describe("practice methods", () => {
         failure: "unavailable",
       });
       expect(await setup([ok([{ id }])]).user.finishPracticeRun(runId, stamp)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
+  });
+});
+
+describe("study notes", () => {
+  const noteId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ef1";
+  const content: {
+    columns: [string, string, string];
+    rows: [string, string, string][];
+    remember: string;
+  } = {
+    columns: ["Form", "When", "Example"],
+    rows: [["going to", "plans", "I'm going to study."]],
+    remember: "Plans use going to.",
+  };
+  const noteRow = {
+    id: noteId,
+    user_id: id,
+    session_id: sessionId,
+    kind: "table",
+    title: "Future forms",
+    topic: "Going to, will",
+    content,
+    created_at: stamp,
+    sessions: { title: "Free chat" },
+  };
+  const create = {
+    kind: "table",
+    title: "Future forms",
+    topic: "Going to, will",
+    content,
+    sessionId,
+  } as const;
+  const down = new TypeError("network down");
+
+  describe("createNote", () => {
+    it("reads the session, then inserts the note for the caller with the session embedded", async () => {
+      const { user, requests } = setup([ok([sessionRow]), ok(noteRow, 201)]);
+      const outcome = await user.createNote(create);
+      expect(outcome).toMatchObject({
+        ok: true,
+        value: { id: noteId, sessionTitle: "Free chat", kind: "table" },
+      });
+      expect(requests[0].url.pathname).toBe("/rest/v1/sessions");
+      expect(requests[0].url.searchParams.get("id")).toBe(`eq.${sessionId}`);
+      expect(requests[1].method).toBe("POST");
+      expect(requests[1].url.pathname).toBe("/rest/v1/study_notes");
+      expect(requests[1].url.searchParams.get("select")).toBe("*,sessions(title)");
+      expect(JSON.parse(requests[1].body ?? "null")).toEqual({
+        user_id: id,
+        session_id: sessionId,
+        kind: "table",
+        title: "Future forms",
+        topic: "Going to, will",
+        content,
+      });
+      expect(requests[1].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
+    });
+
+    it("skips the session read for a note with no session", async () => {
+      const { user, requests } = setup([ok({ ...noteRow, session_id: null, sessions: null }, 201)]);
+      const outcome = await user.createNote({ ...create, sessionId: null });
+      expect(outcome).toMatchObject({ ok: true, value: { sessionId: null, sessionTitle: null } });
+      expect(requests).toHaveLength(1);
+      expect(JSON.parse(requests[0].body ?? "null")).toMatchObject({ session_id: null });
+    });
+
+    it("returns null and inserts nothing when the session is not visible", async () => {
+      const { user, requests } = setup([ok([])]);
+      expect(await user.createNote(create)).toEqual({ ok: true, value: null });
+      expect(requests).toHaveLength(1);
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      expect(await setup([ok([sessionRow]), failure(401)]).user.createNote(create)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.createNote(create)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok([sessionRow]), ok({ id }, 201)]).user.createNote(create)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
+  });
+
+  describe("getNote", () => {
+    it("reads one note with its session title", async () => {
+      const { user, requests } = setup([ok(noteRow)]);
+      const outcome = await user.getNote(noteId);
+      expect(outcome).toMatchObject({ ok: true, value: { id: noteId, content } });
+      expect(requests[0].url.pathname).toBe("/rest/v1/study_notes");
+      expect(requests[0].url.searchParams.get("id")).toBe(`eq.${noteId}`);
+      expect(requests[0].url.searchParams.get("select")).toBe("*,sessions(title)");
+    });
+
+    it("returns null for a note that is not visible", async () => {
+      expect(await setup([ok([])]).user.getNote(noteId)).toEqual({ ok: true, value: null });
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      expect(await setup([failure(401)]).user.getNote(noteId)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.getNote(noteId)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok({ id })]).user.getNote(noteId)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
+  });
+
+  describe("deleteNote", () => {
+    it("deletes by id and returns the id", async () => {
+      const { user, requests } = setup([ok({ id: noteId })]);
+      expect(await user.deleteNote(noteId)).toEqual({ ok: true, value: { id: noteId } });
+      expect(requests[0].method).toBe("DELETE");
+      expect(requests[0].url.pathname).toBe("/rest/v1/study_notes");
+      expect(requests[0].url.searchParams.get("id")).toBe(`eq.${noteId}`);
+      expect(requests[0].url.searchParams.get("select")).toBe("id");
+    });
+
+    it("returns null for a note that is not visible", async () => {
+      expect(await setup([ok([])]).user.deleteNote(noteId)).toEqual({ ok: true, value: null });
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      expect(await setup([failure(401)]).user.deleteNote(noteId)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.deleteNote(noteId)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok({ nope: 1 })]).user.deleteNote(noteId)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
+  });
+
+  describe("listNotes", () => {
+    const listRow = { id: noteId, kind: "table", title: "T", topic: "P", created_at: stamp };
+
+    it("reads a page newest first with the offset and limit", async () => {
+      const { user, requests } = setup([ok([listRow])]);
+      const outcome = await user.listNotes(20, 21);
+      expect(outcome).toEqual({
+        ok: true,
+        value: [{ id: noteId, kind: "table", title: "T", topic: "P", createdAt: stamp }],
+      });
+      expect(requests[0].url.pathname).toBe("/rest/v1/study_notes");
+      expect(requests[0].url.searchParams.get("select")).toBe("id,kind,title,topic,created_at");
+      expect(requests[0].url.searchParams.get("order")).toBe("created_at.desc,id.desc");
+      // INFO: postgrest-js sends range(20, 40) as offset=20 and limit=21 (0-based, inclusive).
+      expect(requests[0].url.searchParams.get("offset")).toBe("20");
+      expect(requests[0].url.searchParams.get("limit")).toBe("21");
+    });
+
+    it("returns an empty list as a success", async () => {
+      expect(await setup([ok([])]).user.listNotes(0, 21)).toEqual({ ok: true, value: [] });
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      expect(await setup([failure(401)]).user.listNotes(0, 21)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.listNotes(0, 21)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok([{ id }])]).user.listNotes(0, 21)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
+  });
+
+  describe("listSessionNotes", () => {
+    it("reads the notes of a session oldest first", async () => {
+      const { user, requests } = setup([ok([noteRow])]);
+      const outcome = await user.listSessionNotes(sessionId);
+      expect(outcome.ok && outcome.value).toHaveLength(1);
+      expect(requests[0].url.searchParams.get("session_id")).toBe(`eq.${sessionId}`);
+      expect(requests[0].url.searchParams.get("select")).toBe("*,sessions(title)");
+      expect(requests[0].url.searchParams.get("order")).toBe("created_at.asc");
+    });
+
+    it("returns an empty list as a success", async () => {
+      expect(await setup([ok([])]).user.listSessionNotes(sessionId)).toEqual({
+        ok: true,
+        value: [],
+      });
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      expect(await setup([failure(401)]).user.listSessionNotes(sessionId)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.listSessionNotes(sessionId)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok([{ id }])]).user.listSessionNotes(sessionId)).toEqual({
         ok: false,
         failure: "unavailable",
       });

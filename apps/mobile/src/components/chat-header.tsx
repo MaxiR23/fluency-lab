@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, View } from "react-native";
 
 import { BackButton } from "@/components/back-button";
-import { Icon } from "@/components/icon";
+import { Icon, type IconName } from "@/components/icon";
+import { IconButton } from "@/components/icon-button";
 import { Text } from "@/components/text";
 import { borderWidth, colors, radius, size, spacing, strokeWidth } from "@/constants/theme";
 
@@ -12,6 +13,7 @@ export function ChatHeader({
   onEnd,
   endDisabled,
   backLabel,
+  action,
 }: {
   title: string;
   subtitle?: string;
@@ -20,6 +22,8 @@ export function ChatHeader({
   endDisabled?: boolean;
   // INFO: the thread goes back to the chat, not to Home.
   backLabel?: string;
+  // INFO: a trailing icon button, like the note screen's delete.
+  action?: { icon: IconName; label: string; onPress: () => void };
 }) {
   return (
     <View style={styles.row}>
@@ -46,6 +50,16 @@ export function ChatHeader({
             strokeWidth={strokeWidth.action}
           />
         </Pressable>
+      )}
+      {action === undefined ? null : (
+        <IconButton
+          icon={action.icon}
+          label={action.label}
+          onPress={action.onPress}
+          color={colors.textMuted}
+          iconSize={size.iconCard}
+          strokeWidth={strokeWidth.icon}
+        />
       )}
     </View>
   );

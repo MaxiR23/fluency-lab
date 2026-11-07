@@ -8,6 +8,7 @@ export type EnterMotion = {
 };
 export type FadeMotion = { duration: number };
 export type PressMotion = { duration: number; scale: number };
+export type SavedMotion = { delay: number; duration: number; scale: number };
 export type DotPhases = { rise: number; fall: number; rest: number };
 export type DotMotion = DotPhases & { stagger: number; lift: number; restOpacity: number };
 export type ChatMotion = {
@@ -17,11 +18,22 @@ export type ChatMotion = {
   dots: DotMotion | null;
   preview: EnterMotion | null;
   swipeBack: FadeMotion | null;
+  noteEnter: EnterMotion | null;
+  saved: SavedMotion | null;
 };
 
 export function chatMotion(reduceMotion: boolean): ChatMotion {
   if (reduceMotion)
-    return { enter: null, fade: null, press: null, dots: null, preview: null, swipeBack: null };
+    return {
+      enter: null,
+      fade: null,
+      press: null,
+      dots: null,
+      preview: null,
+      swipeBack: null,
+      noteEnter: null,
+      saved: null,
+    };
   return {
     enter: { duration: motion.enterDuration, offset: motion.enterOffset },
     fade: { duration: motion.fadeDuration },
@@ -34,6 +46,13 @@ export function chatMotion(reduceMotion: boolean): ChatMotion {
     },
     preview: { duration: motion.enterDuration, offset: motion.previewOffset },
     swipeBack: { duration: motion.enterDuration },
+    // INFO: a tutor row with a study note enters slower than a plain row (note-in-chat.html).
+    noteEnter: { duration: motion.note.enterDuration, offset: motion.enterOffset },
+    saved: {
+      delay: motion.note.savedDelay,
+      duration: motion.note.savedDuration,
+      scale: motion.note.savedScale,
+    },
   };
 }
 

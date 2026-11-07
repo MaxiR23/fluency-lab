@@ -557,4 +557,22 @@ describe("textStyle", () => {
       letterSpacing: letterSpacing.resultTitle,
     });
   });
+
+  it("draws noteLead bold in the accent at the caption size with the explanation line height", () => {
+    expect(textStyle("noteLead")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.caption,
+      color: colors.accent,
+      lineHeight: lineHeight.explanation,
+    });
+  });
+
+  it("draws cell regular in the text color at the caption size with the explanation line height", () => {
+    expect(textStyle("cell")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.caption,
+      color: colors.text,
+      lineHeight: lineHeight.explanation,
+    });
+  });
 });

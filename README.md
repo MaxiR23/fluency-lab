@@ -9,7 +9,7 @@ plan is optional; free practice is the default.
 
 Expo project in a pnpm monorepo. The design layer exists (tokens and
 base components); email sign-in, sign-up, password reset, onboarding, Home
-with the tab bar, Settings, Profile, Progress (history, mistakes and words), the daily practice (focus, exercises and result, with the animated Home) and the Chat
+with the tab bar, Settings, Profile, Progress (history, mistakes, words and study notes), the daily practice (focus, exercises and result, with the animated Home), study notes (the note screen, Progress · Notes and the notes in the chat) and the Chat
 screen (chat with the tutor, replying to a tutor message, asking about a correction in its own thread, saved sessions, corrections and new words, the
 monthly limit, and the no-key state) are built, the other screens are not. The screen
 map, the palette and the Home design are decided.
@@ -122,13 +122,14 @@ practice runs (`practice_runs.cost_usd`). `GET
 /profile/stats?tz=<IANA zone>` answers the session count, the day streak and the new words. The day streak counts consecutive days with a session back from today, or from yesterday when today has none yet (it stays alive until today ends), in the device's time zone. `DELETE
 /account` deletes the caller's auth user and, through the cascades, their data; it needs
 `SUPABASE_SECRET_KEY`. `GET
-/sessions/:id/messages` answers the session and its messages. `POST
+/sessions/:id/messages` answers the session, its messages and the study notes saved in it. `POST
 /sessions/:id/usage` prices the reported tokens and adds them to the session's
 cost. `POST /sessions` takes a topic or a starter id. The practice has `GET
 /practice/today?tz=<IANA zone>` (today's run in that zone, or none), `POST /practice/runs`, `GET /practice/runs/:id`,
 `POST /practice/runs/:id/items` (a position already saved is ignored, so a retry repeats safely), `POST /practice/runs/:id/usage`
 (priced and added to the run's cost, which counts in the month's spend), `POST /practice/runs/:id/target`, `POST
-/practice/runs/:id/finish` and `POST /practice/items/:id/answer`. The API
+/practice/runs/:id/finish` and `POST /practice/items/:id/answer`. The study notes have `POST /notes`,
+`GET /notes/:id`, `DELETE /notes/:id` and `GET /progress/notes?tz=<IANA zone>` (newest first, with today in that zone); a note run is `POST /practice/runs` with the `note` focus. The API
 reads the database as the signed-in user, so row level security applies.
 `pnpm --filter api dev` needs `apps/api/.env.local`. Its routes are chained on one `Hono`
 expression and the type of the app (`AppType`) is exported for the typed
@@ -141,19 +142,20 @@ client (RPC). Run it with `pnpm --filter api dev`.
     Home            today's practice card, the week, Free chat and Pick a topic, continue last session
     Suggestions     the full list of suggested topics, opened from Home
     Practice        pick a focus (mistakes, words or a topic) and start, opened from Home
-    Practice run    the exercises of today's practice and its result
+    Practice run    the exercises of today's practice, or of a study note, and its result
     Chat            the session, corrections inline, reply to a tutor message, end session
     Thread          a correction's own thread: ask the tutor, withdrawn corrections
     Open chats      the active chats, open or delete one, from Home
     Summary         after a session: mistakes, new words, topic; also
                     opened from a Progress History row
     Plan            optional, off by default
-    Progress        session history, frequent mistakes, vocabulary
+    Note            a study note: the table or the summary, Remember, delete, Practice this
+    Progress        session history, frequent mistakes, vocabulary, study notes
     Session detail  one session, shown by Summary when opened from Progress
     Settings        key, provider, model, monthly limit and spend, level, data
 
 Bottom navigation: Home, Progress, Settings. Suggestions, Practice, Practice run,
-Chat, Summary and Session detail open on top of it.
+Chat, Note, Summary and Session detail open on top of it.
 
 Later, not in the MVP: YouTube suggestions and a small web page to see
 progress.

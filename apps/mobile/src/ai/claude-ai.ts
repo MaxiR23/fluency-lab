@@ -1,11 +1,13 @@
 // The key goes only in the x-api-key header of ENDPOINT. No outcome, cause or
 // log carries it.
 import {
+  NOTE_KINDS,
   PRACTICE_KINDS,
   PRACTICE_ROUND_SIZE,
   TUTOR_MODEL,
   answerGradeSchema,
   practiceRoundSchema,
+  studyNotePayloadSchema,
   threadReplySchema,
   tutorReplySchema,
   type ModelId,
@@ -19,6 +21,7 @@ import { DEADLINE, withinDeadline } from "@/utils/deadline";
 import { toAnswerGrade } from "@/utils/practice-grade";
 import { toPracticeRound } from "@/utils/practice-round";
 import { providerMessages } from "@/utils/provider-messages";
+import { toStudyNote } from "@/utils/study-note";
 import { toThreadReply } from "@/utils/thread-reply";
 import { toTutorReply } from "@/utils/tutor-reply";
 
@@ -26,12 +29,33 @@ const ENDPOINT = "https://api.anthropic.com/v1/messages";
 const API_VERSION = "2026-10-21";
 const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_TOKENS = 1024;
+// INFO: a reply with a table or a study note needs room for it; the thread keeps MAX_TOKENS.
+const NOTE_MAX_TOKENS = 2048;
 // INFO: a round of five exercises needs more room than a chat turn; a grading answer needs less.
 const ROUND_MAX_TOKENS = 2048;
 const GRADE_MAX_TOKENS = 512;
 
+// INFO: one flat object: anyOf and type arrays count toward the union limit, and every field
+// is required (the docs limit optional parameters). Arrays that do not apply are empty, and
+// exactly three columns and the row limits are applied by toStudyNote.
+export const STUDY_NOTE_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["kind", "title", "topic", "columns", "rows", "points", "remember"],
+  properties: {
+    kind: { type: "string", enum: [...NOTE_KINDS] },
+    title: { type: "string" },
+    topic: { type: "string" },
+    columns: { type: "array", items: { type: "string" } },
+    rows: { type: "array", items: { type: "array", items: { type: "string" } } },
+    points: { type: "array", items: { type: "string" } },
+    remember: { type: "string" },
+  },
+} as const;
+
 // INFO: no minLength, maxLength, minimum, maximum or minItems: the provider does not
 // support them in structured outputs. Limits (the 80 characters of rule included) are applied by toTutorReply.
+// note is the only optional property: it is filled only on request.
 export const TUTOR_REPLY_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -53,6 +77,7 @@ export const TUTOR_REPLY_JSON_SCHEMA = {
     },
     explanation: { type: "string" },
     newWords: { type: "array", items: { type: "string" } },
+    note: STUDY_NOTE_JSON_SCHEMA,
   },
 } as const;
 
@@ -277,9 +302,14 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
 
   return {
     reply: (request) =>
-      ask(request, TUTOR_REPLY_JSON_SCHEMA, MAX_TOKENS, (value) => {
+      ask(request, TUTOR_REPLY_JSON_SCHEMA, NOTE_MAX_TOKENS, (value) => {
         const payload = tutorReplySchema.safeParse(value);
-        return payload.success ? toTutorReply(payload.data) : null;
+        if (!payload.success) return null;
+        const reply = toTutorReply(payload.data);
+        if (reply === null) return null;
+        // INFO: a malformed note is dropped and the paid reply is kept.
+        const note = payload.data.note === undefined ? null : toStudyNote(payload.data.note);
+        return { ...reply, note };
       }),
     replyInThread: (request) =>
       ask(request, THREAD_REPLY_JSON_SCHEMA, MAX_TOKENS, (value) => {
@@ -295,6 +325,12 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
       });
       return asked;
     },
+    studyNote: (request) =>
+      ask(request, STUDY_NOTE_JSON_SCHEMA, NOTE_MAX_TOKENS, (value) => {
+        const payload = studyNotePayloadSchema.safeParse(value);
+        const note = payload.success ? toStudyNote(payload.data) : null;
+        return note === null ? null : { note };
+      }),
     gradeAnswer: (request) =>
       ask(request, ANSWER_GRADE_JSON_SCHEMA, GRADE_MAX_TOKENS, (value) => {
         const payload = answerGradeSchema.safeParse(value);

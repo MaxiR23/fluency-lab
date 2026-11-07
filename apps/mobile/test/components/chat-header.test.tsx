@@ -138,4 +138,26 @@ describe("ChatHeader", () => {
     expect(screen.getByRole("header", { name: "Practice" })).toBeTruthy();
     expect(screen.getAllByText(/.+/)).toHaveLength(1);
   });
+
+  it("draws a trailing icon action with its icon, label and muted color", async () => {
+    const onPress = jest.fn();
+    await render(
+      <ChatHeader
+        title="Note"
+        onBack={() => {}}
+        action={{ icon: "trashPlain", label: "Delete note", onPress }}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "Delete note" });
+    expect(button).toBeTruthy();
+    expect(screen.getByTestId("icon-trashPlain", { includeHiddenElements: true })).toBeTruthy();
+    await fireEvent.press(button);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws no action without one", async () => {
+    await render(<ChatHeader title="Note" onBack={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Delete note" })).toBeNull();
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+  });
 });

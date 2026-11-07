@@ -5,6 +5,7 @@
 // Tested:
 // - correctionsLabel, threadRepliesLabel, correctionRows and pinnedRule
 // - chatItems builds the list of the conversation: bubbles, corrections, new words, typing
+// - chatItems gives a tutor item its note card, saved only once the note has an id
 // - chatItems opens a thread only on a saved message with corrections, with its reply count
 //
 // What is covered:
@@ -71,6 +72,7 @@ const designUser: ChatMessage = {
   replyTo: null,
   savedId: null,
   threadReplies: 0,
+  note: null,
 };
 
 describe("correctionsLabel", () => {
@@ -183,7 +185,7 @@ describe("chatItems", () => {
 
   it("draws the opening as a tutor item", () => {
     expect(chatItems(conversation())).toEqual([
-      { kind: "tutor", id: "opening", text: STARTERS[0].opener },
+      { kind: "tutor", id: "opening", text: STARTERS[0].opener, note: null },
     ]);
   });
 
@@ -198,6 +200,7 @@ describe("chatItems", () => {
       replyTo: null,
       savedId: null,
       threadReplies: 0,
+      note: null,
     };
     const items = chatItems(conversation({ messages: [designUser, tutor] }));
 
@@ -212,7 +215,7 @@ describe("chatItems", () => {
         thread: null,
       },
       { kind: "new_word", id: "u1:word:0", word: "definitely" },
-      { kind: "tutor", id: "t2", text: tutor.text },
+      { kind: "tutor", id: "t2", text: tutor.text, note: null },
     ]);
   });
 
@@ -271,6 +274,7 @@ describe("chatItems", () => {
       reply: "Nice!",
       corrections: [],
       explanation: null,
+      note: null,
       newWords: [],
       model: TUTOR_MODEL,
       usage: {
@@ -355,6 +359,7 @@ describe("chatItems", () => {
       replyTo: null,
       savedId: null,
       threadReplies: 0,
+      note: null,
     };
 
     it("a learner reply carries the quote with the tutor's name and text", () => {
@@ -392,5 +397,78 @@ describe("chatItems", () => {
       const items = chatItems(conversation({ messages: [reply] }));
       expect(items.find((i) => i.kind === "user")).toMatchObject({ quote: null });
     });
+  });
+});
+
+describe("chatItems with a study note", () => {
+  const draft = {
+    kind: "table" as const,
+    title: "Future forms",
+    topic: "Going to, will",
+    content: {
+      columns: ["Form", "When", "Example"] as [string, string, string],
+      rows: [
+        ["going to", "plans", "I'm going to study."],
+        ["will", "decisions now", "I'll help."],
+        ["present simple", "timetables", "The train leaves at 5."],
+        ["present continuous", "arrangements", "I'm meeting Ana."],
+      ] as [string, string, string][],
+      remember: "Plans use going to.",
+    },
+  };
+  const tutor = (note: ChatMessage["note"]): ChatMessage => ({
+    id: "t1",
+    role: "tutor",
+    text: "Your table is ready.",
+    corrections: [],
+    explanation: null,
+    newWords: [],
+    replyTo: null,
+    savedId: null,
+    threadReplies: 0,
+    note,
+  });
+
+  it("gives a tutor item its note card with the preview", () => {
+    const [item] = chatItems(conversation({ messages: [tutor({ draft, savedId: "n1" })] }));
+    expect(item).toEqual({
+      kind: "tutor",
+      id: "t1",
+      text: "Your table is ready.",
+      note: {
+        noteId: "n1",
+        title: "Future forms",
+        topic: "Going to, will",
+        icon: "table",
+        preview: [
+          { lead: "going to", text: "plans" },
+          { lead: "will", text: "decisions now" },
+          { lead: "present simple", text: "timetables" },
+        ],
+      },
+    });
+  });
+
+  it("draws a list icon on the card of a summary", () => {
+    const summary = {
+      kind: "summary" as const,
+      title: "Present perfect",
+      topic: "Have + past participle",
+      content: { points: ["Use it for experience."], remember: "r" },
+    };
+    const [item] = chatItems(
+      conversation({ messages: [tutor({ draft: summary, savedId: "n2" })] }),
+    );
+    expect(item).toMatchObject({ note: { icon: "list", preview: [{ lead: null }] } });
+  });
+
+  it("marks the card saved only once the note has an id", () => {
+    const [item] = chatItems(conversation({ messages: [tutor({ draft, savedId: null })] }));
+    expect(item).toMatchObject({ note: { noteId: null, title: "Future forms" } });
+  });
+
+  it("gives a tutor item with no note a null card", () => {
+    const [item] = chatItems(conversation({ messages: [tutor(null)] }));
+    expect(item).toMatchObject({ kind: "tutor", note: null });
   });
 });

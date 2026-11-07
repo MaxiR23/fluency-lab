@@ -3,7 +3,7 @@
 -- Tests for row level security and the grants on the tables.
 --
 -- Tested:
--- - RLS is on for profiles, sessions, messages, deleted_session_costs, thread_messages, practice_runs and practice_items
+-- - RLS is on for profiles, sessions, messages, deleted_session_costs, thread_messages, practice_runs, practice_items and study_notes
 -- - anon has no privilege on them; authenticated has only what the API uses
 --
 -- What is covered:
@@ -14,10 +14,11 @@
 -- SEE: supabase/migrations/20261106000211_create_profiles_sessions_messages.sql
 -- SEE: supabase/migrations/20261106120000_correction_threads.sql
 -- SEE: supabase/migrations/20261107000000_practice.sql
+-- SEE: supabase/migrations/20261108000000_study_notes.sql
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(24);
+select plan(26);
 
 select results_eq($$select relrowsecurity from pg_class where oid = 'public.profiles'::regclass$$, array[true], 'RLS is on for profiles');
 select results_eq($$select relrowsecurity from pg_class where oid = 'public.sessions'::regclass$$, array[true], 'RLS is on for sessions');
@@ -45,6 +46,8 @@ select results_eq($$select relrowsecurity from pg_class where oid = 'public.prac
 select results_eq($$select relrowsecurity from pg_class where oid = 'public.practice_items'::regclass$$, array[true], 'RLS is on for practice_items');
 select ok(not has_table_privilege('anon', 'public.practice_runs', 'select, insert, update, delete'), 'anon has no privilege on practice_runs');
 select ok(not has_table_privilege('anon', 'public.practice_items', 'select, insert, update, delete'), 'anon has no privilege on practice_items');
+select results_eq($$select relrowsecurity from pg_class where oid = 'public.study_notes'::regclass$$, array[true], 'RLS is on for study_notes');
+select ok(not has_table_privilege('anon', 'public.study_notes', 'select, insert, update, delete'), 'anon has no privilege on study_notes');
 
 select * from finish();
 rollback;

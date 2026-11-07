@@ -41,6 +41,7 @@ const messageBody = {
   corrections: null,
   newWords: null,
   replyToId: null,
+  noteId: null,
   createdAt: stamp,
 };
 
@@ -80,10 +81,38 @@ export function providerGradeSuccess(): Response {
   return providerBody({ correct: false, explanation: "Use have." });
 }
 
+// INFO: the provider's answer to a study note request: a summary with two points.
+export function providerNoteSuccess(): Response {
+  return providerBody({
+    kind: "summary",
+    title: "Present perfect",
+    topic: "Have + past participle",
+    columns: [],
+    rows: [],
+    points: ["Use it for experiences up to now.", "Use it for recent news."],
+    remember: "Think of now.",
+  });
+}
+
+const storedNoteBody = {
+  id: "note-1",
+  sessionId: null,
+  sessionTitle: null,
+  kind: "summary",
+  title: "Present perfect",
+  topic: "Have + past participle",
+  content: {
+    points: ["Use it for experiences up to now.", "Use it for recent news."],
+    remember: "Think of now.",
+  },
+  createdAt: stamp,
+};
+
 const practiceRunBody = {
   id: "run-1",
   focus: "mistakes",
   topicId: null,
+  noteId: null,
   target: 5,
   costUsd: 0,
   createdAt: stamp,
@@ -184,6 +213,8 @@ function apiAnswer(method: string, pathname: string): Response {
       nextOffset: null,
     });
   }
+  if (pathname === "/notes" && method === "POST") return json(storedNoteBody, 201);
+  if (pathname === "/notes/note-1" && method === "GET") return json(storedNoteBody);
   if (pathname === "/practice/runs" && method === "POST") return json(practiceRunBody, 201);
   if (pathname.endsWith("/items") && method === "POST") {
     return json({ items: [0, 1, 2, 3, 4].map(practiceItemBody) }, 201);

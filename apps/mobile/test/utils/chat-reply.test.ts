@@ -47,6 +47,7 @@ function chatMessage(
     threadReplies: 0,
     replyTo: null,
     savedId: null,
+    note: null,
     ...extra,
   };
 }

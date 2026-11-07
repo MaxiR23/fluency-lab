@@ -1,4 +1,10 @@
-import type { Correction, ModelId, PracticeItemCreate, TokenUsage } from "@fluency-lab/shared";
+import type {
+  Correction,
+  ModelId,
+  PracticeItemCreate,
+  StudyNoteDraft,
+  TokenUsage,
+} from "@fluency-lab/shared";
 
 import type { FailureCause } from "@/auth/auth-port";
 
@@ -11,6 +17,8 @@ export type TutorReply = {
   corrections: Correction[];
   explanation: string | null;
   newWords: string[];
+  // INFO: null when the tutor made no note, which is the usual case.
+  note: StudyNoteDraft | null;
   model: ModelId;
   usage: TokenUsage;
 };
@@ -32,6 +40,8 @@ export type PracticeRound = {
   model: ModelId;
   usage: TokenUsage;
 };
+
+export type StudyNoteReply = { note: StudyNoteDraft; model: ModelId; usage: TokenUsage };
 
 // INFO: explanation is null when the tutor gave none.
 export type AnswerGrade = {
@@ -77,4 +87,6 @@ export type AiPort = {
   practiceRound(request: TutorRequest): Promise<AiResult<PracticeRound>>;
   // INFO: an answer with no explanation is the expected empty: explanation is null.
   gradeAnswer(request: TutorRequest): Promise<AiResult<AnswerGrade>>;
+  // INFO: no expected empty: a note that cannot be used is a bad_response.
+  studyNote(request: TutorRequest): Promise<AiResult<StudyNoteReply>>;
 };

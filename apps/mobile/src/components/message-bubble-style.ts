@@ -9,7 +9,7 @@ export type MessageRole = "tutor" | "user";
 // bubble puts it.
 export function messageBubbleStyle(
   role: MessageRole,
-  options: { quoted?: boolean } = {},
+  options: { quoted?: boolean; note?: boolean } = {},
 ): { row: ViewStyle; bubble: ViewStyle; body?: ViewStyle } {
   const quoted = options.quoted === true;
   const padding: ViewStyle = quoted
@@ -27,14 +27,21 @@ export function messageBubbleStyle(
   };
   const body = quoted ? { body: { paddingHorizontal: spacing.stack } } : {};
   if (role === "tutor") {
+    // INFO: a tutor bubble with a note card is wider and spaces the card from the text
+    // (note-in-chat.html); plain bubbles keep their exact style.
+    const note = options.note === true;
     return {
       ...body,
-      row: { alignSelf: "flex-start", maxWidth: size.messageMaxWidth },
+      row: {
+        alignSelf: "flex-start",
+        maxWidth: note ? size.messageNoteMaxWidth : size.messageMaxWidth,
+      },
       bubble: {
         ...common,
         backgroundColor: colors.surface,
         borderColor: colors.border,
         borderBottomLeftRadius: radius.messageTail,
+        ...(note ? { gap: spacing.cluster } : {}),
       },
     };
   }
