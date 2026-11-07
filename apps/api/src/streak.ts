@@ -1,8 +1,8 @@
 import { addDays } from "@fluency-lab/shared";
 
-// INFO: the streak is alive until today ends. It counts the consecutive days
-// with a session back from today, or back from yesterday when today has none
-// yet. The days are already local dates of the user's zone (the database
+// INFO: the streak is alive until today ends. It counts the consecutive
+// active days (a chat or a finished practice) back from today, or back from
+// yesterday when today has none yet. The days are already local dates of the user's zone (the database
 // buckets them), so no zone logic is needed here.
 export function dayStreak(days: readonly string[], today: string): number {
   const set = new Set(days);

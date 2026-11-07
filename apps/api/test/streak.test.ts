@@ -3,7 +3,7 @@
 // Tests for the day streak of the profile stats.
 //
 // Tested:
-// - dayStreak counts the consecutive days with a session ending today, or ending yesterday when today has none yet
+// - dayStreak counts the consecutive active days (a chat or a finished practice) ending today, or ending yesterday when today has none yet
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -32,6 +32,12 @@ describe("dayStreak", () => {
 
   it("counts yesterday and the day before when today has none yet", () => {
     expect(dayStreak(["2026-11-05", "2026-11-04"], today)).toBe(2);
+  });
+
+  it("counts a streak whose middle day had only a finished practice", () => {
+    // INFO: profile_stats hands over the active days; 2026-11-05 comes from a
+    // finished run only, with no chat that day.
+    expect(dayStreak(["2026-11-06", "2026-11-05", "2026-11-04"], today)).toBe(3);
   });
 
   it("counts several consecutive days ending today", () => {
