@@ -15,6 +15,7 @@
 // - GET /sessions/:id/messages carries the thread reply counts
 // - GET /sessions/:id/summary counts the messages and collects the corrections and new words
 // - GET /sessions/spend still counts the cost of a deleted session
+// - the practice routes: today, create, read, items, answer, usage, target and finish
 // - the usage route prices the tokens, and the routes reject an apiKey field
 //
 // What is covered:
@@ -39,6 +40,8 @@ import {
   wordPageSchema,
   type ActiveSession,
   type Message,
+  type PracticeItem,
+  type PracticeRun,
   type Profile,
   type Session,
 } from "@fluency-lab/shared";
@@ -264,6 +267,43 @@ const message: Message = {
   createdAt: stamp,
 };
 
+const runId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5eb1";
+const itemId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ee1";
+const practiceRun: PracticeRun = {
+  id: runId,
+  focus: "mistakes",
+  topicId: null,
+  target: 5,
+  costUsd: 0,
+  createdAt: "2026-11-05T09:00:00+00:00",
+  finishedAt: null,
+};
+const practiceItem: PracticeItem = {
+  id: itemId,
+  runId,
+  position: 0,
+  kind: "choose",
+  rule: "Present perfect",
+  prompt: "I ___ there.",
+  options: ["have been", "was", "am"],
+  accepted: ["have been"],
+  explanation: "Experience.",
+  source: null,
+  userAnswer: null,
+  correct: null,
+  answeredAt: null,
+};
+const practiceItemBody = {
+  position: 0,
+  kind: "choose",
+  rule: "Present perfect",
+  prompt: "I ___ there.",
+  options: ["have been", "was", "am"],
+  accepted: ["have been"],
+  explanation: "Experience.",
+  source: null,
+};
+
 function json(body: unknown) {
   return JSON.stringify(body);
 }
@@ -310,6 +350,49 @@ const routes: { name: string; path: string; method: string; body?: unknown }[] =
     },
   },
   { name: "POST /sessions/:id/end", path: `/sessions/${sessionId}/end`, method: "POST" },
+  { name: "GET /practice/today", path: "/practice/today?tz=UTC", method: "GET" },
+  {
+    name: "POST /practice/runs",
+    path: "/practice/runs",
+    method: "POST",
+    body: { focus: "mistakes", target: 5 },
+  },
+  { name: "GET /practice/runs/:id", path: `/practice/runs/${runId}`, method: "GET" },
+  {
+    name: "POST /practice/runs/:id/items",
+    path: `/practice/runs/${runId}/items`,
+    method: "POST",
+    body: { items: [practiceItemBody] },
+  },
+  {
+    name: "POST /practice/runs/:id/usage",
+    path: `/practice/runs/${runId}/usage`,
+    method: "POST",
+    body: {
+      model: TUTOR_MODEL,
+      inputTokens: 1,
+      outputTokens: 1,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+    },
+  },
+  {
+    name: "POST /practice/runs/:id/target",
+    path: `/practice/runs/${runId}/target`,
+    method: "POST",
+    body: { target: 10 },
+  },
+  {
+    name: "POST /practice/runs/:id/finish",
+    path: `/practice/runs/${runId}/finish`,
+    method: "POST",
+  },
+  {
+    name: "POST /practice/items/:id/answer",
+    path: `/practice/items/${itemId}/answer`,
+    method: "POST",
+    body: { userAnswer: "was", correct: false },
+  },
   { name: "GET /messages/:id/thread", path: `/messages/${message.id}/thread`, method: "GET" },
   {
     name: "POST /messages/:id/thread",
@@ -1864,5 +1947,261 @@ describe("GET /progress/words", () => {
     expect(fake.callers).toEqual([
       { id: "user-1", accessToken: headers.Authorization.replace("Bearer ", "") },
     ]);
+  });
+});
+
+describe("the practice routes", () => {
+  const usage = {
+    model: TUTOR_MODEL,
+    inputTokens: 700,
+    outputTokens: 150,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+  };
+
+  async function call(method: string, path: string, body?: unknown) {
+    return app.request(path, {
+      method,
+      headers: await authed(body === undefined ? {} : jsonType),
+      body: body === undefined ? undefined : json(body),
+    });
+  }
+
+  describe("GET /practice/today", () => {
+    it("answers today's run in the caller's zone", async () => {
+      fake.user.listPracticeRunsSince.mockResolvedValue({
+        ok: true,
+        value: [
+          { run: { ...practiceRun, id: "old", createdAt: "2026-11-04T09:00:00+00:00" }, items: [] },
+          { run: practiceRun, items: [practiceItem] },
+        ],
+      });
+      const res = await call("GET", "/practice/today?tz=UTC");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ run: { run: practiceRun, items: [practiceItem] } });
+      expect(fake.user.listPracticeRunsSince).toHaveBeenCalledWith("2026-11-03T12:00:00.000Z");
+    });
+
+    it("answers null with no run today", async () => {
+      fake.user.listPracticeRunsSince.mockResolvedValue({ ok: true, value: [] });
+      const res = await call("GET", "/practice/today?tz=America/Argentina/Buenos_Aires");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ run: null });
+    });
+
+    it("counts a run at 23:00 UTC as the next day in a zone ahead of UTC", async () => {
+      fake.user.listPracticeRunsSince.mockResolvedValue({
+        ok: true,
+        value: [{ run: { ...practiceRun, createdAt: "2026-11-04T23:30:00+00:00" }, items: [] }],
+      });
+      const res = await call("GET", "/practice/today?tz=Asia/Tokyo");
+      expect(((await res.json()) as { run: unknown }).run).not.toBeNull();
+    });
+
+    it("answers 400 for a bad zone and 503 when the store is down", async () => {
+      expect((await call("GET", "/practice/today?tz=-03:00")).status).toBe(400);
+      expect((await call("GET", "/practice/today")).status).toBe(400);
+      fake.user.listPracticeRunsSince.mockResolvedValue({ ok: false, failure: "unavailable" });
+      expect((await call("GET", "/practice/today?tz=UTC")).status).toBe(503);
+    });
+  });
+
+  describe("POST /practice/runs", () => {
+    it("answers 201 with the run", async () => {
+      fake.user.createPracticeRun.mockResolvedValue({ ok: true, value: practiceRun });
+      const res = await call("POST", "/practice/runs", { focus: "mistakes", target: 5 });
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual(practiceRun);
+      expect(fake.user.createPracticeRun).toHaveBeenCalledWith({ focus: "mistakes", target: 5 });
+    });
+
+    it("answers 400 for a bad focus, a target of 20 and a topic run without a topic", async () => {
+      expect((await call("POST", "/practice/runs", { focus: "chat", target: 5 })).status).toBe(400);
+      expect((await call("POST", "/practice/runs", { focus: "mistakes", target: 20 })).status).toBe(
+        400,
+      );
+      expect((await call("POST", "/practice/runs", { focus: "topic", target: 5 })).status).toBe(
+        400,
+      );
+      expect(fake.user.createPracticeRun).not.toHaveBeenCalled();
+    });
+
+    it("answers 503 when the store is unavailable", async () => {
+      fake.user.createPracticeRun.mockResolvedValue({ ok: false, failure: "unavailable" });
+      expect((await call("POST", "/practice/runs", { focus: "mistakes", target: 5 })).status).toBe(
+        503,
+      );
+    });
+  });
+
+  describe("GET /practice/runs/:id", () => {
+    it("answers 200 with the run and its items", async () => {
+      fake.user.getPracticeRun.mockResolvedValue({
+        ok: true,
+        value: { run: practiceRun, items: [] },
+      });
+      const res = await call("GET", `/practice/runs/${runId}`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ run: practiceRun, items: [] });
+    });
+
+    it("answers 404 when the run is not visible, 400 for a bad id and 503 when down", async () => {
+      fake.user.getPracticeRun.mockResolvedValue({ ok: true, value: null });
+      expect((await call("GET", `/practice/runs/${runId}`)).status).toBe(404);
+      expect((await call("GET", "/practice/runs/abc")).status).toBe(400);
+      fake.user.getPracticeRun.mockResolvedValue({ ok: false, failure: "unavailable" });
+      expect((await call("GET", `/practice/runs/${runId}`)).status).toBe(503);
+    });
+  });
+
+  describe("POST /practice/runs/:id/items", () => {
+    it("answers 201 with every item of the run", async () => {
+      fake.user.addPracticeItems.mockResolvedValue({ ok: true, value: [practiceItem] });
+      const res = await call("POST", `/practice/runs/${runId}/items`, {
+        items: [practiceItemBody],
+      });
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ items: [practiceItem] });
+      expect(fake.user.addPracticeItems).toHaveBeenCalledWith(runId, [practiceItemBody]);
+    });
+
+    it("answers 400 for six items and for a choose item with two options", async () => {
+      const six = Array.from({ length: 6 }, (_, position) => ({ ...practiceItemBody, position }));
+      expect((await call("POST", `/practice/runs/${runId}/items`, { items: six })).status).toBe(
+        400,
+      );
+      expect(
+        (
+          await call("POST", `/practice/runs/${runId}/items`, {
+            items: [{ ...practiceItemBody, options: ["have been", "was"] }],
+          })
+        ).status,
+      ).toBe(400);
+      expect(fake.user.addPracticeItems).not.toHaveBeenCalled();
+    });
+
+    it("answers 404 when the run is not visible and 503 when down", async () => {
+      fake.user.addPracticeItems.mockResolvedValue({ ok: true, value: null });
+      const body = { items: [practiceItemBody] };
+      expect((await call("POST", `/practice/runs/${runId}/items`, body)).status).toBe(404);
+      fake.user.addPracticeItems.mockResolvedValue({ ok: false, failure: "unavailable" });
+      expect((await call("POST", `/practice/runs/${runId}/items`, body)).status).toBe(503);
+    });
+  });
+
+  describe("POST /practice/runs/:id/usage", () => {
+    it("prices the practice usage with the model price", async () => {
+      fake.user.addPracticeCost.mockResolvedValue({
+        ok: true,
+        value: { ...practiceRun, costUsd: 0.000145 },
+      });
+      const res = await call("POST", `/practice/runs/${runId}/usage`, usage);
+      expect(res.status).toBe(200);
+      expect(fake.user.addPracticeCost).toHaveBeenCalledWith(
+        runId,
+        usageCostUsd(TUTOR_MODEL, usage),
+      );
+      expect(fake.user.addPracticeCost).toHaveBeenCalledWith(runId, 0.000145);
+    });
+
+    it("answers 400 for an unknown model or an apiKey field", async () => {
+      expect(
+        (await call("POST", `/practice/runs/${runId}/usage`, { ...usage, model: "x" })).status,
+      ).toBe(400);
+      expect(
+        (await call("POST", `/practice/runs/${runId}/usage`, { ...usage, apiKey: "x" })).status,
+      ).toBe(400);
+      expect(fake.user.addPracticeCost).not.toHaveBeenCalled();
+    });
+
+    it("answers 404 when the run is not visible and 503 when down", async () => {
+      fake.user.addPracticeCost.mockResolvedValue({ ok: true, value: null });
+      expect((await call("POST", `/practice/runs/${runId}/usage`, usage)).status).toBe(404);
+      fake.user.addPracticeCost.mockResolvedValue({ ok: false, failure: "unavailable" });
+      expect((await call("POST", `/practice/runs/${runId}/usage`, usage)).status).toBe(503);
+    });
+  });
+
+  describe("POST /practice/runs/:id/target", () => {
+    it("answers 200 with the run", async () => {
+      fake.user.setPracticeTarget.mockResolvedValue({
+        ok: true,
+        value: { ...practiceRun, target: 10 },
+      });
+      const res = await call("POST", `/practice/runs/${runId}/target`, { target: 10 });
+      expect(res.status).toBe(200);
+      expect(fake.user.setPracticeTarget).toHaveBeenCalledWith(runId, 10);
+    });
+
+    it("answers 400 for a target of 20 or 5", async () => {
+      expect((await call("POST", `/practice/runs/${runId}/target`, { target: 20 })).status).toBe(
+        400,
+      );
+      expect((await call("POST", `/practice/runs/${runId}/target`, { target: 5 })).status).toBe(
+        400,
+      );
+    });
+
+    it("answers 404 and 503", async () => {
+      fake.user.setPracticeTarget.mockResolvedValue({ ok: true, value: null });
+      expect((await call("POST", `/practice/runs/${runId}/target`, { target: 10 })).status).toBe(
+        404,
+      );
+      fake.user.setPracticeTarget.mockResolvedValue({ ok: false, failure: "unavailable" });
+      expect((await call("POST", `/practice/runs/${runId}/target`, { target: 10 })).status).toBe(
+        503,
+      );
+    });
+  });
+
+  describe("POST /practice/runs/:id/finish", () => {
+    it("finishes the run at the server's time", async () => {
+      fake.user.finishPracticeRun.mockResolvedValue({
+        ok: true,
+        value: { ...practiceRun, finishedAt: "2026-11-05T12:00:00.000Z" },
+      });
+      const res = await call("POST", `/practice/runs/${runId}/finish`);
+      expect(res.status).toBe(200);
+      expect(fake.user.finishPracticeRun).toHaveBeenCalledWith(runId, "2026-11-05T12:00:00.000Z");
+    });
+
+    it("answers 404, 400 and 503", async () => {
+      fake.user.finishPracticeRun.mockResolvedValue({ ok: true, value: null });
+      expect((await call("POST", `/practice/runs/${runId}/finish`)).status).toBe(404);
+      expect((await call("POST", "/practice/runs/abc/finish")).status).toBe(400);
+      fake.user.finishPracticeRun.mockResolvedValue({ ok: false, failure: "unavailable" });
+      expect((await call("POST", `/practice/runs/${runId}/finish`)).status).toBe(503);
+    });
+  });
+
+  describe("POST /practice/items/:id/answer", () => {
+    it("saves the answer at the server's time", async () => {
+      fake.user.answerPracticeItem.mockResolvedValue({
+        ok: true,
+        value: { ...practiceItem, userAnswer: "was", correct: false },
+      });
+      const res = await call("POST", `/practice/items/${itemId}/answer`, {
+        userAnswer: " was ",
+        correct: false,
+      });
+      expect(res.status).toBe(200);
+      expect(fake.user.answerPracticeItem).toHaveBeenCalledWith(
+        itemId,
+        { userAnswer: "was", correct: false },
+        "2026-11-05T12:00:00.000Z",
+      );
+    });
+
+    it("answers 400 for an empty answer, 404 and 503", async () => {
+      expect(
+        (await call("POST", `/practice/items/${itemId}/answer`, { userAnswer: " ", correct: true }))
+          .status,
+      ).toBe(400);
+      const body = { userAnswer: "was", correct: false };
+      fake.user.answerPracticeItem.mockResolvedValue({ ok: true, value: null });
+      expect((await call("POST", `/practice/items/${itemId}/answer`, body)).status).toBe(404);
+      fake.user.answerPracticeItem.mockResolvedValue({ ok: false, failure: "unavailable" });
+      expect((await call("POST", `/practice/items/${itemId}/answer`, body)).status).toBe(503);
+    });
   });
 });

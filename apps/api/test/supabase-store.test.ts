@@ -6,7 +6,8 @@
 // - storeConfigFromEnv reads and validates the environment
 // - Every request carries the caller's token and the publishable key
 // - listOpenSessions reads active sessions newest first with their newest message in one request; deleteSession deletes by id
-// - listSessionCostsSince reads the sessions and deleted_session_costs and returns both
+// - listSessionCostsSince reads the sessions, deleted_session_costs and practice_runs and returns all three
+// - The practice methods read and write practice_runs and practice_items and call add_practice_cost with the caller's token
 // - getStats calls profile_stats with the caller's token; deleteAccount deletes the caller through the admin API with the secret key and never the caller's token
 // - getMonthProgress, listEndedSessions, listMistakeGroups and listNewWords call their progress_* function with the caller's token
 // - getThread, addThreadMessage, withdrawCorrections and listThreadCounts read and write the thread table and its functions with the caller's token, and getSessionWithMessages never reads thread rows
@@ -830,13 +831,14 @@ describe("deleteSession", () => {
 describe("listSessionCostsSince", () => {
   const since = "2026-10-05T12:00:00.000Z";
 
-  it("returns the start and cost of each session and each deleted session since the given time", async () => {
+  it("reads sessions, deleted session costs and practice runs and returns all three", async () => {
     const { user, requests } = setup([
       ok([
         { created_at: "2026-11-02T10:00:00+00:00", cost_usd: 0.25 },
         { created_at: "2026-11-04T10:00:00+00:00", cost_usd: 0 },
       ]),
       ok([{ created_at: "2026-11-03T10:00:00+00:00", cost_usd: 0.5 }]),
+      ok([{ created_at: "2026-11-05T10:00:00+00:00", cost_usd: 0.125 }]),
     ]);
 
     const outcome = await user.listSessionCostsSince(since);
@@ -847,6 +849,7 @@ describe("listSessionCostsSince", () => {
         { createdAt: "2026-11-02T10:00:00+00:00", costUsd: 0.25 },
         { createdAt: "2026-11-04T10:00:00+00:00", costUsd: 0 },
         { createdAt: "2026-11-03T10:00:00+00:00", costUsd: 0.5 },
+        { createdAt: "2026-11-05T10:00:00+00:00", costUsd: 0.125 },
       ],
     });
     expect(requests[0].url.pathname).toBe("/rest/v1/sessions");
@@ -855,12 +858,16 @@ describe("listSessionCostsSince", () => {
     expect(requests[1].url.pathname).toBe("/rest/v1/deleted_session_costs");
     expect(requests[1].url.searchParams.get("select")).toBe("created_at,cost_usd");
     expect(requests[1].url.searchParams.get("created_at")).toBe(`gte.${since}`);
+    expect(requests[2].url.pathname).toBe("/rest/v1/practice_runs");
+    expect(requests[2].url.searchParams.get("select")).toBe("created_at,cost_usd");
+    expect(requests[2].url.searchParams.get("created_at")).toBe(`gte.${since}`);
   });
 
   it("keeps the cost of a deleted session when no session is left", async () => {
     const { user } = setup([
       ok([]),
       ok([{ created_at: "2026-11-03T10:00:00+00:00", cost_usd: 0.5 }]),
+      ok([]),
     ]);
     expect(await user.listSessionCostsSince(since)).toEqual({
       ok: true,
@@ -868,12 +875,12 @@ describe("listSessionCostsSince", () => {
     });
   });
 
-  it("returns an empty list when there are no sessions and no deleted costs", async () => {
-    const { user } = setup([ok([]), ok([])]);
+  it("returns an empty list when there are no sessions, deleted costs or runs", async () => {
+    const { user } = setup([ok([]), ok([]), ok([])]);
     expect(await user.listSessionCostsSince(since)).toEqual({ ok: true, value: [] });
   });
 
-  it("returns unauthorized on a 401 from either read", async () => {
+  it("returns unauthorized on a 401 from any read", async () => {
     expect(await setup([failure(401)]).user.listSessionCostsSince(since)).toEqual({
       ok: false,
       failure: "unauthorized",
@@ -882,9 +889,20 @@ describe("listSessionCostsSince", () => {
       ok: false,
       failure: "unauthorized",
     });
+    expect(await setup([ok([]), ok([]), failure(401)]).user.listSessionCostsSince(since)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
   });
 
-  it("returns unavailable when fetch rejects on either read", async () => {
+  it("fails when the practice read fails", async () => {
+    expect(await setup([ok([]), ok([]), failure(500)]).user.listSessionCostsSince(since)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("returns unavailable when fetch rejects on any read", async () => {
     const down = new TypeError("network down");
     expect(await setup([down]).user.listSessionCostsSince(since)).toEqual({
       ok: false,
@@ -894,15 +912,23 @@ describe("listSessionCostsSince", () => {
       ok: false,
       failure: "unavailable",
     });
+    expect(await setup([ok([]), ok([]), down]).user.listSessionCostsSince(since)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
   });
 
-  it("returns unavailable for a bad row in either read", async () => {
+  it("returns unavailable for a bad row in any read", async () => {
     const bad = ok([{ created_at: "2026-11-02T10:00:00+00:00" }]);
     expect(await setup([bad]).user.listSessionCostsSince(since)).toEqual({
       ok: false,
       failure: "unavailable",
     });
     expect(await setup([ok([]), bad]).user.listSessionCostsSince(since)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+    expect(await setup([ok([]), ok([]), bad]).user.listSessionCostsSince(since)).toEqual({
       ok: false,
       failure: "unavailable",
     });
@@ -1467,5 +1493,371 @@ describe("getSessionWithMessages and threads", () => {
     const { user, requests } = setup([ok([sessionRow]), ok([messageRow(1)])]);
     await user.getSessionWithMessages(sessionId);
     expect(requests.map((r) => r.url.pathname)).toEqual(["/rest/v1/sessions", "/rest/v1/messages"]);
+  });
+});
+
+describe("practice methods", () => {
+  const runId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5eb1";
+  const itemId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ee1";
+  const runRow = {
+    id: runId,
+    user_id: id,
+    focus: "topic",
+    topic_id: "conditionals",
+    target: 5,
+    cost_usd: 0,
+    created_at: stamp,
+    finished_at: null,
+  };
+  const itemRow = (position: number) => ({
+    id: `6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ee${position}`,
+    run_id: runId,
+    position,
+    kind: "choose",
+    rule: "Conditionals",
+    prompt: "If I ___ rich.",
+    options: ["were", "was", "am"],
+    accepted: ["were"],
+    explanation: "Second conditional.",
+    source: null,
+    user_answer: null,
+    correct: null,
+    answered_at: null,
+  });
+  const created = {
+    items: [
+      {
+        position: 0,
+        kind: "choose" as const,
+        rule: "Conditionals",
+        prompt: "If I ___ rich.",
+        options: ["were", "was", "am"],
+        accepted: ["were"],
+        explanation: "Second conditional.",
+        source: null,
+      },
+    ],
+  };
+  const down = new TypeError("network down");
+
+  describe("listPracticeRunsSince", () => {
+    const since = "2026-11-05T12:00:00.000Z";
+
+    it("reads the runs with their items since the given time", async () => {
+      const { user, requests } = setup([
+        ok([{ ...runRow, practice_items: [itemRow(1), itemRow(0)] }]),
+      ]);
+      const outcome = await user.listPracticeRunsSince(since);
+      expect(outcome.ok && outcome.value[0]?.items.map((item) => item.position)).toEqual([0, 1]);
+      expect(requests[0].url.pathname).toBe("/rest/v1/practice_runs");
+      expect(requests[0].url.searchParams.get("select")).toBe("*,practice_items(*)");
+      expect(requests[0].url.searchParams.get("created_at")).toBe(`gte.${since}`);
+    });
+
+    it("returns an empty list with no runs", async () => {
+      expect(await setup([ok([])]).user.listPracticeRunsSince(since)).toEqual({
+        ok: true,
+        value: [],
+      });
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      expect(await setup([failure(401)]).user.listPracticeRunsSince(since)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.listPracticeRunsSince(since)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok([{ id }])]).user.listPracticeRunsSince(since)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
+  });
+
+  describe("createPracticeRun", () => {
+    it("inserts a run for the caller and returns it", async () => {
+      const { user, requests } = setup([ok({ ...runRow }, 201)]);
+      const outcome = await user.createPracticeRun({
+        focus: "topic",
+        topicId: "conditionals",
+        target: 5,
+      });
+      expect(outcome).toMatchObject({ ok: true, value: { id: runId, topicId: "conditionals" } });
+      expect(requests[0].method).toBe("POST");
+      expect(requests[0].url.pathname).toBe("/rest/v1/practice_runs");
+      expect(JSON.parse(requests[0].body ?? "null")).toEqual({
+        user_id: id,
+        focus: "topic",
+        topic_id: "conditionals",
+        target: 5,
+      });
+    });
+
+    it("sends a null topic for a mistakes run", async () => {
+      const { user, requests } = setup([ok({ ...runRow, focus: "mistakes", topic_id: null }, 201)]);
+      await user.createPracticeRun({ focus: "mistakes", target: 5 });
+      expect(JSON.parse(requests[0].body ?? "null")).toMatchObject({ topic_id: null });
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      const input = { focus: "mistakes", target: 5 } as const;
+      expect(await setup([failure(401)]).user.createPracticeRun(input)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.createPracticeRun(input)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok({ id }, 201)]).user.createPracticeRun(input)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
+  });
+
+  describe("getPracticeRun", () => {
+    it("reads a run with its items", async () => {
+      const { user, requests } = setup([ok({ ...runRow, practice_items: [itemRow(0)] })]);
+      const outcome = await user.getPracticeRun(runId);
+      expect(outcome.ok && outcome.value?.items).toHaveLength(1);
+      expect(requests[0].url.pathname).toBe("/rest/v1/practice_runs");
+      expect(requests[0].url.searchParams.get("id")).toBe(`eq.${runId}`);
+      expect(requests[0].url.searchParams.get("select")).toBe("*,practice_items(*)");
+    });
+
+    it("returns a run with no items as the expected empty", async () => {
+      const outcome = await setup([ok({ ...runRow, practice_items: [] })]).user.getPracticeRun(
+        runId,
+      );
+      expect(outcome.ok && outcome.value?.items).toEqual([]);
+    });
+
+    it("returns null when the run is not visible", async () => {
+      const { user } = setup([ok([])]);
+      expect(await user.getPracticeRun(runId)).toEqual({ ok: true, value: null });
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      expect(await setup([failure(401)]).user.getPracticeRun(runId)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.getPracticeRun(runId)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok({ id })]).user.getPracticeRun(runId)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
+  });
+
+  describe("addPracticeItems", () => {
+    it("saves the items ignoring duplicates and returns every item of the run", async () => {
+      const { user, requests } = setup([ok({ id: runId }), ok(null, 201), ok([itemRow(0)])]);
+      const outcome = await user.addPracticeItems(runId, created.items);
+      expect(outcome.ok && outcome.value?.map((item) => item.position)).toEqual([0]);
+      expect(requests[1].method).toBe("POST");
+      expect(requests[1].url.pathname).toBe("/rest/v1/practice_items");
+      expect(requests[1].url.searchParams.get("on_conflict")).toBe("run_id,position");
+      expect(requests[1].headers.get("Prefer")).toContain("resolution=ignore-duplicates");
+      expect(JSON.parse(requests[1].body ?? "null")).toEqual([
+        {
+          run_id: runId,
+          position: 0,
+          kind: "choose",
+          rule: "Conditionals",
+          prompt: "If I ___ rich.",
+          options: ["were", "was", "am"],
+          accepted: ["were"],
+          explanation: "Second conditional.",
+          source: null,
+        },
+      ]);
+      expect(requests[2].url.pathname).toBe("/rest/v1/practice_items");
+      expect(requests[2].url.searchParams.get("run_id")).toBe(`eq.${runId}`);
+      expect(requests[2].url.searchParams.get("order")).toBe("position.asc");
+    });
+
+    it("answers every item of the run when the save repeats", async () => {
+      const { user } = setup([ok({ id: runId }), ok(null, 201), ok([itemRow(0), itemRow(1)])]);
+      const outcome = await user.addPracticeItems(runId, created.items);
+      expect(outcome.ok && outcome.value).toHaveLength(2);
+    });
+
+    it("returns null when the run is not visible", async () => {
+      const { user, requests } = setup([ok([])]);
+      expect(await user.addPracticeItems(runId, created.items)).toEqual({ ok: true, value: null });
+      expect(requests).toHaveLength(1);
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      expect(await setup([failure(401)]).user.addPracticeItems(runId, created.items)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(
+        await setup([ok({ id: runId }), down]).user.addPracticeItems(runId, created.items),
+      ).toEqual({ ok: false, failure: "unavailable" });
+      expect(
+        await setup([ok({ id: runId }), ok(null, 201), ok([{ id }])]).user.addPracticeItems(
+          runId,
+          created.items,
+        ),
+      ).toEqual({ ok: false, failure: "unavailable" });
+    });
+  });
+
+  describe("answerPracticeItem", () => {
+    it("saves the answer and returns the item", async () => {
+      const { user, requests } = setup([
+        ok([{ ...itemRow(0), user_answer: "was", correct: false }]),
+      ]);
+      const outcome = await user.answerPracticeItem(
+        itemId,
+        { userAnswer: "was", correct: false },
+        "2026-11-07T10:00:00.000Z",
+      );
+      expect(outcome).toMatchObject({ ok: true, value: { userAnswer: "was", correct: false } });
+      expect(requests[0].method).toBe("PATCH");
+      expect(requests[0].url.pathname).toBe("/rest/v1/practice_items");
+      expect(requests[0].url.searchParams.get("id")).toBe(`eq.${itemId}`);
+      expect(JSON.parse(requests[0].body ?? "null")).toEqual({
+        user_answer: "was",
+        correct: false,
+        answered_at: "2026-11-07T10:00:00.000Z",
+      });
+    });
+
+    it("returns null when the item is not visible", async () => {
+      const answer = { userAnswer: "was", correct: false };
+      expect(await setup([ok([])]).user.answerPracticeItem(itemId, answer, stamp)).toEqual({
+        ok: true,
+        value: null,
+      });
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      const answer = { userAnswer: "was", correct: false };
+      expect(await setup([failure(401)]).user.answerPracticeItem(itemId, answer, stamp)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.answerPracticeItem(itemId, answer, stamp)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok([{ id }])]).user.answerPracticeItem(itemId, answer, stamp)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
+  });
+
+  describe("addPracticeCost", () => {
+    it("adds the amount through add_practice_cost and returns the run", async () => {
+      const { user, requests } = setup([ok([{ ...runRow, cost_usd: 0.000145 }])]);
+      const outcome = await user.addPracticeCost(runId, 0.000145);
+      expect(outcome).toMatchObject({ ok: true, value: { id: runId, costUsd: 0.000145 } });
+      expect(requests[0].method).toBe("POST");
+      expect(requests[0].url.pathname).toBe("/rest/v1/rpc/add_practice_cost");
+      expect(JSON.parse(requests[0].body ?? "null")).toEqual({
+        run_id: runId,
+        amount_usd: 0.000145,
+      });
+    });
+
+    it("returns null when the run is not visible", async () => {
+      expect(await setup([ok([])]).user.addPracticeCost(runId, 1)).toEqual({
+        ok: true,
+        value: null,
+      });
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      expect(await setup([failure(401)]).user.addPracticeCost(runId, 1)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.addPracticeCost(runId, 1)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok([{ id }])]).user.addPracticeCost(runId, 1)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
+  });
+
+  describe("setPracticeTarget", () => {
+    it("raises the target and returns the run", async () => {
+      const { user, requests } = setup([ok([{ ...runRow, target: 10 }])]);
+      const outcome = await user.setPracticeTarget(runId, 10);
+      expect(outcome).toMatchObject({ ok: true, value: { target: 10 } });
+      expect(requests[0].method).toBe("PATCH");
+      expect(requests[0].url.searchParams.get("id")).toBe(`eq.${runId}`);
+      expect(JSON.parse(requests[0].body ?? "null")).toEqual({ target: 10 });
+    });
+
+    it("returns null when the run is not visible", async () => {
+      expect(await setup([ok([])]).user.setPracticeTarget(runId, 10)).toEqual({
+        ok: true,
+        value: null,
+      });
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      expect(await setup([failure(401)]).user.setPracticeTarget(runId, 10)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.setPracticeTarget(runId, 10)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok([{ id }])]).user.setPracticeTarget(runId, 10)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
+  });
+
+  describe("finishPracticeRun", () => {
+    it("sets finished_at and returns the run", async () => {
+      const finishedAt = "2026-11-07T11:00:00.000Z";
+      const { user, requests } = setup([ok([{ ...runRow, finished_at: finishedAt }])]);
+      const outcome = await user.finishPracticeRun(runId, finishedAt);
+      expect(outcome).toMatchObject({ ok: true, value: { finishedAt } });
+      expect(requests[0].method).toBe("PATCH");
+      expect(JSON.parse(requests[0].body ?? "null")).toEqual({ finished_at: finishedAt });
+    });
+
+    it("returns null when the run is not visible", async () => {
+      expect(await setup([ok([])]).user.finishPracticeRun(runId, stamp)).toEqual({
+        ok: true,
+        value: null,
+      });
+    });
+
+    it("fails on a 401, a down fetch and a bad row", async () => {
+      expect(await setup([failure(401)]).user.finishPracticeRun(runId, stamp)).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([down]).user.finishPracticeRun(runId, stamp)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(await setup([ok([{ id }])]).user.finishPracticeRun(runId, stamp)).toEqual({
+        ok: false,
+        failure: "unavailable",
+      });
+    });
   });
 });

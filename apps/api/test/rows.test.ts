@@ -11,6 +11,7 @@
 // - toMonthProgressRow, toHistoryRow, toMistakeRow and toWordRow read the Progress rows
 // - toMessage reads a message whose correction is withdrawn
 // - toThreadMessage and toThreadCount read a thread row and a reply count
+// - toPracticeRun, toPracticeItem and toPracticeRunWithItems read the practice rows
 // - toProfilePatch renames an update to columns
 //
 // What is covered:
@@ -27,6 +28,9 @@ import {
   toMistakeRow,
   toMonthProgressRow,
   toOpenSession,
+  toPracticeItem,
+  toPracticeRun,
+  toPracticeRunWithItems,
   toProfile,
   toProfilePatch,
   toProfileStatsRow,
@@ -462,5 +466,91 @@ describe("toWordRow", () => {
     expect(
       toWordRow({ word: "catchy", sentence: "That song.", created_at: "yesterday" }),
     ).toBeNull();
+  });
+});
+
+describe("practice rows", () => {
+  const runRow = {
+    id,
+    focus: "topic",
+    topic_id: "conditionals",
+    target: 10,
+    cost_usd: 0.000145,
+    created_at: stamp,
+    finished_at: null,
+  };
+  const itemRow = (position: number) => ({
+    id: `${id.slice(0, -1)}${position}`,
+    run_id: id,
+    position,
+    kind: "choose",
+    rule: "Present perfect",
+    prompt: "I ___ there.",
+    options: ["have been", "was", "am"],
+    accepted: ["have been"],
+    explanation: "Experience.",
+    source: null,
+    user_answer: null,
+    correct: null,
+    answered_at: null,
+  });
+
+  it("maps a practice run row", () => {
+    expect(toPracticeRun(runRow)).toEqual({
+      id,
+      focus: "topic",
+      topicId: "conditionals",
+      target: 10,
+      costUsd: 0.000145,
+      createdAt: stamp,
+      finishedAt: null,
+    });
+  });
+
+  it("returns null for a run with an unknown focus or target", () => {
+    expect(toPracticeRun({ ...runRow, focus: "chat" })).toBeNull();
+    expect(toPracticeRun({ ...runRow, target: 7 })).toBeNull();
+    expect(toPracticeRun(null)).toBeNull();
+  });
+
+  it("maps an item row", () => {
+    expect(toPracticeItem({ ...itemRow(0), user_answer: "was", correct: false })).toMatchObject({
+      runId: id,
+      position: 0,
+      options: ["have been", "was", "am"],
+      accepted: ["have been"],
+      userAnswer: "was",
+      correct: false,
+      answeredAt: null,
+    });
+  });
+
+  it("returns null for an unknown kind and for options that are not strings", () => {
+    expect(toPracticeItem({ ...itemRow(0), kind: "riddle" })).toBeNull();
+    expect(toPracticeItem({ ...itemRow(0), options: [1, 2, 3] })).toBeNull();
+    expect(toPracticeItem({ ...itemRow(0), accepted: [1] })).toBeNull();
+  });
+
+  it("maps a run with its items sorted by position", () => {
+    const mapped = toPracticeRunWithItems({
+      ...runRow,
+      practice_items: [itemRow(2), itemRow(0), itemRow(1)],
+    });
+    expect(mapped?.items.map((item) => item.position)).toEqual([0, 1, 2]);
+    expect(mapped?.run.id).toBe(id);
+  });
+
+  it("maps a run with no items", () => {
+    expect(toPracticeRunWithItems({ ...runRow, practice_items: [] })).toEqual({
+      run: toPracticeRun(runRow),
+      items: [],
+    });
+  });
+
+  it("returns null when one item is bad", () => {
+    expect(
+      toPracticeRunWithItems({ ...runRow, practice_items: [itemRow(0), { id: 1 }] }),
+    ).toBeNull();
+    expect(toPracticeRunWithItems(runRow)).toBeNull();
   });
 });

@@ -12,6 +12,7 @@
 // - The session week response and its query
 // - The profile stats response and the account deleted response
 // - The progress responses and their page queries
+// - The practice schemas: the run to create, the items, the answer, the new target, the reads and the tutor payloads
 // - The thread schemas: the stored correction with its withdrawn flag, the thread rows, the withdraw body, the reply counts and the thread reply payload
 //
 // What is covered:
@@ -37,6 +38,17 @@ import {
   monthProgressSchema,
   monthSpendSchema,
   openSessionsResponseSchema,
+  answerGradeSchema,
+  practiceAnswerSchema,
+  practiceItemCreateSchema,
+  practiceItemSchema,
+  practiceItemsCreateSchema,
+  practiceRoundSchema,
+  practiceRunCreateSchema,
+  practiceRunSchema,
+  practiceRunWithItemsSchema,
+  practiceTargetSchema,
+  practiceTodaySchema,
   newWordsSchema,
   profileSchema,
   profileStatsSchema,
@@ -806,5 +818,164 @@ describe("thread schemas", () => {
     const payload = { reply: "Yes", newWords: [], withdrawn: [1] };
     expect(threadReplySchema.parse(payload)).toEqual(payload);
     expect(threadReplySchema.safeParse({ reply: "Yes", newWords: [] }).success).toBe(false);
+  });
+});
+
+describe("practice schemas", () => {
+  const item = {
+    position: 0,
+    kind: "choose",
+    rule: "Present perfect",
+    prompt: "I ___ there twice.",
+    options: ["have been", "was", "am"],
+    accepted: ["have been"],
+    explanation: "Use the present perfect for experience.",
+    source: null,
+  };
+  const run = {
+    id: uuid,
+    focus: "topic",
+    topicId: "conditionals",
+    target: 5,
+    costUsd: 0.01,
+    createdAt: "2026-11-07T10:00:00.000Z",
+    finishedAt: null,
+  };
+  const stored = {
+    id: uuid,
+    runId: uuid,
+    ...item,
+    userAnswer: null,
+    correct: null,
+    answeredAt: null,
+  };
+
+  it("accepts a topic run with a grammar topic", () => {
+    expect(
+      practiceRunCreateSchema.safeParse({ focus: "topic", topicId: "articles", target: 10 })
+        .success,
+    ).toBe(true);
+    expect(practiceRunCreateSchema.safeParse({ focus: "mistakes", target: 5 }).success).toBe(true);
+    expect(practiceRunCreateSchema.safeParse({ focus: "words", target: 15 }).success).toBe(true);
+  });
+
+  it("rejects a topic run without a topic and a mistakes run with a topic", () => {
+    expect(practiceRunCreateSchema.safeParse({ focus: "topic", target: 5 }).success).toBe(false);
+    expect(
+      practiceRunCreateSchema.safeParse({ focus: "mistakes", topicId: "articles", target: 5 })
+        .success,
+    ).toBe(false);
+    expect(
+      practiceRunCreateSchema.safeParse({ focus: "topic", topicId: "sports", target: 5 }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a target of 7", () => {
+    expect(practiceRunCreateSchema.safeParse({ focus: "mistakes", target: 7 }).success).toBe(false);
+  });
+
+  it("accepts a choose item with three options and its answer among them", () => {
+    expect(practiceItemCreateSchema.parse(item)).toEqual(item);
+  });
+
+  it("rejects a choose item with two options and with an answer outside its options", () => {
+    expect(
+      practiceItemCreateSchema.safeParse({ ...item, options: ["have been", "was"] }).success,
+    ).toBe(false);
+    expect(practiceItemCreateSchema.safeParse({ ...item, accepted: ["were"] }).success).toBe(false);
+    expect(
+      practiceItemCreateSchema.safeParse({ ...item, accepted: ["have been", "was"] }).success,
+    ).toBe(false);
+  });
+
+  it("rejects options on a fix item and a choose item without options", () => {
+    expect(practiceItemCreateSchema.safeParse({ ...item, kind: "fix" }).success).toBe(false);
+    expect(practiceItemCreateSchema.safeParse({ ...item, options: null }).success).toBe(false);
+    expect(
+      practiceItemCreateSchema.safeParse({
+        ...item,
+        kind: "fix",
+        options: null,
+        prompt: "I has a car.",
+        accepted: ["I have a car."],
+        source: "I has a car.",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an item with no accepted answer", () => {
+    expect(practiceItemCreateSchema.safeParse({ ...item, accepted: [] }).success).toBe(false);
+  });
+
+  it("rejects a rule of 81 characters and accepts 80", () => {
+    expect(practiceItemCreateSchema.safeParse({ ...item, rule: "r".repeat(80) }).success).toBe(
+      true,
+    );
+    expect(practiceItemCreateSchema.safeParse({ ...item, rule: "r".repeat(81) }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects six items and accepts five", () => {
+    const items = (count: number) =>
+      Array.from({ length: count }, (_, position) => ({ ...item, position }));
+    expect(practiceItemsCreateSchema.safeParse({ items: items(5) }).success).toBe(true);
+    expect(practiceItemsCreateSchema.safeParse({ items: items(6) }).success).toBe(false);
+    expect(practiceItemsCreateSchema.safeParse({ items: [] }).success).toBe(false);
+  });
+
+  it("rejects two items with the same position", () => {
+    expect(practiceItemsCreateSchema.safeParse({ items: [item, item] }).success).toBe(false);
+  });
+
+  it("parses an answer and rejects an empty one", () => {
+    expect(practiceAnswerSchema.parse({ userAnswer: " have been ", correct: true })).toEqual({
+      userAnswer: "have been",
+      correct: true,
+    });
+    expect(practiceAnswerSchema.safeParse({ userAnswer: " ", correct: true }).success).toBe(false);
+  });
+
+  it("accepts only 10 and 15 as a new target", () => {
+    expect(practiceTargetSchema.safeParse({ target: 10 }).success).toBe(true);
+    expect(practiceTargetSchema.safeParse({ target: 15 }).success).toBe(true);
+    expect(practiceTargetSchema.safeParse({ target: 5 }).success).toBe(false);
+    expect(practiceTargetSchema.safeParse({ target: 20 }).success).toBe(false);
+  });
+
+  it("parses a run with no items", () => {
+    expect(practiceRunSchema.parse(run)).toEqual(run);
+    expect(practiceRunWithItemsSchema.parse({ run, items: [] })).toEqual({ run, items: [] });
+  });
+
+  it("parses a stored item", () => {
+    expect(practiceItemSchema.parse(stored)).toEqual(stored);
+  });
+
+  it("parses today with no run", () => {
+    expect(practiceTodaySchema.parse({ run: null })).toEqual({ run: null });
+    expect(practiceTodaySchema.parse({ run: { run, items: [stored] } }).run?.items).toHaveLength(1);
+  });
+
+  it("parses the loose tutor payloads", () => {
+    const round = {
+      items: [
+        {
+          kind: "gap",
+          rule: "r",
+          prompt: "p",
+          options: [],
+          accepted: ["a"],
+          explanation: "e",
+          source: "",
+        },
+      ],
+    };
+    expect(practiceRoundSchema.parse(round)).toEqual(round);
+    expect(practiceRoundSchema.safeParse({ items: [{ kind: "gap" }] }).success).toBe(false);
+    expect(answerGradeSchema.parse({ correct: false, explanation: "" })).toEqual({
+      correct: false,
+      explanation: "",
+    });
   });
 });

@@ -20,7 +20,7 @@ import { StyleSheet, Text as RNText } from "react-native";
 
 import { ListRow } from "@/components/list-row";
 import { textStyle } from "@/components/text-style";
-import { borderWidth, colors, size } from "@/constants/theme";
+import { borderWidth, colors, size, spacing } from "@/constants/theme";
 
 describe("ListRow", () => {
   it("is a button with its label when pressable", async () => {
@@ -76,5 +76,27 @@ describe("ListRow", () => {
     const row = screen.getByRole("button", { name: "Sign out", busy: true, disabled: true });
     await fireEvent.press(row);
     expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it("draws a leading node before the title", async () => {
+    await render(<ListRow title="Going to vs will" leading={<RNText>L</RNText>} />);
+    expect(screen.getByText("L")).toBeTruthy();
+  });
+
+  it("draws the dense look: no min height and the row title variant", async () => {
+    await render(<ListRow title="Going to vs will" dense last />);
+    const style = StyleSheet.flatten(screen.getByTestId("list-row").props.style);
+    expect(style.minHeight).toBeUndefined();
+    expect(style).toMatchObject({ paddingVertical: spacing.group, gap: spacing.group });
+    expect(StyleSheet.flatten(screen.getByText("Going to vs will").props.style)).toMatchObject(
+      textStyle("row"),
+    );
+  });
+
+  it("keeps the min height without the dense look", async () => {
+    await render(<ListRow title="Sign out" />);
+    expect(StyleSheet.flatten(screen.getByTestId("list-row").props.style).minHeight).toBe(
+      size.listRow,
+    );
   });
 });

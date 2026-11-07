@@ -1,7 +1,10 @@
 import {
   GOALS,
   LEVELS,
+  GRAMMAR_TOPIC_IDS,
   MESSAGE_ROLES,
+  PRACTICE_FOCUSES,
+  PRACTICE_KINDS,
   PROVIDERS,
   SESSION_STATUSES,
   TOPIC_IDS,
@@ -9,6 +12,9 @@ import {
   storedMessageCorrectionsSchema,
   type ActiveSession,
   type Message,
+  type PracticeItem,
+  type PracticeRun,
+  type PracticeRunWithItems,
   type Profile,
   type ProfileUpdate,
   type Session,
@@ -96,6 +102,36 @@ const threadMessageRowSchema = z.object({
   new_words: newWordsSchema.nullable(),
   created_at: z.string(),
 });
+
+const practiceTarget = z.union([z.literal(5), z.literal(10), z.literal(15)]);
+
+const practiceRunRowSchema = z.object({
+  id: z.string(),
+  focus: z.enum(PRACTICE_FOCUSES),
+  topic_id: z.enum(GRAMMAR_TOPIC_IDS).nullable(),
+  target: practiceTarget,
+  cost_usd: z.number(),
+  created_at: z.string(),
+  finished_at: z.string().nullable(),
+});
+
+const practiceItemRowSchema = z.object({
+  id: z.string(),
+  run_id: z.string(),
+  position: z.int().min(0).max(14),
+  kind: z.enum(PRACTICE_KINDS),
+  rule: z.string(),
+  prompt: z.string(),
+  options: z.array(z.string()).nullable(),
+  accepted: z.array(z.string()),
+  explanation: z.string(),
+  source: z.string().nullable(),
+  user_answer: z.string().nullable(),
+  correct: z.boolean().nullable(),
+  answered_at: z.string().nullable(),
+});
+
+const practiceRunItemsRowSchema = z.object({ practice_items: z.array(z.unknown()) });
 
 const threadCountRowSchema = z.object({ message_id: z.string(), reply_count: z.number() });
 
@@ -249,6 +285,57 @@ export function toThreadCount(row: unknown): { messageId: string; count: number 
   return parsed.success
     ? { messageId: parsed.data.message_id, count: parsed.data.reply_count }
     : null;
+}
+
+export function toPracticeRun(row: unknown): PracticeRun | null {
+  const parsed = practiceRunRowSchema.safeParse(row);
+  if (!parsed.success) return null;
+  const r = parsed.data;
+  return {
+    id: r.id,
+    focus: r.focus,
+    topicId: r.topic_id,
+    target: r.target,
+    costUsd: r.cost_usd,
+    createdAt: r.created_at,
+    finishedAt: r.finished_at,
+  };
+}
+
+export function toPracticeItem(row: unknown): PracticeItem | null {
+  const parsed = practiceItemRowSchema.safeParse(row);
+  if (!parsed.success) return null;
+  const r = parsed.data;
+  return {
+    id: r.id,
+    runId: r.run_id,
+    position: r.position,
+    kind: r.kind,
+    rule: r.rule,
+    prompt: r.prompt,
+    options: r.options,
+    accepted: r.accepted,
+    explanation: r.explanation,
+    source: r.source,
+    userAnswer: r.user_answer,
+    correct: r.correct,
+    answeredAt: r.answered_at,
+  };
+}
+
+// INFO: a run row with its items embedded, sorted by position. One bad item
+// makes the whole run null, as one bad row makes a list read fail.
+export function toPracticeRunWithItems(row: unknown): PracticeRunWithItems | null {
+  const parsed = practiceRunItemsRowSchema.safeParse(row);
+  const run = toPracticeRun(row);
+  if (!parsed.success || run === null) return null;
+  const items: PracticeItem[] = [];
+  for (const entry of parsed.data.practice_items) {
+    const item = toPracticeItem(entry);
+    if (item === null) return null;
+    items.push(item);
+  }
+  return { run, items: items.sort((a, b) => a.position - b.position) };
 }
 
 export type ProfilePatch = {

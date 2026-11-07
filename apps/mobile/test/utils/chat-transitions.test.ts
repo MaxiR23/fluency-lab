@@ -4,6 +4,7 @@
 //
 // Tested:
 // - enterTransition, fadeInTransition, fadeOutTransition give a Reanimated animation, or none
+// - enterTransition applies the optional delay and curve of a motion
 //
 // What is covered:
 // - Normal case, reduce motion (no motion), edges
@@ -26,6 +27,21 @@ describe("enterTransition", () => {
 
   it("builds no enter animation with reduce motion on", () => {
     expect(enterTransition(chatMotion(true).enter)).toBeUndefined();
+  });
+
+  it("applies a delay when the motion has one", () => {
+    const built = enterTransition({ duration: 840, offset: 14, delay: 240 });
+    expect(built?.getDelay()).toBe(240);
+    expect(built?.getDuration()).toBe(840);
+  });
+
+  it("has no delay when the motion has none", () => {
+    expect(enterTransition(chatMotion(false).enter)?.getDelay()).toBe(0);
+  });
+
+  it("builds with a curve of its own", () => {
+    const built = enterTransition({ duration: 840, offset: 14, curve: [0.2, 0.7, 0.2, 1] });
+    expect(built).toBeInstanceOf(FadeInDown);
   });
 });
 

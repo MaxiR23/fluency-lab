@@ -10,6 +10,11 @@ import {
   messageSchema,
   monthSpendSchema,
   openSessionsResponseSchema,
+  practiceItemSchema,
+  practiceItemsResponseSchema,
+  practiceRunSchema,
+  practiceRunWithItemsSchema,
+  practiceTodaySchema,
   profileSchema,
   profileStatsSchema,
   sessionMessagesResponseSchema,
@@ -172,6 +177,50 @@ export function createHonoData(config: HonoDataConfig): DataPort {
       call(
         (client) => client.progress.words.$get({ query: { tz: timeZone, offset: String(offset) } }),
         wordPageSchema,
+      ),
+    async getTodayPractice(timeZone) {
+      const outcome = await call(
+        (client) => client.practice.today.$get({ query: { tz: timeZone } }),
+        practiceTodaySchema,
+      );
+      return outcome.ok ? { ok: true, value: outcome.value.run } : outcome;
+    },
+    createPracticeRun: (input) =>
+      call((client) => client.practice.runs.$post({ json: input }), practiceRunSchema),
+    openPracticeRun: (runId) =>
+      call(
+        (client) => client.practice.runs[":id"].$get({ param: { id: runId } }),
+        practiceRunWithItemsSchema,
+      ),
+    async addPracticeItems(runId, items) {
+      const outcome = await call(
+        (client) =>
+          client.practice.runs[":id"].items.$post({ param: { id: runId }, json: { items } }),
+        practiceItemsResponseSchema,
+      );
+      return outcome.ok ? { ok: true, value: outcome.value.items } : outcome;
+    },
+    answerPracticeItem: (itemId, answer) =>
+      call(
+        (client) =>
+          client.practice.items[":id"].answer.$post({ param: { id: itemId }, json: answer }),
+        practiceItemSchema,
+      ),
+    addPracticeUsage: (runId, usage) =>
+      call(
+        (client) => client.practice.runs[":id"].usage.$post({ param: { id: runId }, json: usage }),
+        practiceRunSchema,
+      ),
+    setPracticeTarget: (runId, target) =>
+      call(
+        (client) =>
+          client.practice.runs[":id"].target.$post({ param: { id: runId }, json: { target } }),
+        practiceRunSchema,
+      ),
+    finishPracticeRun: (runId) =>
+      call(
+        (client) => client.practice.runs[":id"].finish.$post({ param: { id: runId } }),
+        practiceRunSchema,
       ),
     getMonthSpend: (timeZone) =>
       call((client) => client.sessions.spend.$get({ query: { tz: timeZone } }), monthSpendSchema),

@@ -2,6 +2,12 @@ import {
   messageCreateSchema,
   messageIdParamSchema,
   mistakesQuerySchema,
+  practiceAnswerSchema,
+  practiceItemIdParamSchema,
+  practiceItemsCreateSchema,
+  practiceRunCreateSchema,
+  practiceRunIdParamSchema,
+  practiceTargetSchema,
   profileUpdateSchema,
   progressPageQuerySchema,
   sessionCreateSchema,
@@ -23,6 +29,7 @@ import type {} from "hono/jwt";
 import { requireAuth, readBearerToken, readTokenUser, type AuthConfig } from "./auth";
 import { MONTH_LOOKBACK_MS, currentMonthStart, monthSpend } from "./month";
 import type { Caller, Store, StoreFailure } from "./store";
+import { PRACTICE_LOOKBACK_MS, todayRun } from "./practice";
 import { PAGE_SIZE, historyItem, mistakeGroup, pageOf, wordItem } from "./progress";
 import { dayStreak } from "./streak";
 import { sessionSummary } from "./summary";
@@ -446,6 +453,150 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
         const outcome = await config.store
           .forUser(c.get("caller"))
           .endSession(c.req.valid("param").id);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
+      },
+    )
+    .get(
+      "/practice/today",
+      auth,
+      caller,
+      zValidator(
+        "query",
+        weekQuerySchema.refine((query) => isTimeZone(query.tz)),
+        invalidInput,
+      ),
+      async (c) => {
+        const { tz } = c.req.valid("query");
+        const at = now();
+        const since = new Date(at.getTime() - PRACTICE_LOOKBACK_MS).toISOString();
+        const outcome = await config.store.forUser(c.get("caller")).listPracticeRunsSince(since);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        return c.json({ run: todayRun(outcome.value, tz, currentWeek(at, tz).today) }, 200);
+      },
+    )
+    .post(
+      "/practice/runs",
+      auth,
+      caller,
+      zValidator("json", practiceRunCreateSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .createPracticeRun(c.req.valid("json"));
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        return c.json(outcome.value, 201);
+      },
+    )
+    .get(
+      "/practice/runs/:id",
+      auth,
+      caller,
+      zValidator("param", practiceRunIdParamSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .getPracticeRun(c.req.valid("param").id);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
+      },
+    )
+    .post(
+      "/practice/runs/:id/items",
+      auth,
+      caller,
+      zValidator("param", practiceRunIdParamSchema, invalidInput),
+      zValidator("json", practiceItemsCreateSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .addPracticeItems(c.req.valid("param").id, c.req.valid("json").items);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json({ items: outcome.value }, 201);
+      },
+    )
+    .post(
+      "/practice/runs/:id/usage",
+      auth,
+      caller,
+      zValidator("param", practiceRunIdParamSchema, invalidInput),
+      zValidator("json", sessionUsageSchema, invalidInput),
+      async (c) => {
+        const usage = c.req.valid("json");
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .addPracticeCost(c.req.valid("param").id, usageCostUsd(usage.model, usage));
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
+      },
+    )
+    .post(
+      "/practice/runs/:id/target",
+      auth,
+      caller,
+      zValidator("param", practiceRunIdParamSchema, invalidInput),
+      zValidator("json", practiceTargetSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .setPracticeTarget(c.req.valid("param").id, c.req.valid("json").target);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
+      },
+    )
+    .post(
+      "/practice/runs/:id/finish",
+      auth,
+      caller,
+      zValidator("param", practiceRunIdParamSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .finishPracticeRun(c.req.valid("param").id, now().toISOString());
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
+      },
+    )
+    .post(
+      "/practice/items/:id/answer",
+      auth,
+      caller,
+      zValidator("param", practiceItemIdParamSchema, invalidInput),
+      zValidator("json", practiceAnswerSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .answerPracticeItem(c.req.valid("param").id, c.req.valid("json"), now().toISOString());
         if (!outcome.ok) {
           const { status, body } = failureResponse(outcome.failure);
           return c.json(body, status);

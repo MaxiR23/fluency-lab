@@ -6,6 +6,7 @@
 // - Label, value and typing
 // - The error message shows only when it gets one
 // - The text hides when secure
+// - The answer look draws its tone border at once, or eases to it over a border duration
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -17,7 +18,7 @@
 import { describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
-import { StyleSheet } from "react-native";
+import { StyleSheet, processColor } from "react-native";
 
 import { TextField } from "@/components/text-field";
 import { textStyle } from "@/components/text-style";
@@ -110,5 +111,53 @@ describe("TextField", () => {
     expect(input.props.keyboardType).toBe("email-address");
     expect(input.props.autoCapitalize).toBe("none");
     expect(input.props.autoCorrect).toBe(false);
+  });
+
+  it("hides the visible label in the answer look and keeps the accessibility label", async () => {
+    await render(<TextField label="Your answer" value="" onChangeText={jest.fn()} look="answer" />);
+    expect(screen.queryByText("Your answer")).toBeNull();
+    expect(screen.getByLabelText("Your answer")).toBeTruthy();
+  });
+
+  it("draws the answer tone on the border", async () => {
+    await render(
+      <TextField
+        label="Your answer"
+        value="x"
+        onChangeText={jest.fn()}
+        look="answer"
+        tone="miss"
+      />,
+    );
+    expect(StyleSheet.flatten(screen.getByLabelText("Your answer").props.style)).toMatchObject({
+      borderColor: colors.miss,
+    });
+  });
+
+  it("shows the label in the form look by default", async () => {
+    await render(<TextField label="Email" value="" onChangeText={jest.fn()} />);
+    expect(screen.getByText("Email")).toBeTruthy();
+  });
+
+  it("draws the answer border of the tone at once without a border duration", async () => {
+    await render(<TextField label="Answer" value="x" look="answer" tone="miss" />);
+    const input = StyleSheet.flatten(screen.getByLabelText("Answer").props.style);
+    expect(input.borderColor).toBe(colors.miss);
+  });
+
+  it("starts the answer border raised and eases to the tone over a border duration", async () => {
+    await render(
+      <TextField label="Answer" value="x" look="answer" tone="miss" borderDuration={200} />,
+    );
+    const input = StyleSheet.flatten(screen.getByLabelText("Answer").props.style);
+    expect(processColor(input.borderColor)).toBe(processColor(colors.borderRaised));
+  });
+
+  it("keeps the answer border raised while idle with a border duration", async () => {
+    await render(
+      <TextField label="Answer" value="x" look="answer" tone="idle" borderDuration={200} />,
+    );
+    const input = StyleSheet.flatten(screen.getByLabelText("Answer").props.style);
+    expect(processColor(input.borderColor)).toBe(processColor(colors.borderRaised));
   });
 });

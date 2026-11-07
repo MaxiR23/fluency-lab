@@ -4,6 +4,7 @@
 //
 // Tested:
 // - A tab press plays a selection; Send and a reply swipe play a light impact
+// - A right answer plays a success notification and a missed one an error notification
 // - A rejected library call returns not_played
 //
 // What is covered:
@@ -25,8 +26,18 @@ function setup(failure?: Error) {
   const selectionAsync = jest.fn<() => Promise<void>>(async () => {
     if (failure !== undefined) throw failure;
   });
-  const port = createExpoHaptics({ impactAsync, selectionAsync, light: "light-style" });
-  return { port, impactAsync, selectionAsync };
+  const notificationAsync = jest.fn<(type: string) => Promise<void>>(async () => {
+    if (failure !== undefined) throw failure;
+  });
+  const port = createExpoHaptics({
+    impactAsync,
+    selectionAsync,
+    notificationAsync,
+    light: "light-style",
+    success: "success-type",
+    error: "error-type",
+  });
+  return { port, impactAsync, selectionAsync, notificationAsync };
 }
 
 describe("play", () => {
@@ -52,6 +63,28 @@ describe("play", () => {
     expect(await port.play("reply")).toEqual({ ok: true, value: null });
     expect(impactAsync).toHaveBeenCalledWith("light-style");
     expect(selectionAsync).not.toHaveBeenCalled();
+  });
+
+  it("plays a success notification for right", async () => {
+    const { port, impactAsync, notificationAsync } = setup();
+
+    expect(await port.play("right")).toEqual({ ok: true, value: null });
+    expect(notificationAsync).toHaveBeenCalledWith("success-type");
+    expect(impactAsync).not.toHaveBeenCalled();
+  });
+
+  it("plays an error notification for miss", async () => {
+    const { port, notificationAsync } = setup();
+
+    expect(await port.play("miss")).toEqual({ ok: true, value: null });
+    expect(notificationAsync).toHaveBeenCalledWith("error-type");
+  });
+
+  it("returns not_played when the library throws on a notification", async () => {
+    const { port } = setup(new Error("no engine"));
+
+    expect(await port.play("right")).toMatchObject({ ok: false, failure: "not_played" });
+    expect(await port.play("miss")).toMatchObject({ ok: false, failure: "not_played" });
   });
 
   it("returns not_played when the library rejects", async () => {

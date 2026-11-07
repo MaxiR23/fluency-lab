@@ -8,7 +8,10 @@ import { createKvHapticsSetting } from "@/haptics/kv-haptics-setting";
 export const haptics: HapticsPort = createExpoHaptics({
   impactAsync: Haptics.impactAsync,
   selectionAsync: Haptics.selectionAsync,
+  notificationAsync: Haptics.notificationAsync,
   light: Haptics.ImpactFeedbackStyle.Light,
+  success: Haptics.NotificationFeedbackType.Success,
+  error: Haptics.NotificationFeedbackType.Error,
 });
 
 // INFO: the same key-value store (expo-sqlite) that already backs the auth session.

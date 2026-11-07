@@ -3,7 +3,7 @@
 // Tests for the Home hook.
 //
 // Tested:
-// - The profile, the open sessions and the week read from the data port
+// - The profile, the open sessions, the week, today's practice and the mistakes read from the data port
 // - The expected empty (no open session) and each failure
 // - A read again on retry and on regaining focus, and a read that ends after unmount
 //
@@ -19,11 +19,14 @@ import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { useIsFocused } from "expo-router";
 
 import { useHome } from "@/hooks/use-home";
+import { todayCard } from "@/utils/today-practice";
 import { deviceTimeZone } from "@/utils/time-zone";
 import {
   activeSessionWith,
   completedProfile,
   fakeData,
+  practiceItemWith,
+  practiceTodayWith,
   resetFakeData,
   weekWith,
 } from "../helpers/fake-data";
@@ -33,6 +36,8 @@ jest.mock("@/utils/time-zone", () => ({ deviceTimeZone: jest.fn(() => "UTC") }))
 jest.mock("@/data", () => ({
   data: jest.requireActual<typeof import("../helpers/fake-data")>("../helpers/fake-data").fakeData,
 }));
+
+const noToday = todayCard({ today: null, mistakes: { items: [], nextOffset: null }, level: null });
 
 describe("useHome", () => {
   beforeEach(() => {
@@ -51,6 +56,7 @@ describe("useHome", () => {
         activeSession: active,
         openCount: 1,
         week: weekWith([]),
+        today: noToday,
         loadedAt: expect.any(Number),
       }),
     );
@@ -65,6 +71,7 @@ describe("useHome", () => {
         activeSession: null,
         openCount: 0,
         week: weekWith([]),
+        today: noToday,
         loadedAt: expect.any(Number),
       }),
     );
@@ -105,6 +112,44 @@ describe("useHome", () => {
     const { result } = await renderHook(() => useHome());
     await waitFor(() => expect(result.current.state.kind).toBe("ready"));
     expect(fakeData.getSessionWeek).toHaveBeenCalledWith("America/Argentina/Buenos_Aires");
+  });
+
+  it("reads today's practice in the device's time zone and the first page of mistakes", async () => {
+    jest.mocked(deviceTimeZone).mockReturnValue("America/Argentina/Buenos_Aires");
+    const { result } = await renderHook(() => useHome());
+    await waitFor(() => expect(result.current.state.kind).toBe("ready"));
+    expect(fakeData.getTodayPractice).toHaveBeenCalledWith("America/Argentina/Buenos_Aires");
+    expect(fakeData.listMistakes).toHaveBeenCalledWith(0);
+  });
+
+  it("is ready with today's run in the card", async () => {
+    fakeData.getTodayPractice.mockResolvedValue({
+      ok: true,
+      value: practiceTodayWith([practiceItemWith({ correct: true })]),
+    });
+    const { result } = await renderHook(() => useHome());
+    await waitFor(() =>
+      expect(result.current.state).toMatchObject({
+        kind: "ready",
+        today: { ringLabel: "1/5", action: "Keep going" },
+      }),
+    );
+  });
+
+  it("fails when today's practice cannot be read", async () => {
+    fakeData.getTodayPractice.mockResolvedValue({ ok: false, failure: "network" });
+    const { result } = await renderHook(() => useHome());
+    await waitFor(() =>
+      expect(result.current.state).toEqual({ kind: "failed", failure: "network" }),
+    );
+  });
+
+  it("fails when the mistakes cannot be read", async () => {
+    fakeData.listMistakes.mockResolvedValue({ ok: false, failure: "unavailable" });
+    const { result } = await renderHook(() => useHome());
+    await waitFor(() =>
+      expect(result.current.state).toEqual({ kind: "failed", failure: "unavailable" }),
+    );
   });
 
   it("fails when the week read fails", async () => {
@@ -167,6 +212,7 @@ describe("useHome", () => {
         activeSession: active,
         openCount: 1,
         week: weekWith([]),
+        today: noToday,
         loadedAt: first + 1000,
       }),
     );

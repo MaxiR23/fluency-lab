@@ -5,7 +5,9 @@
 // Tested:
 // - Every topic id, level, goal, provider, session status and message role of
 //   packages/shared appears quoted in the migrations
-// - Row level security is enabled on profiles, sessions, messages and thread_messages
+// - Every grammar topic id, practice focus and practice kind appears quoted too
+// - Row level security is enabled on profiles, sessions, messages, thread_messages,
+//   practice_runs and practice_items
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -18,8 +20,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   GOALS,
+  GRAMMAR_TOPIC_IDS,
   LEVELS,
   MESSAGE_ROLES,
+  PRACTICE_FOCUSES,
+  PRACTICE_KINDS,
   PROVIDERS,
   SESSION_STATUSES,
   TOPIC_IDS,
@@ -53,8 +58,19 @@ describe("migrations", () => {
     expect(missing([...SESSION_STATUSES, ...MESSAGE_ROLES])).toEqual([]);
   });
 
-  it("enables row level security on the four tables", () => {
-    for (const table of ["profiles", "sessions", "messages", "thread_messages"]) {
+  it("lists every grammar topic, practice focus and practice kind", () => {
+    expect(missing([...GRAMMAR_TOPIC_IDS, ...PRACTICE_FOCUSES, ...PRACTICE_KINDS])).toEqual([]);
+  });
+
+  it("enables row level security on the tables", () => {
+    for (const table of [
+      "profiles",
+      "sessions",
+      "messages",
+      "thread_messages",
+      "practice_runs",
+      "practice_items",
+    ]) {
       expect(sql).toMatch(
         new RegExp(`alter table public\\.${table} enable row level security`, "i"),
       );

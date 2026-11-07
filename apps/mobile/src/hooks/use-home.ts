@@ -10,6 +10,8 @@ function readHome() {
     data.getProfile(),
     data.listOpenSessions(),
     data.getSessionWeek(deviceTimeZone()),
+    data.getTodayPractice(deviceTimeZone()),
+    data.listMistakes(0),
   ]);
 }
 
@@ -21,9 +23,10 @@ export function useHome(): { state: HomeState; retry: () => Promise<void> } {
   useEffect(() => {
     if (!focused) return;
     let live = true;
-    void readHome().then(([profile, open, week]) => {
+    void readHome().then(([profile, open, week, today, mistakes]) => {
       // INFO: a read that ends after Home unmounts is dropped.
-      if (live) dispatch({ type: "loaded", profile, open, week, loadedAt: Date.now() });
+      if (live)
+        dispatch({ type: "loaded", profile, open, week, today, mistakes, loadedAt: Date.now() });
     });
     return () => {
       live = false;
@@ -32,8 +35,8 @@ export function useHome(): { state: HomeState; retry: () => Promise<void> } {
 
   async function retry(): Promise<void> {
     dispatch({ type: "load_started" });
-    const [profile, open, week] = await readHome();
-    dispatch({ type: "loaded", profile, open, week, loadedAt: Date.now() });
+    const [profile, open, week, today, mistakes] = await readHome();
+    dispatch({ type: "loaded", profile, open, week, today, mistakes, loadedAt: Date.now() });
   }
 
   return { state, retry };

@@ -53,7 +53,21 @@ export type TextVariant =
   | "word"
   | "quote"
   | "replyCount"
-  | "withdrawn";
+  | "withdrawn"
+  | "eyebrow"
+  | "ringCount"
+  | "tileText"
+  | "hint"
+  | "actionStrong"
+  | "prompt"
+  | "promptSlot"
+  | "option"
+  | "sourceLabel"
+  | "source"
+  | "sheetTitle"
+  | "score"
+  | "resultTitle"
+  | "row";
 
 const variants: Record<TextVariant, TextStyle> = {
   title: {
@@ -332,6 +346,87 @@ const variants: Record<TextVariant, TextStyle> = {
     color: colors.textPlaceholder,
     lineHeight: lineHeight.small,
     textDecorationLine: "line-through",
+  },
+  eyebrow: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.xsmall,
+    color: colors.accent,
+    letterSpacing: letterSpacing.eyebrow,
+    textTransform: "uppercase",
+  },
+  ringCount: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.body,
+    color: colors.text,
+  },
+  tileText: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.xsmall,
+    color: colors.textMuted,
+    lineHeight: lineHeight.tileText,
+  },
+  hint: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+    lineHeight: lineHeight.hint,
+  },
+  actionStrong: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.small,
+    color: colors.text,
+  },
+  prompt: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.prompt,
+    color: colors.text,
+    lineHeight: lineHeight.prompt,
+    letterSpacing: letterSpacing.prompt,
+  },
+  promptSlot: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.prompt,
+    color: colors.accent,
+    lineHeight: lineHeight.prompt,
+    letterSpacing: letterSpacing.prompt,
+  },
+  option: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.option,
+    color: colors.text,
+  },
+  sourceLabel: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.xsmall,
+    color: colors.textMuted,
+  },
+  source: {
+    fontFamily: fontFamily.semibold,
+    fontSize: fontSize.cardHeading,
+    color: colors.text,
+    lineHeight: lineHeight.source,
+  },
+  sheetTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.sheetTitle,
+    color: colors.text,
+  },
+  score: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.score,
+    color: colors.text,
+    letterSpacing: letterSpacing.score,
+  },
+  resultTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.resultTitle,
+    color: colors.text,
+    letterSpacing: letterSpacing.resultTitle,
+  },
+  row: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.small,
+    color: colors.text,
   },
 };
 

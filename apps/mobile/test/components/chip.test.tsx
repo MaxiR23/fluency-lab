@@ -17,7 +17,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 
 import { Chip } from "@/components/chip";
-import { colors } from "@/constants/theme";
+import { colors, size } from "@/constants/theme";
 
 describe("Chip", () => {
   it("draws the label as a checkbox", async () => {
@@ -45,5 +45,24 @@ describe("Chip", () => {
     await render(<Chip label="Food" selected={false} onPress={onPress} />);
     await fireEvent.press(screen.getByRole("checkbox", { name: "Food" }));
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a radio in the topic look when asked, with the pill height", async () => {
+    const onPress = jest.fn();
+    await render(<Chip label="Articles" selected look="topic" role="radio" onPress={onPress} />);
+    const radio = screen.getByRole("radio", { name: "Articles" });
+    expect(radio.props.accessibilityState).toMatchObject({ checked: true });
+    expect(StyleSheet.flatten(radio.props.style)).toMatchObject({
+      minHeight: size.pill,
+      backgroundColor: colors.accentDeep,
+      borderColor: colors.accentPressed,
+    });
+    await fireEvent.press(radio);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws no check in the topic look", async () => {
+    await render(<Chip label="Articles" selected look="topic" onPress={jest.fn()} />);
+    expect(screen.queryByTestId("icon-check", { includeHiddenElements: true })).toBeNull();
   });
 });

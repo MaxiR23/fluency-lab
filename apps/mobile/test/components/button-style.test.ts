@@ -173,4 +173,36 @@ describe("buttonStyle", () => {
   it("gives strong the control min height", () => {
     expect(buttonStyle("strong").container.minHeight).toBe(size.control);
   });
+
+  it("draws idle miss on surface with a missLine border and a text label", () => {
+    const { container, label } = buttonStyle("miss");
+    expect(container.backgroundColor).toBe(colors.surface);
+    expect(container.borderColor).toBe(colors.missLine);
+    expect(label.color).toBe(colors.text);
+  });
+
+  it("draws pressed miss with an accent-pressed border", () => {
+    expect(buttonStyle("miss", { pressed: true }).container.borderColor).toBe(colors.accentPressed);
+  });
+
+  it("draws disabled miss as the disabled secondary", () => {
+    expect(buttonStyle("miss", { disabled: true })).toEqual(
+      buttonStyle("secondary", { disabled: true }),
+    );
+  });
+
+  it("draws the large option at the control height, a pill and a 16 label", () => {
+    const { container, label } = buttonStyle("strong", {}, { large: true });
+    expect(container.minHeight).toBe(size.control);
+    expect(container.borderRadius).toBe(radius.pill);
+    expect(label.fontSize).toBe(fontSize.buttonLarge);
+    const miss = buttonStyle("miss", {}, { large: true });
+    expect(miss.container.borderRadius).toBe(radius.pill);
+    expect(miss.label.fontSize).toBe(fontSize.buttonLarge);
+  });
+
+  it("keeps the default size without the large option", () => {
+    expect(buttonStyle("strong").label.fontSize).toBe(fontSize.body);
+    expect(buttonStyle("miss").container.borderRadius).toBe(radius.control);
+  });
 });

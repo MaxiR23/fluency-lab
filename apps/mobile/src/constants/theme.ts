@@ -31,6 +31,9 @@ export const colors = {
   quoteSurface: "rgba(0,0,0,0.35)",
   accentRing: "rgba(109,165,192,0.25)",
   accentChipLine: "rgba(109,165,192,0.3)",
+  miss: "#C77D44",
+  missSurface: "#1F1408",
+  missLine: "#6B4423",
 } as const;
 
 export const spacing = {
@@ -61,6 +64,11 @@ export const spacing = {
   tabBarSide: 40,
   pageGap: 20,
   screenTopHeader: 52,
+  sparkSide: 6,
+  sparkTop: 20,
+  sparkEdge: 4,
+  sparkTopMid: 34,
+  sparkInset: 26,
 } as const;
 export const radius = {
   control: 18,
@@ -74,6 +82,9 @@ export const radius = {
   messageTail: 6,
   note: 14,
   badgeLarge: 16,
+  segment: 3,
+  sheet: 28,
+  picker: 22,
 } as const;
 export const size = {
   control: 52,
@@ -116,9 +127,33 @@ export const size = {
   iconDone: 30,
   wordChip: 34,
   tagSmall: 22,
+  ringSmall: 64,
+  ringSmallRadius: 28,
+  ringLarge: 128,
+  ringLargeRadius: 56,
+  segment: 6,
+  option: 56,
+  checkBadge: 26,
+  radio: 24,
+  sheetBadge: 28,
+  rowBadge: 24,
+  gapSlot: 120,
+  iconTiny: 12,
+  sparkLarge: 6,
+  sparkMedium: 5,
+  sparkSmall: 4,
 } as const;
-export const strokeWidth = { icon: 1.8, action: 2, check: 2.4, send: 1.9, done: 2.2 } as const;
-export const borderWidth = { thin: 1 } as const;
+export const strokeWidth = {
+  icon: 1.8,
+  action: 2,
+  check: 2.4,
+  send: 1.9,
+  done: 2.2,
+  ringSmall: 6,
+  ringLarge: 10,
+  badge: 3,
+} as const;
+export const borderWidth = { thin: 1, slot: 2 } as const;
 export const fontSize = {
   micro: 11,
   xsmall: 12,
@@ -135,6 +170,12 @@ export const fontSize = {
   avatarLarge: 32,
   name: 20,
   stat: 22,
+  option: 16,
+  buttonLarge: 16,
+  prompt: 22,
+  score: 32,
+  resultTitle: 24,
+  sheetTitle: 17,
 } as const;
 // INFO: React Native takes these in pixels; the design gives them as ratios and em.
 export const lineHeight = {
@@ -146,6 +187,11 @@ export const lineHeight = {
   small: 21,
   explanation: 18.2,
   quote: 19.5,
+  tileText: 16.8,
+  hint: 18.85,
+  prompt: 33,
+  source: 27,
+  answer: 24,
 } as const;
 export const letterSpacing = {
   brand: -0.17,
@@ -153,13 +199,20 @@ export const letterSpacing = {
   heading: -0.52,
   hero: -0.19,
   section: 1.04,
+  eyebrow: 0.96,
+  prompt: -0.22,
+  score: -0.64,
+  resultTitle: -0.48,
 } as const;
 // INFO: iOS reads the shadow props and Android reads elevation. The CSS blur of 24 is
 // shadowRadius 12 (half the blur); the design's inset highlight has no equivalent. The chat's
 // blur of 20 is shadowRadius 10. The glow is iOS only, because Android elevation draws one
 // black shadow. The tab bar's blur of 28 is shadowRadius 14; the pill glow of 14 is
 // shadowRadius 7 and iOS only. The large avatar's glow (blur 24) is shadowRadius 12, iOS only
-// like the others. The done badge's glow (blur 24) is shadowRadius 12, iOS only.
+// like the others. The done badge's glow (blur 24) is shadowRadius 12, iOS only. The practice
+// card's glow (blur 22 at its peak) is shadowRadius 11, the week's today glow (blur 12) is
+// shadowRadius 6 and the result halo (blur 40 at its peak) is shadowRadius 20; all three are iOS
+// only, and their opacity is animated where the design animates them.
 export const shadow = {
   raised: {
     shadowColor: colors.shadow,
@@ -206,6 +259,24 @@ export const shadow = {
     shadowOpacity: 1,
     shadowRadius: 12,
   },
+  cardGlow: {
+    shadowColor: colors.accentGlow,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 11,
+  },
+  dayGlow: {
+    shadowColor: colors.accentBubbleLine,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+  },
+  halo: {
+    shadowColor: colors.accentRing,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 20,
+  },
 } as const;
 // INFO: the durations follow the issue (200 to 250 ms); the offset, scale and dot keyframes
 // follow chat-typing.html; the beziers are CSS ease-out and ease-in-out. Times are in ms,
@@ -214,6 +285,17 @@ export const shadow = {
 // ratio of 1 does not overshoot, like its curve. The reply swipe's travel (56), the hint's
 // start scale (0.6) and the preview's offset (8) follow chat-reply.html; the swipe slop of 10
 // is gesture-handler's own drag offset default.
+// The practice motion is converted to milliseconds from the cycle of each design file (home
+// 7 s, practice-focus 6 s, the two exercises 5 s, result 6 s). home.html: the rise is 12% of the
+// cycle (840), the ring runs from 8% to 30% (560 then 1540), the today pop from 14% to 20% to
+// 24% (980, 420, 280). practice-focus.html: the rise is 14% (840). The exercises are anchored
+// at the answer: exercise-choose.html at the pick (24%): the fill 20% to 40% is 1000, the pick
+// 24% to 30% is 300, the check 28% to 34% to 38% starts 200 after the pick and takes 300 and
+// 200, the slot 28% to 36% starts 200 after and takes 400, the sheet 34% to 44% starts 500
+// after and takes 500. exercise-not-quite.html at the shake (20%): five steps of 4% (200 each),
+// the wrong border 20% to 24% (200), the sheet starts 700 after. practice-result.html: the ring
+// 6% to 34% (360 then 1680), the rise 30% to 42% (1800 then 720), the sparks 30% to 45% to 70%
+// (1800, then 900 in and 1500 out). The cubic-beziers are the CSS ones of each file.
 export const motion = {
   enterDuration: 240,
   enterOffset: 12,
@@ -234,6 +316,56 @@ export const motion = {
   pillDampingRatio: 1,
   easeOut: [0, 0, 0.58, 1],
   easeInOut: [0.42, 0, 0.58, 1],
+  rise: [0.2, 0.7, 0.2, 1],
+  ring: [0.3, 0.7, 0.2, 1],
+  sheet: [0.2, 0.8, 0.2, 1],
+  home: {
+    riseDuration: 840,
+    riseStagger: 120,
+    riseOffset: 14,
+    ringDelay: 560,
+    ringDuration: 1540,
+    popDelay: 980,
+    popUp: 420,
+    popSettle: 280,
+    popScale: 1.2,
+    glowCycle: 3200,
+    nudgeCycle: 1600,
+    nudgeOffset: 3,
+  },
+  focus: { riseDuration: 840, riseStagger: 100, riseOffset: 12 },
+  exercise: {
+    fillDuration: 1000,
+    pickDuration: 300,
+    checkDelay: 200,
+    checkUp: 300,
+    checkScale: 1.25,
+    checkSettle: 200,
+    slotDelay: 200,
+    slotDuration: 400,
+    slotOffset: 6,
+    sheetDelayRight: 500,
+    sheetDelayMiss: 700,
+    sheetDuration: 500,
+    shakeStep: 200,
+    shake: [-8, 7, -5, 3, 0],
+    wrongDuration: 200,
+  },
+  result: {
+    ringDelay: 360,
+    ringDuration: 1680,
+    riseDelay: 1800,
+    riseDuration: 720,
+    riseStagger: 100,
+    riseOffset: 10,
+    haloCycle: 3000,
+    sparkDelay: 1800,
+    sparkStagger: [0, 200, 350],
+    sparkIn: 900,
+    sparkOut: 1500,
+    sparkLift: 36,
+    sparkScale: 0.4,
+  },
 } as const;
 export const fontFamily = {
   regular: "PlusJakartaSans_400Regular",

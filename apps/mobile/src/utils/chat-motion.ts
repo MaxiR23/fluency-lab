@@ -1,6 +1,11 @@
 import { motion } from "@/constants/theme";
 
-export type EnterMotion = { duration: number; offset: number };
+export type EnterMotion = {
+  duration: number;
+  offset: number;
+  delay?: number;
+  curve?: readonly [number, number, number, number];
+};
 export type FadeMotion = { duration: number };
 export type PressMotion = { duration: number; scale: number };
 export type DotPhases = { rise: number; fall: number; rest: number };

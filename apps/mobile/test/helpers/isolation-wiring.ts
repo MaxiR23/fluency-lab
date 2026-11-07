@@ -60,6 +60,51 @@ const threadRowBody = {
   createdAt: stamp,
 };
 
+const fixExercise = {
+  kind: "fix",
+  rule: "Present perfect",
+  prompt: "I never been to Japan.",
+  options: [],
+  accepted: ["I've never been to Japan."],
+  explanation: "Use the present perfect for an experience.",
+  source: "",
+};
+
+// INFO: the provider's answer to a practice round: five fix exercises.
+export function providerRoundSuccess(): Response {
+  return providerBody({ items: Array.from({ length: 5 }, () => fixExercise) });
+}
+
+// INFO: the provider's answer to the grading of a typed answer.
+export function providerGradeSuccess(): Response {
+  return providerBody({ correct: false, explanation: "Use have." });
+}
+
+const practiceRunBody = {
+  id: "run-1",
+  focus: "mistakes",
+  topicId: null,
+  target: 5,
+  costUsd: 0,
+  createdAt: stamp,
+  finishedAt: null,
+};
+const practiceItemBody = (position: number) => ({
+  id: `item-${position}`,
+  runId: "run-1",
+  position,
+  kind: "fix",
+  rule: "Present perfect",
+  prompt: "I never been to Japan.",
+  options: null,
+  accepted: ["I've never been to Japan."],
+  explanation: "Use the present perfect for an experience.",
+  source: null,
+  userAnswer: null,
+  correct: null,
+  answeredAt: null,
+});
+
 function providerBody(payload: unknown): Response {
   return new Response(
     JSON.stringify({
@@ -126,6 +171,28 @@ function apiAnswer(method: string, pathname: string): Response {
       createdAt: stamp,
       updatedAt: stamp,
     });
+  }
+  if (pathname === "/progress/mistakes") {
+    return json({
+      items: [
+        {
+          rule: "Present perfect",
+          times: 2,
+          latest: { original: "I have went", corrected: "I have gone" },
+        },
+      ],
+      nextOffset: null,
+    });
+  }
+  if (pathname === "/practice/runs" && method === "POST") return json(practiceRunBody, 201);
+  if (pathname.endsWith("/items") && method === "POST") {
+    return json({ items: [0, 1, 2, 3, 4].map(practiceItemBody) }, 201);
+  }
+  if (pathname.startsWith("/practice/runs/") && pathname.endsWith("/usage")) {
+    return json(practiceRunBody);
+  }
+  if (pathname.startsWith("/practice/items/") && pathname.endsWith("/answer")) {
+    return json({ ...practiceItemBody(0), userAnswer: "x", correct: false });
   }
   if (pathname === "/sessions/spend") return json({ monthStart: "2026-11-01", spentUsd: 0 });
   if (pathname === "/sessions/active") return json({ activeSession: null });

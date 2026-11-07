@@ -69,4 +69,51 @@ describe("ActionCard", () => {
       gap: spacing.card,
     });
   });
+
+  describe("as a selectable row", () => {
+    function row(selected: boolean, onPress = jest.fn()) {
+      return (
+        <ActionCard
+          title="From your mistakes"
+          meta="Present perfect, articles and 2 more"
+          icon="review"
+          selected={selected}
+          onPress={onPress}
+        />
+      );
+    }
+
+    it("is a radio named by its title, with its selected state", async () => {
+      const onPress = jest.fn();
+      await render(row(true, onPress));
+      const radio = screen.getByRole("radio", { name: "From your mistakes" });
+      expect(radio.props.accessibilityState).toMatchObject({ selected: true });
+      await fireEvent.press(radio);
+      expect(onPress).toHaveBeenCalledTimes(1);
+    });
+
+    it("draws the check in the radio when selected and an empty ring otherwise", async () => {
+      const { rerender } = await render(row(true));
+      expect(screen.getByTestId("icon-check", { includeHiddenElements: true })).toBeTruthy();
+      await rerender(row(false));
+      expect(screen.queryByTestId("icon-check", { includeHiddenElements: true })).toBeNull();
+      expect(screen.getByTestId("action-card-radio", { includeHiddenElements: true })).toBeTruthy();
+    });
+
+    it("draws no action label", async () => {
+      await render(row(false));
+      expect(screen.queryByText("Resume")).toBeNull();
+    });
+
+    it("draws the selected style", async () => {
+      await render(row(true));
+      const style = StyleSheet.flatten(
+        screen.getByRole("radio", { name: "From your mistakes" }).props.style,
+      );
+      expect(style).toMatchObject({
+        backgroundColor: colors.accentDeep,
+        borderColor: colors.accentPressed,
+      });
+    });
+  });
 });

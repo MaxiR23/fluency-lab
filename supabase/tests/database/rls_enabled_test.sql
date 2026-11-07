@@ -3,7 +3,7 @@
 -- Tests for row level security and the grants on the tables.
 --
 -- Tested:
--- - RLS is on for profiles, sessions, messages, deleted_session_costs and thread_messages
+-- - RLS is on for profiles, sessions, messages, deleted_session_costs, thread_messages, practice_runs and practice_items
 -- - anon has no privilege on them; authenticated has only what the API uses
 --
 -- What is covered:
@@ -13,10 +13,11 @@
 --
 -- SEE: supabase/migrations/20261106000211_create_profiles_sessions_messages.sql
 -- SEE: supabase/migrations/20261106120000_correction_threads.sql
+-- SEE: supabase/migrations/20261107000000_practice.sql
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(20);
+select plan(24);
 
 select results_eq($$select relrowsecurity from pg_class where oid = 'public.profiles'::regclass$$, array[true], 'RLS is on for profiles');
 select results_eq($$select relrowsecurity from pg_class where oid = 'public.sessions'::regclass$$, array[true], 'RLS is on for sessions');
@@ -40,6 +41,10 @@ select ok(not has_table_privilege('anon', 'public.deleted_session_costs', 'selec
 select ok(has_table_privilege('authenticated', 'public.deleted_session_costs', 'select') and not has_table_privilege('authenticated', 'public.deleted_session_costs', 'insert, update, delete'), 'authenticated only selects deleted_session_costs');
 select results_eq($$select relrowsecurity from pg_class where oid = 'public.thread_messages'::regclass$$, array[true], 'RLS is on for thread_messages');
 select ok(not has_table_privilege('anon', 'public.thread_messages', 'select, insert, update, delete'), 'anon has no privilege on thread_messages');
+select results_eq($$select relrowsecurity from pg_class where oid = 'public.practice_runs'::regclass$$, array[true], 'RLS is on for practice_runs');
+select results_eq($$select relrowsecurity from pg_class where oid = 'public.practice_items'::regclass$$, array[true], 'RLS is on for practice_items');
+select ok(not has_table_privilege('anon', 'public.practice_runs', 'select, insert, update, delete'), 'anon has no privilege on practice_runs');
+select ok(not has_table_privilege('anon', 'public.practice_items', 'select, insert, update, delete'), 'anon has no privilege on practice_items');
 
 select * from finish();
 rollback;
