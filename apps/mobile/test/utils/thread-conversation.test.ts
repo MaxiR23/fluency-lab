@@ -80,6 +80,7 @@ const message: Message = {
   },
   newWords: null,
   replyToId: null,
+  noteId: null,
   createdAt: "2026-11-05T09:00:00Z",
 };
 
@@ -453,7 +454,7 @@ describe("threadItems", () => {
         thread: null,
       },
       { kind: "new_word", id: "t1:word:0", word: "w" },
-      { kind: "tutor", id: "t2", text: "Because." },
+      { kind: "tutor", id: "t2", text: "Because.", note: null },
     ]);
   });
 

@@ -18,6 +18,7 @@ function readProgress() {
     data.listHistory(timeZone, 0),
     data.listMistakes(0),
     data.listWords(timeZone, 0),
+    data.listNotes(timeZone, 0),
   ]);
 }
 
@@ -37,9 +38,9 @@ export function useProgress(): {
   useEffect(() => {
     if (!focused) return;
     let live = true;
-    void readProgress().then(([month, history, mistakes, words]) => {
+    void readProgress().then(([month, history, mistakes, words, notes]) => {
       // INFO: a read that ends after Progress unmounts is dropped.
-      if (live) dispatch({ type: "loaded", month, history, mistakes, words });
+      if (live) dispatch({ type: "loaded", month, history, mistakes, words, notes });
     });
     return () => {
       live = false;
@@ -48,8 +49,8 @@ export function useProgress(): {
 
   async function retry(): Promise<void> {
     dispatch({ type: "load_started" });
-    const [month, history, mistakes, words] = await readProgress();
-    dispatch({ type: "loaded", month, history, mistakes, words });
+    const [month, history, mistakes, words, notes] = await readProgress();
+    dispatch({ type: "loaded", month, history, mistakes, words, notes });
   }
 
   async function readNext(mode: "auto" | "retry"): Promise<void> {
@@ -80,6 +81,14 @@ export function useProgress(): {
           section,
           offset,
           outcome: await data.listWords(timeZone, offset),
+        });
+        return;
+      case "notes":
+        dispatch({
+          type: "more_loaded",
+          section,
+          offset,
+          outcome: await data.listNotes(timeZone, offset),
         });
         return;
     }

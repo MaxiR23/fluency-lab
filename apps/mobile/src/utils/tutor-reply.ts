@@ -15,7 +15,7 @@ export type NormalizedReply = {
   newWords: string[];
 };
 
-function cap(text: string, max: number): string {
+export function cap(text: string, max: number): string {
   return text.trim().slice(0, max).trim();
 }
 

@@ -15,7 +15,7 @@
 
 import { describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { StyleSheet } from "react-native";
+import { StyleSheet, Text } from "react-native";
 
 import { MessageBubble } from "@/components/message-bubble";
 import { messageBubbleStyle } from "@/components/message-bubble-style";
@@ -60,5 +60,23 @@ describe("MessageBubble", () => {
   it("draws no quote without one", async () => {
     await render(<MessageBubble role="user" text="To Rome" />);
     expect(screen.queryByRole("button", { name: "Go to the quoted message" })).toBeNull();
+  });
+
+  it("draws a note below the text of a tutor bubble in the wider note bubble", async () => {
+    await render(
+      <MessageBubble role="tutor" text="Here is your table." note={<Text>note slot</Text>} />,
+    );
+    const text = screen.getByText("Here is your table.");
+    expect(StyleSheet.flatten(text.parent?.props.style)).toMatchObject(
+      messageBubbleStyle("tutor", { note: true }).bubble,
+    );
+    expect(screen.getByText("note slot").parent).toBe(text.parent);
+  });
+
+  it("draws no gap without a note", async () => {
+    await render(<MessageBubble role="tutor" text="Hi" />);
+    expect(StyleSheet.flatten(screen.getByText("Hi").parent?.props.style)).not.toHaveProperty(
+      "gap",
+    );
   });
 });

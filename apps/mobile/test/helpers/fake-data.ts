@@ -6,8 +6,8 @@
 // session and getSessionWeek with an empty week (Home reads all three), and
 // getMonthSpend with 0 spent (Chat reads it), getProfileStats with zeros (Profile reads it)
 // deleteAccount with success, so a signed in user lands on Home, and getSessionSummary with an
-// empty ended session (Summary reads it). Progress reads all four of getMonthProgress, listHistory,
-// listMistakes and listWords: zeros and empty pages. Thread reads openThread: a thread with no
+// empty ended session (Summary reads it). Progress reads all five of getMonthProgress, listHistory,
+// listMistakes, listWords and listNotes: zeros and empty pages. Thread reads openThread: a thread with no
 // messages on a learner message with two corrections. Home also reads getTodayPractice: no run today.
 
 import { jest } from "@jest/globals";
@@ -18,6 +18,7 @@ import type {
   Message,
   MistakeGroup,
   NewWordItem,
+  StudyNote,
   PracticeItem,
   PracticeRun,
   PracticeRunWithItems,
@@ -41,6 +42,10 @@ export const fakeData = {
   addMessage: jest.fn<DataPort["addMessage"]>(),
   addUsage: jest.fn<DataPort["addUsage"]>(),
   endSession: jest.fn<DataPort["endSession"]>(),
+  createNote: jest.fn<DataPort["createNote"]>(),
+  getNote: jest.fn<DataPort["getNote"]>(),
+  deleteNote: jest.fn<DataPort["deleteNote"]>(),
+  listNotes: jest.fn<DataPort["listNotes"]>(),
   openThread: jest.fn<DataPort["openThread"]>(),
   addThreadMessage: jest.fn<DataPort["addThreadMessage"]>(),
   withdrawCorrections: jest.fn<DataPort["withdrawCorrections"]>(),
@@ -111,6 +116,7 @@ export function activeSessionWith(
             corrections: null,
             newWords: null,
             replyToId: null,
+            noteId: null,
             createdAt: "2026-11-05T09:30:00Z",
             ...lastMessage,
           },
@@ -208,6 +214,7 @@ export function threadWith(
       },
       newWords: null,
       replyToId: null,
+      noteId: null,
       createdAt: "2026-11-05T09:10:00Z",
       ...message,
     },
@@ -233,6 +240,7 @@ export function practiceRunWith(overrides: Partial<PracticeRun> = {}): PracticeR
     id: "run-1",
     focus: "mistakes",
     topicId: null,
+    noteId: null,
     target: 5,
     costUsd: 0,
     createdAt: "2026-11-05T09:00:00Z",
@@ -268,6 +276,31 @@ export function practiceTodayWith(
   return { run: practiceRunWith(run), items };
 }
 
+// INFO: a table note made in session-1 by default; pass kind "summary" content through overrides.
+export function noteWith(overrides: Partial<StudyNote> = {}): StudyNote {
+  const base = {
+    id: "note-1",
+    sessionId: "session-1" as string | null,
+    sessionTitle: "Free chat" as string | null,
+    title: "Future forms",
+    topic: "Going to, will",
+    createdAt: "2026-11-05T09:40:00Z",
+  };
+  const table: StudyNote = {
+    ...base,
+    kind: "table",
+    content: {
+      columns: ["Form", "When", "Example"],
+      rows: [
+        ["going to", "plans already made", "I'm going to study tonight."],
+        ["will", "decisions made now", "I'll help you with that."],
+      ],
+      remember: "Plans use going to; instant decisions use will.",
+    },
+  };
+  return { ...table, ...overrides } as StudyNote;
+}
+
 export function weekWith(days: string[], overrides: Partial<SessionWeek> = {}): SessionWeek {
   return { weekStart: "2026-11-02", today: "2026-11-05", days, ...overrides };
 }
@@ -299,4 +332,14 @@ export function resetFakeData(): void {
   fakeData.getSessionSummary.mockResolvedValue({ ok: true, value: summaryWith() });
   fakeData.openThread.mockResolvedValue({ ok: true, value: threadWith() });
   fakeData.getTodayPractice.mockResolvedValue({ ok: true, value: null });
+  fakeData.listNotes.mockResolvedValue({
+    ok: true,
+    value: { items: [], nextOffset: null, today: "2026-11-05" },
+  });
+  fakeData.getNote.mockResolvedValue({ ok: true, value: noteWith() });
+  fakeData.createNote.mockImplementation(async (input) => ({
+    ok: true,
+    value: { ...input, id: "note-1", sessionTitle: null, createdAt: "2026-11-05T09:40:00Z" },
+  }));
+  fakeData.deleteNote.mockResolvedValue({ ok: true, value: { id: "note-1" } });
 }

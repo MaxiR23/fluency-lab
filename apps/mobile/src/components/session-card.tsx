@@ -12,6 +12,8 @@ export function SessionCard({
   icon,
   chevron = false,
   titleAlign = "baseline",
+  timePlacement = "title",
+  iconSize = size.iconBadge,
   onPress,
 }: {
   title: string;
@@ -20,6 +22,9 @@ export function SessionCard({
   icon: IconName;
   chevron?: boolean;
   titleAlign?: "baseline" | "start";
+  // INFO: "end" puts the time after the texts, as the Notes rows of progress-notes.html do.
+  timePlacement?: "title" | "end";
+  iconSize?: number;
   onPress: () => void;
 }) {
   return (
@@ -30,14 +35,14 @@ export function SessionCard({
       style={({ pressed }) => [selectableStyle({ selected: false, pressed }), styles.card]}
     >
       <View style={styles.iconBox}>
-        <Icon name={icon} color={colors.accent} size={size.iconBadge} />
+        <Icon name={icon} color={colors.accent} size={iconSize} />
       </View>
       <View style={styles.texts}>
         <View style={[styles.titleRow, titleAlign === "start" && styles.titleRowStart]}>
           <Text variant="bodyStrong" numberOfLines={1} style={styles.title}>
             {title}
           </Text>
-          {time === null ? null : (
+          {time === null || timePlacement === "end" ? null : (
             <Text variant="why" style={styles.time}>
               {time}
             </Text>
@@ -49,6 +54,11 @@ export function SessionCard({
           </Text>
         )}
       </View>
+      {time === null || timePlacement === "title" ? null : (
+        <Text variant="why" style={styles.time}>
+          {time}
+        </Text>
+      )}
       {chevron ? (
         <Icon
           name="chevron"

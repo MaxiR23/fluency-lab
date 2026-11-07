@@ -5,20 +5,24 @@ import type {
   MistakePage,
   MonthProgress,
   NewWordItem,
+  NoteListItem,
+  NotePage,
   WordPage,
 } from "@fluency-lab/shared";
 
 import type { IconName } from "@/components/icon";
 import type { DataFailure, DataOutcome } from "@/data/data-port";
 import { shortDate } from "@/utils/calendar";
+import { noteDate, noteIcon, noteSubtitle } from "@/utils/note";
 import { sessionIcon } from "@/utils/topic-icon";
 
-export type ProgressSection = "history" | "mistakes" | "words";
+export type ProgressSection = "history" | "mistakes" | "words" | "notes";
 
 export const progressSections = [
   { id: "history", label: "History" },
   { id: "mistakes", label: "Mistakes" },
   { id: "words", label: "Words" },
+  { id: "notes", label: "Notes" },
 ] as const;
 
 export type ProgressList<T> = {
@@ -37,12 +41,15 @@ export type ProgressState =
       history: ProgressList<HistoryItem>;
       mistakes: ProgressList<MistakeGroup>;
       words: ProgressList<NewWordItem>;
+      // INFO: today is the day of the newest page, in the device's zone, as the API read it.
+      notes: ProgressList<NoteListItem> & { today: string };
     };
 
 type MoreLoaded =
   | { type: "more_loaded"; section: "history"; offset: number; outcome: DataOutcome<HistoryPage> }
   | { type: "more_loaded"; section: "mistakes"; offset: number; outcome: DataOutcome<MistakePage> }
-  | { type: "more_loaded"; section: "words"; offset: number; outcome: DataOutcome<WordPage> };
+  | { type: "more_loaded"; section: "words"; offset: number; outcome: DataOutcome<WordPage> }
+  | { type: "more_loaded"; section: "notes"; offset: number; outcome: DataOutcome<NotePage> };
 
 export type ProgressEvent =
   | { type: "load_started" }
@@ -52,6 +59,7 @@ export type ProgressEvent =
       history: DataOutcome<HistoryPage>;
       mistakes: DataOutcome<MistakePage>;
       words: DataOutcome<WordPage>;
+      notes: DataOutcome<NotePage>;
     }
   | { type: "more_started"; section: ProgressSection }
   | MoreLoaded;
@@ -67,21 +75,24 @@ export function progressFromReads(
   history: DataOutcome<HistoryPage>,
   mistakes: DataOutcome<MistakePage>,
   words: DataOutcome<WordPage>,
+  notes: DataOutcome<NotePage>,
 ): ProgressState {
   if (!month.ok) return { kind: "failed", failure: month.failure };
   if (!history.ok) return { kind: "failed", failure: history.failure };
   if (!mistakes.ok) return { kind: "failed", failure: mistakes.failure };
   if (!words.ok) return { kind: "failed", failure: words.failure };
+  if (!notes.ok) return { kind: "failed", failure: notes.failure };
   return {
     kind: "ready",
     month: month.value,
     history: firstList(history.value),
     mistakes: firstList(mistakes.value),
     words: firstList(words.value),
+    notes: { ...firstList(notes.value), today: notes.value.today },
   };
 }
 
-function startMore<T>(list: ProgressList<T>): ProgressList<T> {
+function startMore<L extends ProgressList<unknown>>(list: L): L {
   return { ...list, loadingMore: true, moreFailure: null };
 }
 
@@ -109,6 +120,7 @@ function appendPage<T>(
 const historyKey = (item: HistoryItem) => item.session.id;
 const mistakeKey = (group: MistakeGroup) => group.rule?.toLowerCase() ?? null;
 const wordKey = (item: NewWordItem) => item.word.toLowerCase();
+const noteKey = (item: NoteListItem) => item.id;
 
 function loadMore(state: ProgressState, event: MoreLoaded): ProgressState {
   if (state.kind !== "ready") return state;
@@ -125,6 +137,15 @@ function loadMore(state: ProgressState, event: MoreLoaded): ProgressState {
       };
     case "words":
       return { ...state, words: appendPage(state.words, event.offset, event.outcome, wordKey) };
+    case "notes": {
+      const page = appendPage(state.notes, event.offset, event.outcome, noteKey);
+      // INFO: a page that was read later knows a later today.
+      const today =
+        event.outcome.ok && event.offset === state.notes.nextOffset
+          ? event.outcome.value.today
+          : state.notes.today;
+      return { ...state, notes: { ...page, today } };
+    }
   }
 }
 
@@ -133,7 +154,13 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
     case "load_started":
       return initialProgress;
     case "loaded":
-      return progressFromReads(event.month, event.history, event.mistakes, event.words);
+      return progressFromReads(
+        event.month,
+        event.history,
+        event.mistakes,
+        event.words,
+        event.notes,
+      );
     case "more_started":
       if (state.kind !== "ready") return state;
       switch (event.section) {
@@ -143,6 +170,8 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
           return { ...state, mistakes: startMore(state.mistakes) };
         case "words":
           return { ...state, words: startMore(state.words) };
+        case "notes":
+          return { ...state, notes: startMore(state.notes) };
       }
     case "more_loaded":
       return loadMore(state, event);
@@ -203,7 +232,16 @@ export type ProgressRow =
       original: string;
       corrected: string;
     }
-  | { kind: "word"; key: string; word: string; sentence: string; date: string };
+  | { kind: "word"; key: string; word: string; sentence: string; date: string }
+  | {
+      kind: "note";
+      key: string;
+      id: string;
+      title: string;
+      subtitle: string;
+      date: string;
+      icon: IconName;
+    };
 
 export function progressRows(state: ProgressState, section: ProgressSection): ProgressRow[] {
   if (state.kind !== "ready") return [];
@@ -235,6 +273,16 @@ export function progressRows(state: ProgressState, section: ProgressSection): Pr
         sentence: `"${item.sentence.replace(/\s+/g, " ").trim()}"`,
         date: shortDate(item.day),
       }));
+    case "notes":
+      return state.notes.items.map((item) => ({
+        kind: "note",
+        key: noteKey(item),
+        id: item.id,
+        title: item.title,
+        subtitle: noteSubtitle(item.kind, item.topic),
+        date: noteDate(item.day, state.notes.today),
+        icon: noteIcon(item.kind),
+      }));
   }
 }
 
@@ -242,6 +290,7 @@ const EMPTY_TEXTS: Record<ProgressSection, string> = {
   history: "No finished chats yet.",
   mistakes: "No mistakes yet.",
   words: "No new words yet.",
+  notes: "No notes yet.",
 };
 
 export function emptyText(section: ProgressSection): string {

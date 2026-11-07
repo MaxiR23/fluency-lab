@@ -9,6 +9,8 @@
 // - Failures: an AI failure restores the draft, a save failure resumes at the failed write
 // - retryKind, sendState and busy
 // - A resumed session carries the withdrawn flag and the thread reply count of its messages
+// - A reply with a note queues the note before the tutor message, fills its saved id into that message and counts its cost once
+// - A resumed session reads each message's note; threads_refreshed refreshes it
 // - threads_refreshed updates those two on the saved messages and touches nothing else
 //
 // What is covered:
@@ -26,6 +28,7 @@ import {
   type Message,
   type Profile,
   type Session,
+  type StudyNote,
 } from "@fluency-lab/shared";
 
 import type { TutorReply } from "@/ai/ai-port";
@@ -74,6 +77,7 @@ const reply: TutorReply = {
   corrections: [{ original: "I never been", corrected: "I've never been" }],
   explanation: "Use the present perfect.",
   newWords: ["definitely"],
+  note: null,
   model: TUTOR_MODEL,
   usage: {
     inputTokens: 700,
@@ -92,6 +96,7 @@ function message(role: Message["role"], text: string, extra: Partial<Message> = 
     corrections: null,
     newWords: null,
     replyToId: null,
+    noteId: null,
     createdAt: "2026-11-05T09:00:00Z",
     ...extra,
   };
@@ -137,8 +142,11 @@ function play(
       event = { type: "session_created", session };
     } else if (step.kind === "write") {
       const w = step.write;
-      steps.push(w.kind === "usage" ? "write usage" : `write ${w.input.role}: ${w.input.text}`);
-      event = { type: "write_done" };
+      if (w.kind === "note") steps.push(`write note: ${w.input.title}`);
+      else
+        steps.push(w.kind === "usage" ? "write usage" : `write ${w.input.role}: ${w.input.text}`);
+      event =
+        w.kind === "note" ? { type: "write_done", savedId: "note-1" } : { type: "write_done" };
     } else {
       steps.push("ask");
       event = answers.ask ?? { type: "reply_received", reply };
@@ -170,6 +178,7 @@ describe("startConversation", () => {
         replyTo: null,
         savedId: null,
         threadReplies: 0,
+        note: null,
       },
     ]);
     expect(c.session).toBeNull();
@@ -240,6 +249,7 @@ describe("startConversation", () => {
         session: { ...session, title: "Travel", topicId: "travel" },
         messages: saved,
         threadReplies: [],
+        notes: [],
       },
     });
     expect(c.title).toBe("Travel");
@@ -256,6 +266,7 @@ describe("startConversation", () => {
       replyTo: null,
       savedId: "m-I never been",
       threadReplies: 0,
+      note: null,
     });
     expect(c.spentUsd).toBe(1);
   });
@@ -265,7 +276,7 @@ describe("startConversation", () => {
       origin: { kind: "resume", sessionId: "s1" },
       profile,
       spentUsd: 0,
-      opened: { session, messages: [], threadReplies: [] },
+      opened: { session, messages: [], threadReplies: [], notes: [] },
     });
     expect(c.topicTitle).toBeNull();
   });
@@ -275,7 +286,7 @@ describe("startConversation", () => {
       origin: { kind: "resume", sessionId: "s1" },
       profile,
       spentUsd: 0,
-      opened: { session, messages: [], threadReplies: [] },
+      opened: { session, messages: [], threadReplies: [], notes: [] },
     });
     expect(c.opening).toBeNull();
     expect(c.messages).toEqual([]);
@@ -292,12 +303,15 @@ describe("threads in a resumed session", () => {
     corrections: { items: [withdrawnItem], explanation: "Because." },
   });
 
-  function resumed(threadReplies: { messageId: string; count: number }[]): Conversation {
+  function resumed(
+    threadReplies: { messageId: string; count: number }[],
+    notes: StudyNote[] = [],
+  ): Conversation {
     return startConversation({
       origin: { kind: "resume", sessionId: "s1" },
       profile,
       spentUsd: 0,
-      opened: { session, messages: [message("tutor", "Opening"), saved], threadReplies },
+      opened: { session, messages: [message("tutor", "Opening"), saved], threadReplies, notes },
     });
   }
 
@@ -321,7 +335,12 @@ describe("threads in a resumed session", () => {
     });
     const after = conversationReducer(before, {
       type: "threads_refreshed",
-      opened: { session, messages: [fresh], threadReplies: [{ messageId: fresh.id, count: 2 }] },
+      opened: {
+        session,
+        messages: [fresh],
+        threadReplies: [{ messageId: fresh.id, count: 2 }],
+        notes: [],
+      },
     });
     expect(after.messages[1]).toMatchObject({
       corrections: fresh.corrections?.items,
@@ -335,7 +354,12 @@ describe("threads in a resumed session", () => {
     const sent = typed(fromStarter(), "Hello");
     const after = conversationReducer(sent, {
       type: "threads_refreshed",
-      opened: { session, messages: [saved], threadReplies: [{ messageId: saved.id, count: 4 }] },
+      opened: {
+        session,
+        messages: [saved],
+        threadReplies: [{ messageId: saved.id, count: 4 }],
+        notes: [],
+      },
     });
     expect(after).toEqual(sent);
   });
@@ -344,7 +368,7 @@ describe("threads in a resumed session", () => {
     const before = resumed([{ messageId: saved.id, count: 3 }]);
     const after = conversationReducer(before, {
       type: "threads_refreshed",
-      opened: { session, messages: [], threadReplies: [] },
+      opened: { session, messages: [], threadReplies: [], notes: [] },
     });
     expect(after.messages).toEqual(before.messages);
   });
@@ -353,7 +377,7 @@ describe("threads in a resumed session", () => {
     const before = resumed([{ messageId: saved.id, count: 3 }]);
     const after = conversationReducer(before, {
       type: "threads_refreshed",
-      opened: { session, messages: [saved], threadReplies: [] },
+      opened: { session, messages: [saved], threadReplies: [], notes: [] },
     });
     expect(after.messages[1].threadReplies).toBe(0);
   });
@@ -363,7 +387,7 @@ describe("threads in a resumed session", () => {
     const extra = message("user", "New one");
     const after = conversationReducer(before, {
       type: "threads_refreshed",
-      opened: { session, messages: [saved, extra], threadReplies: [] },
+      opened: { session, messages: [saved, extra], threadReplies: [], notes: [] },
     });
     expect(after.messages).toHaveLength(before.messages.length);
   });
@@ -513,6 +537,7 @@ describe("a first turn", () => {
         replyTo: null,
         savedId: null,
         threadReplies: 0,
+        note: null,
       },
       {
         id: "message-2",
@@ -524,6 +549,7 @@ describe("a first turn", () => {
         replyTo: null,
         savedId: null,
         threadReplies: 0,
+        note: null,
       },
     ]);
   });
@@ -633,7 +659,7 @@ describe("failures", () => {
     }).c;
     expect(failed.phase).toBe("idle");
     expect(retryKind(failed)).toBe("resume");
-    expect(failed.writes.map((w) => (w.kind === "usage" ? "usage" : w.input.role))).toEqual([
+    expect(failed.writes.map((w) => (w.kind === "message" ? w.input.role : w.kind))).toEqual([
       "tutor",
       "usage",
     ]);
@@ -1034,8 +1060,193 @@ describe("replying to a tutor message", () => {
         session,
         messages: [message("tutor", "Where?"), message("user", "Park", { replyToId: "m-Where?" })],
         threadReplies: [],
+        notes: [],
       },
     });
     expect(c.messages[1]).toMatchObject({ replyTo: "m-Where?", savedId: "m-Park" });
+  });
+});
+
+describe("a reply with a study note", () => {
+  const draft = {
+    kind: "table" as const,
+    title: "Future forms",
+    topic: "Going to, will",
+    content: {
+      columns: ["Form", "When", "Example"] as [string, string, string],
+      rows: [["going to", "plans", "I'm going to study."]] as [string, string, string][],
+      remember: "Plans use going to.",
+    },
+  };
+  const noted: TutorReply = { ...reply, corrections: [], explanation: null, note: draft };
+  const afterReply = () =>
+    apply(
+      typed(free(), "Make me a table"),
+      { type: "session_created", session },
+      { type: "write_done" },
+      { type: "reply_received", reply: noted },
+    );
+
+  it("queues the note before the tutor message when the reply has one", () => {
+    const writes = afterReply().writes;
+    expect(writes.map((w) => w.kind)).toEqual(["message", "note", "message", "usage"]);
+    expect(writes[1]).toEqual({
+      kind: "note",
+      localId: "message-2",
+      input: { ...draft, sessionId: "s1" },
+    });
+    expect(writes[2]).toMatchObject({
+      kind: "message",
+      localId: "message-2",
+      input: { role: "tutor", text: "Nice! Where did you go?" },
+    });
+    expect(writes[2]).not.toHaveProperty("input.noteId");
+  });
+
+  it("shows the card on the tutor message, not saved yet", () => {
+    expect(afterReply().messages[2]?.note).toEqual({ draft, savedId: null });
+    expect(afterReply().messages[1]?.note).toBeNull();
+  });
+
+  it("fills the saved note id into the queued tutor message", () => {
+    const afterNote = apply(
+      afterReply(),
+      { type: "write_done" },
+      { type: "write_done", savedId: "note-9" },
+    );
+    expect(afterNote.messages[2]?.note).toEqual({ draft, savedId: "note-9" });
+    expect(afterNote.writes[0]).toMatchObject({
+      kind: "message",
+      input: { role: "tutor", noteId: "note-9" },
+    });
+  });
+
+  it("saves in order and the tutor message carries the note id", () => {
+    const { c, steps } = play(typed(free(), "Make me a table"), {
+      ask: { type: "reply_received", reply: noted },
+    });
+    expect(steps).toEqual([
+      'create {"topicId":null}',
+      "write tutor: Hi Ada! What would you like to talk about today?",
+      "ask",
+      "write user: Make me a table",
+      "write note: Future forms",
+      "write tutor: Nice! Where did you go?",
+      "write usage",
+    ]);
+    expect(c.messages.at(-1)?.note).toEqual({ draft, savedId: "note-1" });
+  });
+
+  it("keeps the reply and queues no note when the reply has none", () => {
+    const plain = apply(
+      typed(free(), "Hi"),
+      { type: "session_created", session },
+      { type: "write_done" },
+      { type: "reply_received", reply: { ...reply, note: null } },
+    );
+    expect(plain.writes.map((w) => w.kind)).toEqual(["message", "message", "usage"]);
+    expect(plain.messages.at(-1)?.note).toBeNull();
+  });
+
+  it("adds the cost of a reply with a note to the spend once", () => {
+    const { c } = play(typed(free(), "Make me a table"), {
+      ask: { type: "reply_received", reply: noted },
+    });
+    expect(c.spentUsd).toBe(Math.round(usageCostUsd(noted.model, noted.usage) * 1e8) / 1e8);
+    expect(c.writes.filter((w) => w.kind === "usage")).toHaveLength(0);
+  });
+
+  it("resumes the note write after a failed save", () => {
+    const failed = apply(
+      afterReply(),
+      { type: "write_done" },
+      { type: "write_failed", failure: { source: "data", failure: "network" } },
+    );
+    expect(failed.phase).toBe("idle");
+    const retried = conversationReducer(failed, { type: "retry" });
+    expect(retried.phase).toBe("saving");
+    const step = nextStep(retried);
+    expect(step.kind === "write" && step.write.kind).toBe("note");
+  });
+});
+
+describe("the notes of a resumed session", () => {
+  const stored: StudyNote = {
+    id: "note-7",
+    sessionId: "s1",
+    sessionTitle: "Free chat",
+    kind: "summary",
+    title: "Present perfect",
+    topic: "Have + past participle",
+    content: { points: ["Use it for experience."], remember: "Think of now." },
+    createdAt: "2026-11-05T09:30:00Z",
+  };
+  const tutorWithNote = message("tutor", "Here is your note.", { noteId: "note-7" });
+
+  function resumedWith(notes: StudyNote[], messages: Message[] = [tutorWithNote]) {
+    return startConversation({
+      origin: { kind: "resume", sessionId: "s1" },
+      profile,
+      spentUsd: 0,
+      opened: { session, messages, threadReplies: [], notes },
+    });
+  }
+
+  it("reads a saved message's note from the opened session", () => {
+    expect(resumedWith([stored]).messages[0]?.note).toEqual({
+      draft: {
+        kind: "summary",
+        title: "Present perfect",
+        topic: "Have + past participle",
+        content: stored.content,
+      },
+      savedId: "note-7",
+    });
+  });
+
+  it("draws no note when the message names a note that is gone", () => {
+    expect(resumedWith([]).messages[0]?.note).toBeNull();
+    expect(resumedWith([stored], [message("tutor", "Plain")]).messages[0]?.note).toBeNull();
+  });
+
+  it("refreshes the notes of saved messages on threads_refreshed", () => {
+    const before = resumedWith([stored]);
+    const gone = conversationReducer(before, {
+      type: "threads_refreshed",
+      opened: { session, messages: [tutorWithNote], threadReplies: [], notes: [] },
+    });
+    expect(gone.messages[0]?.note).toBeNull();
+    const back = conversationReducer(gone, {
+      type: "threads_refreshed",
+      opened: { session, messages: [tutorWithNote], threadReplies: [], notes: [stored] },
+    });
+    expect(back.messages[0]?.note?.savedId).toBe("note-7");
+  });
+
+  it("keeps the card of a local message that is not saved yet", () => {
+    const local = apply(
+      typed(free(), "Make me a table"),
+      { type: "session_created", session },
+      { type: "write_done" },
+      {
+        type: "reply_received",
+        reply: {
+          ...reply,
+          corrections: [],
+          explanation: null,
+          note: {
+            kind: "summary",
+            title: "t",
+            topic: "p",
+            content: { points: ["x"], remember: "r" },
+          },
+        },
+      },
+    );
+    const after = conversationReducer(local, {
+      type: "threads_refreshed",
+      opened: { session, messages: [], threadReplies: [], notes: [] },
+    });
+    expect(after.messages[2]?.note).not.toBeNull();
   });
 });

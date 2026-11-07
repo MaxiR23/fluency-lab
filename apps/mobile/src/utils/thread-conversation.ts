@@ -259,7 +259,7 @@ export function threadItems(t: ThreadConversation): ChatItem[] {
   const items: ChatItem[] = [];
   for (const row of t.messages) {
     if (row.role === "tutor") {
-      items.push({ kind: "tutor", id: row.id, text: row.text });
+      items.push({ kind: "tutor", id: row.id, text: row.text, note: null });
       continue;
     }
     items.push(userItem(row.id, row.text));

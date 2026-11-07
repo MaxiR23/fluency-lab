@@ -14,6 +14,10 @@ export const RULE_NO_KEY = "Never ask for or mention an API key.";
 export const OUTPUT_GUIDE =
   "Answer in the given JSON format. reply is your message. corrections lists each real mistake in the learner's last message as original and corrected text, with rule: a short label of two to six words naming the grammar point, like \"Present perfect for experiences\" or \"Articles with years\". original is copied exactly, character for character, from the learner's last message. Never correct anything outside the learner's last message: not earlier messages, not your own words, and never a rewritten or invented original. corrections is empty when there are none. explanation is one short sentence about those corrections, empty when there are none. newWords lists up to three words or expressions from this exchange worth learning at the learner's level, empty when there are none.";
 
+export const NOTE_SHAPE =
+  'kind is "table" or "summary". title names the grammar point in two to five words. topic is one short line of what it covers, like "Going to, will, present simple". A table has exactly three columns (the form, when to use it, an example) in columns, and two to six rows in rows, each exactly three cells in that order; points is empty. A summary has three to six short sentences in points; columns and rows are empty. remember is one short sentence to keep in mind.';
+export const NOTE_GUIDE = `Only when the learner asks for a table, a summary or a study note about English grammar, also fill note. ${NOTE_SHAPE} Then reply says in one short sentence that the note is ready, without repeating it. Leave note out otherwise.`;
+
 export const LEVEL_LINES: Record<Level, string> = {
   beginner: "The learner is a beginner: use short sentences and common words.",
   intermediate:
@@ -57,6 +61,6 @@ export function tutorPrompt(input: TutorPromptInput): string {
   if (input.openingLine !== null) {
     lines.push(`You opened the conversation with: "${input.openingLine}"`);
   }
-  lines.push(OUTPUT_GUIDE);
+  lines.push(OUTPUT_GUIDE, NOTE_GUIDE);
   return lines.join("\n");
 }

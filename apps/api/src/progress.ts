@@ -1,4 +1,10 @@
-import type { HistoryItem, MistakeGroup, NewWordItem, Session } from "@fluency-lab/shared";
+import type {
+  HistoryItem,
+  MistakeGroup,
+  NewWordItem,
+  NoteListItem,
+  Session,
+} from "@fluency-lab/shared";
 import { localDate } from "./week";
 
 export const PAGE_SIZE = 20;
@@ -33,6 +39,19 @@ export function wordItem(
   return {
     word: row.word,
     sentence: row.sentence,
+    day: localDate(new Date(row.createdAt), timeZone),
+  };
+}
+
+export function noteItem(
+  row: { id: string; kind: NoteListItem["kind"]; title: string; topic: string; createdAt: string },
+  timeZone: string,
+): NoteListItem {
+  return {
+    id: row.id,
+    kind: row.kind,
+    title: row.title,
+    topic: row.topic,
     day: localDate(new Date(row.createdAt), timeZone),
   };
 }

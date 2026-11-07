@@ -97,6 +97,11 @@ describe("todayCard with a run", () => {
     expect(todayCard({ today, mistakes: none, level: null }).title).toBe("Conditionals");
   });
 
+  it("titles a note run From your note", () => {
+    const today = practiceTodayWith([unanswered(0)], { focus: "note", noteId: "n1" });
+    expect(todayCard({ today, mistakes: none, level: null }).title).toBe("From your note");
+  });
+
   it("draws a run with no items as 0 of its target", () => {
     const card = todayCard({
       today: practiceTodayWith([], { target: 10 }),

@@ -41,10 +41,12 @@ import { sendState } from "@/utils/chat-conversation";
 import { enterTransition, easing } from "@/utils/chat-transitions";
 import { practiceOrigin } from "@/utils/practice-focus";
 import {
+  continueBusy,
   currentItem,
   exerciseView,
   fillIndex,
   gapFill,
+  noteAction,
   optionState,
   progressPosition,
   runBody,
@@ -62,6 +64,7 @@ export default function PracticeRun() {
     run?: string | string[];
     focus?: string | string[];
     topic?: string | string[];
+    note?: string | string[];
     target?: string | string[];
   }>();
   const actions = usePracticeRun(practiceOrigin(params));
@@ -115,6 +118,7 @@ export default function PracticeRun() {
   const body = runBody(run);
   const notice = practiceNotice(run);
   const locked = sendState(run).locked;
+  const action = noteAction(run);
   const noticeNode = (
     <ChatNotices
       notice={notice}
@@ -226,9 +230,12 @@ export default function PracticeRun() {
               title={run.feedback.title}
               answer={run.feedback.answer}
               explanation={run.feedback.explanation}
-              busy={run.phase === "saving"}
+              busy={continueBusy(run)}
               onContinue={() => void actions.next()}
               motion={motion.exercise}
+              note={
+                action === null ? undefined : { ...action, onPress: () => void actions.makeNote() }
+              }
             />
           </>
         ) : (

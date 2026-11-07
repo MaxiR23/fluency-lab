@@ -10,6 +10,7 @@
 // - The offer of five more, keep going, the end of the run and the spend lock
 // - Failures: an AI failure resends, a save failure resumes at the failed write
 // - segments, fillIndex, currentItem, exerciseView, gapFill and runOutcome
+// - The study note of a missed exercise: asked, saved with no session, opened, its usage and its failures
 // - runBody, progressPosition and optionState: what the screen draws, decided outside it
 //
 // What is covered:
@@ -29,6 +30,8 @@ import {
   exerciseView,
   fillIndex,
   gapFill,
+  continueBusy,
+  noteAction,
   optionState,
   practiceReducer,
   practiceRetryKind,
@@ -41,14 +44,24 @@ import {
   type PracticeEvent,
   type PracticeRunState,
 } from "@/utils/practice-run";
-import { gradeRequest, roundRequest, type FocusData } from "@/utils/practice-prompt";
+import {
+  gradeRequest,
+  roundRequest,
+  studyNoteRequest,
+  type FocusData,
+} from "@/utils/practice-prompt";
 import {
   completedProfile,
   practiceItemWith,
   practiceRunWith,
   practiceTodayWith,
 } from "../helpers/fake-data";
-import { answerGradeWith, exerciseWith, practiceRoundWith } from "../helpers/fake-ai";
+import {
+  answerGradeWith,
+  exerciseWith,
+  practiceRoundWith,
+  studyNoteReplyWith,
+} from "../helpers/fake-ai";
 
 const focus: FocusData = {
   kind: "mistakes",
@@ -833,5 +846,195 @@ describe("optionState", () => {
   it("is idle when no item is on screen", () => {
     const picked = apply(answering(), { type: "picked", option: "was" });
     expect(optionState({ ...picked, items: [] }, "was")).toBe("idle");
+  });
+});
+
+describe("the study note of a missed exercise", () => {
+  const failure = { source: "ai", failure: "rate_limited" } as const;
+  const missSheet = (start: PracticeRunState = answering()) =>
+    apply(start, { type: "picked", option: "was" }, { type: "write_done" });
+  const rightSheet = () =>
+    apply(answering(), { type: "picked", option: "have been" }, { type: "write_done" });
+  const asking = () => apply(missSheet(), { type: "note_requested" });
+
+  it("asks for a study note on the missed item", () => {
+    const state = asking();
+    expect(state.noteRequest).toEqual({ itemId: "item-0", status: "asking" });
+    expect(state.phase).toBe("feedback");
+    expect(practiceStep(state)).toEqual({
+      kind: "note",
+      request: studyNoteRequest(state.items[0] ?? item(0)),
+    });
+  });
+
+  it("ignores a study note request on a right answer, a words run or a locked run", () => {
+    expect(apply(rightSheet(), { type: "note_requested" }).noteRequest).toBeNull();
+    const words = resumed(
+      practiceTodayWith(
+        [0, 1, 2, 3, 4].map((p) => item(p)),
+        { focus: "words" },
+      ),
+    );
+    const wordsState = { ...words, focus: { kind: "words" as const, words: ["catchy"] } };
+    expect(apply(missSheet(wordsState), { type: "note_requested" }).noteRequest).toBeNull();
+    const locked = apply(missSheet(), {
+      type: "context_refreshed",
+      provider: "claude",
+      limitUsd: 1,
+      spentUsd: 1,
+    });
+    expect(apply(locked, { type: "note_requested" }).noteRequest).toBeNull();
+    expect(apply(answering(), { type: "note_requested" }).noteRequest).toBeNull();
+  });
+
+  it("queues the note with no session and its usage on the run", () => {
+    const reply = studyNoteReplyWith();
+    const before = missSheet();
+    const state = apply(asking(), { type: "note_received", note: reply });
+    expect(state.writes).toEqual([
+      { kind: "note", input: { ...reply.note, sessionId: null } },
+      {
+        kind: "usage",
+        usage: {
+          model: reply.model,
+          inputTokens: reply.usage.inputTokens,
+          outputTokens: reply.usage.outputTokens,
+          cacheCreationInputTokens: reply.usage.cacheCreationInputTokens,
+          cacheReadInputTokens: reply.usage.cacheReadInputTokens,
+        },
+      },
+    ]);
+    expect(state.spentUsd).toBe(
+      Math.round((before.spentUsd + usageCostUsd(reply.model, reply.usage)) * 1e8) / 1e8,
+    );
+    expect(state.noteRequest).toEqual({ itemId: "item-0", status: "saving" });
+  });
+
+  it("keeps the miss sheet while the note saves", () => {
+    const saving = apply(asking(), { type: "note_received", note: studyNoteReplyWith() });
+    expect(saving.feedback?.tone).toBe("miss");
+    const noteSaved = apply(saving, { type: "write_done", noteId: "note-9" });
+    expect(noteSaved.phase).toBe("saving");
+    const done = apply(noteSaved, { type: "write_done" });
+    expect(done.phase).toBe("feedback");
+    expect(done.feedback?.tone).toBe("miss");
+  });
+
+  it("sets the note to open when its write returns", () => {
+    const saving = apply(asking(), { type: "note_received", note: studyNoteReplyWith() });
+    const saved = apply(saving, { type: "write_done", noteId: "note-9" });
+    expect(saved.openNote).toBe("note-9");
+    expect(saved.noteRequest).toBeNull();
+  });
+
+  it("clears the note to open once opened", () => {
+    const saved = apply(
+      asking(),
+      { type: "note_received", note: studyNoteReplyWith() },
+      { type: "write_done", noteId: "note-9" },
+      { type: "note_opened" },
+    );
+    expect(saved.openNote).toBeNull();
+  });
+
+  it("saves the usage of a billed note failure", () => {
+    const usage = studyNoteReplyWith().usage;
+    const state = apply(asking(), { type: "note_failed", failure, usage });
+    expect(state.noteRequest).toEqual({ itemId: "item-0", status: "failed" });
+    expect(state.failure).toEqual(failure);
+    expect(state.writes).toEqual([
+      { kind: "usage", usage: expect.objectContaining({ inputTokens: usage.inputTokens }) },
+    ]);
+    expect(state.spentUsd).toBeGreaterThan(missSheet().spentUsd);
+  });
+
+  it("asks again on retry after a note failure", () => {
+    const failed = apply(asking(), { type: "note_failed", failure });
+    expect(failed.writes).toEqual([]);
+    expect(practiceStep(failed)).toEqual({ kind: "none" });
+    const retried = apply(failed, { type: "retry" });
+    expect(retried.failure).toBeNull();
+    expect(retried.noteRequest?.status).toBe("asking");
+    expect(practiceStep(retried).kind).toBe("note");
+    expect(practiceRetryKind(failed)).toBe("resend");
+  });
+
+  it("keeps Continue busy while a note is in flight", () => {
+    const state = asking();
+    expect(apply(state, { type: "continue" })).toBe(state);
+    const saving = apply(state, { type: "note_received", note: studyNoteReplyWith() });
+    expect(apply(saving, { type: "continue" }).feedback).not.toBeNull();
+  });
+
+  it("drops a failed note request on Continue", () => {
+    const failed = apply(asking(), { type: "note_failed", failure });
+    const next = apply(failed, { type: "continue" });
+    expect(next.noteRequest).toBeNull();
+    expect(next.failure).toBeNull();
+    expect(next.feedback).toBeNull();
+    expect(currentItem(next)?.id).toBe("item-1");
+  });
+
+  it("allows asking again after a failure", () => {
+    const failed = apply(asking(), { type: "note_failed", failure }, { type: "retry" });
+    expect(failed.noteRequest?.status).toBe("asking");
+    const failedAgain = apply(failed, { type: "note_failed", failure });
+    expect(apply(failedAgain, { type: "note_requested" }).noteRequest?.status).toBe("asking");
+  });
+
+  it("starts a run with no note in flight", () => {
+    expect(answering().noteRequest).toBeNull();
+    expect(answering().openNote).toBeNull();
+  });
+
+  describe("noteAction", () => {
+    it("is null on a right sheet, with no sheet and on a words run", () => {
+      expect(noteAction(rightSheet())).toBeNull();
+      expect(noteAction(answering())).toBeNull();
+      const words = { ...missSheet(), focus: { kind: "words" as const, words: ["catchy"] } };
+      expect(noteAction(words)).toBeNull();
+    });
+
+    it("is idle on a miss sheet", () => {
+      expect(noteAction(missSheet())).toEqual({ busy: false, disabled: false });
+    });
+
+    it("is busy while asking and saving", () => {
+      expect(noteAction(asking())).toEqual({ busy: true, disabled: false });
+      const saving = apply(asking(), { type: "note_received", note: studyNoteReplyWith() });
+      expect(noteAction(saving)?.busy).toBe(true);
+    });
+
+    it("is not busy after a failure", () => {
+      const failed = apply(asking(), { type: "note_failed", failure });
+      expect(noteAction(failed)?.busy).toBe(false);
+    });
+
+    it("is disabled when the spend limit locks the run", () => {
+      const locked = apply(missSheet(), {
+        type: "context_refreshed",
+        provider: "claude",
+        limitUsd: 1,
+        spentUsd: 1,
+      });
+      expect(noteAction(locked)).toEqual({ busy: false, disabled: true });
+    });
+  });
+
+  describe("continueBusy", () => {
+    it("is false on a sheet with nothing in flight", () => {
+      expect(continueBusy(missSheet())).toBe(false);
+      expect(continueBusy(rightSheet())).toBe(false);
+    });
+
+    it("is true while the run is saving, with or without a note action", () => {
+      expect(continueBusy({ ...rightSheet(), phase: "saving" })).toBe(true);
+      expect(continueBusy({ ...missSheet(), phase: "saving" })).toBe(true);
+    });
+
+    it("is true while a note is being asked for and false after it failed", () => {
+      expect(continueBusy(asking())).toBe(true);
+      expect(continueBusy(apply(asking(), { type: "note_failed", failure }))).toBe(false);
+    });
   });
 });

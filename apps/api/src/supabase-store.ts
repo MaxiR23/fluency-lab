@@ -1,10 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Message } from "@fluency-lab/shared";
+import { noteDeletedSchema, type Message } from "@fluency-lab/shared";
 import {
   toHistoryRow,
   toMessage,
   toMistakeRow,
   toMonthProgressRow,
+  toNoteRow,
   toOpenSession,
   toPracticeItem,
   toPracticeRun,
@@ -15,6 +16,7 @@ import {
   toSession,
   toSessionCost,
   toSessionStart,
+  toStudyNote,
   toThreadCount,
   toThreadMessage,
   toWordRow,
@@ -258,6 +260,7 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
               corrections: input.corrections ?? null,
               new_words: input.newWords ?? null,
               reply_to_id: input.replyToId ?? null,
+              note_id: input.noteId ?? null,
             })
             .select("*")
             .single();
@@ -341,12 +344,23 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
         },
 
         async createPracticeRun(input) {
+          if (input.focus === "note") {
+            const visible = await client
+              .from("study_notes")
+              .select("id")
+              .eq("id", input.noteId)
+              .maybeSingle();
+            const visibleFailure = failureOf(visible);
+            if (visibleFailure !== null) return visibleFailure;
+            if (visible.data === null) return { ok: true, value: null };
+          }
           const result = await client
             .from("practice_runs")
             .insert({
               user_id: caller.id,
               focus: input.focus,
               topic_id: input.focus === "topic" ? input.topicId : null,
+              note_id: input.focus === "note" ? input.noteId : null,
               target: input.target,
             })
             .select("*")
@@ -354,6 +368,75 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           const mapped = mapRow(result, toPracticeRun);
           if (!mapped.ok) return mapped;
           return mapped.value === null ? unavailable : { ok: true, value: mapped.value };
+        },
+
+        async createNote(input) {
+          if (input.sessionId !== null) {
+            const visible = await client
+              .from("sessions")
+              .select("id")
+              .eq("id", input.sessionId)
+              .maybeSingle();
+            const visibleFailure = failureOf(visible);
+            if (visibleFailure !== null) return visibleFailure;
+            if (visible.data === null) return { ok: true, value: null };
+          }
+          const result = await client
+            .from("study_notes")
+            .insert({
+              user_id: caller.id,
+              session_id: input.sessionId,
+              kind: input.kind,
+              title: input.title,
+              topic: input.topic,
+              content: input.content,
+            })
+            .select("*, sessions(title)")
+            .single();
+          const mapped = mapRow(result, toStudyNote);
+          if (!mapped.ok) return mapped;
+          return mapped.value === null ? unavailable : { ok: true, value: mapped.value };
+        },
+
+        async getNote(noteId) {
+          const result = await client
+            .from("study_notes")
+            .select("*, sessions(title)")
+            .eq("id", noteId)
+            .maybeSingle();
+          return mapRow(result, toStudyNote);
+        },
+
+        async deleteNote(noteId) {
+          const result = await client
+            .from("study_notes")
+            .delete()
+            .eq("id", noteId)
+            .select("id")
+            .maybeSingle();
+          return mapRow(result, (row) => {
+            const parsed = noteDeletedSchema.safeParse(row);
+            return parsed.success ? parsed.data : null;
+          });
+        },
+
+        async listNotes(offset, limit) {
+          const result = await client
+            .from("study_notes")
+            .select("id, kind, title, topic, created_at")
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(offset, offset + limit - 1);
+          return readPage(result, toNoteRow);
+        },
+
+        async listSessionNotes(sessionId) {
+          const result = await client
+            .from("study_notes")
+            .select("*, sessions(title)")
+            .eq("session_id", sessionId)
+            .order("created_at", { ascending: true });
+          return readPage(result, toStudyNote);
         },
 
         async getPracticeRun(runId) {

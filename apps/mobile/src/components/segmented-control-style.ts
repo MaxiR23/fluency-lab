@@ -24,7 +24,7 @@ export function segmentedStyle(look: SegmentedLook): {
       borderWidth: borderWidth.thin,
       borderRadius: count ? radius.picker : radius.control,
       padding: spacing.xs,
-      gap: count ? 0 : tabs ? spacing.stack : spacing.xs,
+      gap: count ? 0 : spacing.xs,
     },
     segment: {
       flex: 1,
@@ -42,7 +42,8 @@ export function segmentedStyle(look: SegmentedLook): {
         : selectableStyle({ selected: true }),
     label: (selected) => {
       if (count) return selected ? "actionStrong" : "actionMuted";
-      return tabs ? (selected ? "action" : "actionMuted") : "body";
+      // INFO: 13 point semibold labels, as progress-notes.html draws the four tabs.
+      return tabs ? (selected ? "labelStrong" : "label") : "body";
     },
     groupRole: tabs ? "tablist" : "radiogroup",
     segmentRole: tabs ? "tab" : "radio",

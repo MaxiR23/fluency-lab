@@ -39,3 +39,15 @@ export function feedbackSheetStyle(tone: FeedbackTone): {
     iconName: right ? "check" : "close",
   };
 }
+
+// INFO: "Make me a study note" under the explanation: a 44 high row that hugs its content
+// (exercise-not-quite.html).
+export function noteActionStyle(): ViewStyle {
+  return {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    minHeight: size.touch,
+    alignSelf: "flex-start",
+  };
+}

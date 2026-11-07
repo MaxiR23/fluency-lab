@@ -12,6 +12,7 @@
 // - toMessage reads a message whose correction is withdrawn
 // - toThreadMessage and toThreadCount read a thread row and a reply count
 // - toPracticeRun, toPracticeItem and toPracticeRunWithItems read the practice rows
+// - toStudyNote and toNoteRow read a note row, with and without its session
 // - toProfilePatch renames an update to columns
 //
 // What is covered:
@@ -27,6 +28,7 @@ import {
   toMessage,
   toMistakeRow,
   toMonthProgressRow,
+  toNoteRow,
   toOpenSession,
   toPracticeItem,
   toPracticeRun,
@@ -37,6 +39,7 @@ import {
   toSession,
   toSessionCost,
   toSessionStart,
+  toStudyNote,
   toThreadCount,
   toThreadMessage,
   toWordRow,
@@ -78,6 +81,7 @@ const messageRow = {
   corrections: { items: [{ original: "a", corrected: "b" }], explanation: "Because." },
   new_words: ["word"],
   reply_to_id: null,
+  note_id: null,
   created_at: stamp,
 };
 
@@ -175,6 +179,7 @@ describe("toMessage", () => {
       corrections: { items: [{ original: "a", corrected: "b" }], explanation: "Because." },
       newWords: ["word"],
       replyToId: null,
+      noteId: null,
       createdAt: stamp,
     });
   });
@@ -475,6 +480,7 @@ describe("practice rows", () => {
     focus: "topic",
     topic_id: "conditionals",
     target: 10,
+    note_id: null,
     cost_usd: 0.000145,
     created_at: stamp,
     finished_at: null,
@@ -500,6 +506,7 @@ describe("practice rows", () => {
       id,
       focus: "topic",
       topicId: "conditionals",
+      noteId: null,
       target: 10,
       costUsd: 0.000145,
       createdAt: stamp,
@@ -552,5 +559,97 @@ describe("practice rows", () => {
       toPracticeRunWithItems({ ...runRow, practice_items: [itemRow(0), { id: 1 }] }),
     ).toBeNull();
     expect(toPracticeRunWithItems(runRow)).toBeNull();
+  });
+});
+
+describe("study note rows", () => {
+  const tableContent = {
+    columns: ["Form", "When", "Example"],
+    rows: [["going to", "plans", "I'm going to study."]],
+    remember: "Plans use going to.",
+  };
+  const noteRow = {
+    id,
+    session_id: id,
+    kind: "table",
+    title: "Future forms",
+    topic: "Going to, will",
+    content: tableContent,
+    created_at: stamp,
+    sessions: { title: "Free chat" },
+  };
+
+  it("maps a note row with its session title", () => {
+    expect(toStudyNote(noteRow)).toEqual({
+      id,
+      sessionId: id,
+      sessionTitle: "Free chat",
+      kind: "table",
+      title: "Future forms",
+      topic: "Going to, will",
+      content: tableContent,
+      createdAt: stamp,
+    });
+  });
+
+  it("maps a note row with no session to null ids and title", () => {
+    expect(toStudyNote({ ...noteRow, session_id: null, sessions: null })).toMatchObject({
+      sessionId: null,
+      sessionTitle: null,
+    });
+  });
+
+  it("rejects a note row whose content does not match its kind", () => {
+    expect(toStudyNote({ ...noteRow, kind: "summary" })).toBeNull();
+    expect(toStudyNote({ ...noteRow, content: "x" })).toBeNull();
+    expect(toStudyNote(null)).toBeNull();
+  });
+
+  it("maps a note list row", () => {
+    expect(
+      toNoteRow({
+        id,
+        kind: "summary",
+        title: "t",
+        topic: "p",
+        created_at: "2026-11-05T01:00:00+00:00",
+      }),
+    ).toEqual({
+      id,
+      kind: "summary",
+      title: "t",
+      topic: "p",
+      createdAt: "2026-11-05T01:00:00+00:00",
+    });
+  });
+
+  it("rejects a note list row with an unknown kind", () => {
+    expect(
+      toNoteRow({
+        id,
+        kind: "poem",
+        title: "t",
+        topic: "p",
+        created_at: "2026-11-05T01:00:00+00:00",
+      }),
+    ).toBeNull();
+  });
+
+  it("maps the note id of a message and of a practice run", () => {
+    expect(toMessage({ ...messageRow, note_id: id })?.noteId).toBe(id);
+    expect(toMessage({ ...messageRow, note_id: null })?.noteId).toBeNull();
+    expect(toMessage(without(messageRow, "note_id"))).toBeNull();
+    const run = {
+      id,
+      focus: "note",
+      topic_id: null,
+      note_id: id,
+      target: 5,
+      cost_usd: 0,
+      created_at: stamp,
+      finished_at: null,
+    };
+    expect(toPracticeRun(run)?.noteId).toBe(id);
+    expect(toPracticeRun({ ...run, note_id: null })?.noteId).toBeNull();
   });
 });

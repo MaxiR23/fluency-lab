@@ -6,6 +6,7 @@
 // - The levels, goals, providers, session statuses and message roles
 // - The goal labels
 // - The practice focuses, kinds and targets
+// - The note kinds
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -20,6 +21,7 @@ import {
   GOAL_LABELS,
   LEVELS,
   MESSAGE_ROLES,
+  NOTE_KINDS,
   PRACTICE_FOCUSES,
   PRACTICE_KINDS,
   PRACTICE_MAX_TARGET,
@@ -59,10 +61,18 @@ describe("profile values", () => {
     expect(Object.keys(GOAL_LABELS)).toEqual([...GOALS]);
   });
 
-  it("holds the three focuses, four kinds and the targets 5, 10 and 15", () => {
-    expect(PRACTICE_FOCUSES).toEqual(["mistakes", "words", "topic"]);
+  it("holds the four focuses, four kinds and the targets 5, 10 and 15", () => {
+    expect(PRACTICE_FOCUSES).toEqual(["mistakes", "words", "topic", "note"]);
     expect(PRACTICE_KINDS).toEqual(["choose", "fix", "gap", "translate"]);
     expect(PRACTICE_TARGETS).toEqual([5, 10, 15]);
+  });
+
+  it("lists the two note kinds", () => {
+    expect(NOTE_KINDS).toEqual(["table", "summary"]);
+  });
+
+  it("allows a note focus", () => {
+    expect(PRACTICE_FOCUSES).toContain("note");
   });
 
   it("caps the target at 15 and rounds at 5", () => {

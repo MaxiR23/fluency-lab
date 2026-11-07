@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { feedbackSheetStyle } from "@/components/feedback-sheet-style";
+import { feedbackSheetStyle, noteActionStyle } from "@/components/feedback-sheet-style";
 import { borderWidth, colors, radius, size, spacing } from "@/constants/theme";
 
 describe("feedbackSheetStyle", () => {
@@ -60,5 +60,15 @@ describe("feedbackSheetStyle", () => {
   it("delays the sheet by the tone's token", () => {
     expect(feedbackSheetStyle("right").iconName).toBe("check");
     expect(feedbackSheetStyle("miss").iconName).toBe("close");
+  });
+
+  it("draws the study note action as a 44 high row that hugs its content", () => {
+    expect(noteActionStyle()).toEqual({
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      minHeight: size.touch,
+      alignSelf: "flex-start",
+    });
   });
 });

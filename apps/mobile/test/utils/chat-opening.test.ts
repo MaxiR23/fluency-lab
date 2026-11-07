@@ -52,6 +52,7 @@ function messageWith(role: Message["role"], text: string): Message {
     corrections: null,
     newWords: null,
     replyToId: null,
+    noteId: null,
     createdAt: "2026-11-05T09:00:00Z",
   };
 }

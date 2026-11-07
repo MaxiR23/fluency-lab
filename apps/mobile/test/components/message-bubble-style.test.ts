@@ -76,4 +76,22 @@ describe("messageBubbleStyle", () => {
   it("leaves the bubble as it was when quoted is false", () => {
     expect(messageBubbleStyle("user", { quoted: false })).toEqual(messageBubbleStyle("user"));
   });
+
+  it("a tutor bubble with a note is 86% wide with a 10 gap between its text and the card", () => {
+    const style = messageBubbleStyle("tutor", { note: true });
+    expect(style.row).toEqual({ alignSelf: "flex-start", maxWidth: size.messageNoteMaxWidth });
+    expect(style.row.maxWidth).toBe("86%");
+    expect(style.bubble).toEqual({
+      ...common,
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderBottomLeftRadius: radius.messageTail,
+      gap: spacing.cluster,
+    });
+  });
+
+  it("plain bubbles keep their exact style objects", () => {
+    expect(messageBubbleStyle("tutor", { note: false })).toEqual(messageBubbleStyle("tutor"));
+    expect(messageBubbleStyle("tutor").bubble).not.toHaveProperty("gap");
+  });
 });

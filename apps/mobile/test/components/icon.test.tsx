@@ -52,6 +52,9 @@ const names: IconName[] = [
   "pen",
   "review",
   "words",
+  "table",
+  "list",
+  "trashPlain",
 ];
 
 type Node = { props?: Record<string, unknown>; children?: unknown };
@@ -131,5 +134,22 @@ describe("Icon", () => {
   it("draws the reply paths of the design", async () => {
     await render(<Icon name="reply" color={colors.accent} />);
     expect(drawing()).toBe("M9 14 4 9l5-5|M4 9h10.5a5.5 5.5 0 0 1 0 11H11");
+  });
+
+  it("draws the table icon of the design, its rect written as a path", async () => {
+    await render(<Icon name="table" color={colors.accent} />);
+    expect(drawing()).toBe(
+      "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z|M3 9h18M3 15h18M9 3v18",
+    );
+  });
+
+  it("draws the list icon of the design", async () => {
+    await render(<Icon name="list" color={colors.accent} />);
+    expect(drawing()).toBe("M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01");
+  });
+
+  it("draws the plain trash of the note screen, apart from the rounded one", async () => {
+    await render(<Icon name="trashPlain" color={colors.textMuted} />);
+    expect(drawing()).toBe("M3 6h18|M8 6V4h8v2|M19 6l-1 14H6L5 6");
   });
 });

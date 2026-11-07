@@ -4,6 +4,7 @@
 //
 // Tested:
 // - chatMotion gives the design's motion, or none with reduce motion on
+// - chatMotion gives the note row's 700 ms enter and the saved line's pop, or none
 // - dotPhases splits the dot cycle
 // - dotDelay staggers the dots
 // - pressedScale scales Send while pressed
@@ -28,6 +29,8 @@ describe("chatMotion", () => {
       dots: { rise: 360, fall: 360, rest: 480, stagger: 150, lift: 4, restOpacity: 0.3 },
       preview: { duration: 240, offset: 8 },
       swipeBack: { duration: 240 },
+      noteEnter: { duration: 700, offset: 12 },
+      saved: { delay: 1000, duration: 400, scale: 0.8 },
     });
   });
 
@@ -51,6 +54,8 @@ describe("chatMotion", () => {
       dots: null,
       preview: null,
       swipeBack: null,
+      noteEnter: null,
+      saved: null,
     });
   });
 });

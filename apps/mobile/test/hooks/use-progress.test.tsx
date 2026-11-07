@@ -55,6 +55,7 @@ describe("useProgress", () => {
     expect(fakeData.listHistory).toHaveBeenCalledWith("America/Lima", 0);
     expect(fakeData.listMistakes).toHaveBeenCalledWith(0);
     expect(fakeData.listWords).toHaveBeenCalledWith("America/Lima", 0);
+    expect(fakeData.listNotes).toHaveBeenCalledWith("America/Lima", 0);
   });
 
   it("starts on History and switches section on select", async () => {
@@ -110,6 +111,30 @@ describe("useProgress", () => {
     await act(async () => result.current.loadMore());
 
     expect(fakeData.listWords).toHaveBeenLastCalledWith("America/Lima", 20);
+  });
+
+  it("loads the next page of the notes section when it is selected", async () => {
+    fakeData.listNotes.mockResolvedValueOnce({
+      ok: true,
+      value: {
+        items: [{ id: "n1", kind: "table", title: "T", topic: "P", day: "2026-11-05" }],
+        nextOffset: 20,
+        today: "2026-11-05",
+      },
+    });
+    const { result } = await ready();
+    await act(async () => result.current.select("notes"));
+
+    await act(async () => result.current.loadMore());
+
+    expect(fakeData.listNotes).toHaveBeenLastCalledWith("America/Lima", 20);
+  });
+
+  it("fails when the notes read fails", async () => {
+    fakeData.listNotes.mockResolvedValueOnce({ ok: false, failure: "network" });
+    const hook = await renderHook(() => useProgress());
+    await waitFor(() => expect(hook.result.current.state.kind).toBe("failed"));
+    expect(hook.result.current.state).toEqual({ kind: "failed", failure: "network" });
   });
 
   it("does not read when the section is on its last page", async () => {

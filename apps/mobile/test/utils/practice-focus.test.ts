@@ -5,7 +5,7 @@
 // Tested:
 // - focusModel: the mistakes and words rows, the topics and the suggested label
 // - defaultFocus, listSummary, focusLabel
-// - practiceParams and practiceOrigin
+// - practiceParams, notePracticeParams and practiceOrigin
 // - focusFromReads and focusReducer
 //
 // What is covered:
@@ -25,6 +25,7 @@ import {
   focusReducer,
   initialFocus,
   listSummary,
+  notePracticeParams,
   practiceOrigin,
   practiceParams,
 } from "@/utils/practice-focus";
@@ -162,6 +163,22 @@ describe("practiceParams and practiceOrigin", () => {
       topic: "articles",
       target: "5",
     });
+  });
+
+  it("builds the params of a note practice of five", () => {
+    expect(notePracticeParams("n1")).toEqual({ focus: "note", note: "n1", target: "5" });
+  });
+
+  it("reads a note focus with its note", () => {
+    expect(practiceOrigin({ focus: "note", note: "n1", target: "5" })).toEqual({
+      kind: "new",
+      input: { focus: "note", noteId: "n1", target: 5 },
+    });
+  });
+
+  it("returns null for a note focus without a note", () => {
+    expect(practiceOrigin({ focus: "note", target: "5" })).toBeNull();
+    expect(practiceOrigin({ focus: "note", note: "", target: "5" })).toBeNull();
   });
 
   it("prefers a run id", () => {

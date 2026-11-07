@@ -566,4 +566,18 @@ describe("theme", () => {
     expect(motion.result.sparkOut).toBe(Math.round(0.25 * 6000));
     expect(motion.result.sparkStagger).toEqual([0, 200, 350]);
   });
+
+  it("holds the study note tokens of note-in-chat.html and note.html", () => {
+    expect(size.messageNoteMaxWidth).toBe("86%");
+    expect(size.noteIcon).toBe(32);
+    expect(radius.noteIcon).toBe(10);
+    expect(motion.note.rowDuration).toBe(Math.round(0.14 * 6000));
+    expect(motion.note.rowDelay).toBe(100);
+    expect(motion.note.rowStagger).toBe(150);
+    expect(motion.note.rowOffset).toBe(-10);
+    expect(motion.note.enterDuration).toBe(Math.round((0.24 - 0.1) * 5000));
+    expect(motion.note.savedDelay).toBe(Math.round((0.3 - 0.1) * 5000));
+    expect(motion.note.savedDuration).toBe(Math.round((0.38 - 0.3) * 5000));
+    expect(motion.note.savedScale).toBe(0.8);
+  });
 });

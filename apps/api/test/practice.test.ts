@@ -25,6 +25,7 @@ function runAt(id: string, createdAt: string): PracticeRunWithItems {
       id,
       focus: "mistakes",
       topicId: null,
+      noteId: null,
       target: 5,
       costUsd: 0,
       createdAt,

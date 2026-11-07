@@ -9,6 +9,7 @@
 // - Transport failures: rejected fetch, deadline, bad bodies, bad usage
 // - The key never reaches an outcome or a log
 // - replyInThread: the same request with the thread schema, its payload, and the same failures
+// - A reply may carry a study note; studyNote: its schema, payload and failures
 // - practiceRound and gradeAnswer: their schemas, their token limits, their payloads and the same failures
 //
 // What is covered:
@@ -24,6 +25,7 @@ import { TUTOR_MODEL } from "@fluency-lab/shared";
 import {
   ANSWER_GRADE_JSON_SCHEMA,
   PRACTICE_ROUND_JSON_SCHEMA,
+  STUDY_NOTE_JSON_SCHEMA,
   THREAD_REPLY_JSON_SCHEMA,
   TUTOR_REPLY_JSON_SCHEMA,
   createClaudeAi,
@@ -134,7 +136,7 @@ describe("the request", () => {
 
     expect(body.model).toBe("claude-haiku-5-5");
     expect(body.model).toBe(TUTOR_MODEL);
-    expect(body.max_tokens).toBe(1024);
+    expect(body.max_tokens).toBe(2048);
     expect(body.system).toBe("You are a tutor.");
     expect(body.thinking).toEqual({ type: "disabled" });
     expect(body.output_config.format.type).toBe("json_schema");
@@ -177,15 +179,42 @@ describe("TUTOR_REPLY_JSON_SCHEMA", () => {
     for (const value of Object.values(record)) walk(value, visit);
   }
 
-  it("closes every object and requires all of its properties", () => {
+  it("closes every object and requires all of its properties but the optional note", () => {
     let objects = 0;
     walk(TUTOR_REPLY_JSON_SCHEMA, (node) => {
       if (node.type !== "object") return;
       objects += 1;
       expect(node.additionalProperties).toBe(false);
-      expect(node.required).toEqual(Object.keys(node.properties as object));
+      const keys = Object.keys(node.properties as object).filter(
+        (key) => node !== TUTOR_REPLY_JSON_SCHEMA || key !== "note",
+      );
+      expect(node.required).toEqual(keys);
     });
-    expect(objects).toBe(2);
+    expect(objects).toBe(3);
+  });
+
+  it("sends the note as the only optional property of the reply schema", () => {
+    expect(TUTOR_REPLY_JSON_SCHEMA.required).not.toContain("note");
+    expect(TUTOR_REPLY_JSON_SCHEMA.properties.note).toBe(STUDY_NOTE_JSON_SCHEMA);
+    expect(STUDY_NOTE_JSON_SCHEMA.additionalProperties).toBe(false);
+    expect(STUDY_NOTE_JSON_SCHEMA.required).toEqual([
+      "kind",
+      "title",
+      "topic",
+      "columns",
+      "rows",
+      "points",
+      "remember",
+    ]);
+    expect(STUDY_NOTE_JSON_SCHEMA.properties.kind).toEqual({
+      type: "string",
+      enum: ["table", "summary"],
+    });
+    const forbidden = ["minItems", "maxItems", "minLength", "maxLength", "anyOf", "oneOf"];
+    walk(STUDY_NOTE_JSON_SCHEMA, (node) => {
+      for (const keyword of forbidden) expect(node).not.toHaveProperty(keyword);
+      expect(Array.isArray(node.type)).toBe(false);
+    });
   });
 
   it("uses no unsupported keyword", () => {
@@ -200,13 +229,64 @@ describe("TUTOR_REPLY_JSON_SCHEMA", () => {
     expect(items.properties.rule).toEqual({ type: "string" });
   });
 
-  it("describes the four fields of the reply", () => {
+  it("describes the four fields of the reply and its note", () => {
     expect(Object.keys(TUTOR_REPLY_JSON_SCHEMA.properties)).toEqual([
       "reply",
       "corrections",
       "explanation",
       "newWords",
+      "note",
     ]);
+  });
+});
+
+describe("a reply with a study note", () => {
+  const notePayload = {
+    kind: "table",
+    title: "Future forms",
+    topic: "Going to, will",
+    columns: ["Form", "When", "Example"],
+    rows: [["going to", "plans", "I'm going to study."]],
+    points: [],
+    remember: "Plans use going to.",
+  };
+  const ask = (ai: ReturnType<typeof setup>["ai"]) =>
+    ai.reply({ system: request.system, turns: [...request.turns] });
+
+  it("returns the reply with its note when the tutor made one", async () => {
+    const { ai } = setup(success({ ...payload, note: notePayload }));
+    const outcome = await ask(ai);
+    expect(outcome).toMatchObject({
+      ok: true,
+      value: {
+        reply: "Nice! Where did you go?",
+        note: {
+          kind: "table",
+          title: "Future forms",
+          topic: "Going to, will",
+          content: {
+            columns: ["Form", "When", "Example"],
+            rows: [["going to", "plans", "I'm going to study."]],
+            remember: "Plans use going to.",
+          },
+        },
+      },
+    });
+  });
+
+  it("returns a reply with a null note when the tutor made none", async () => {
+    const { ai } = setup(success(payload));
+    const outcome = await ask(ai);
+    expect(outcome).toMatchObject({ ok: true, value: { note: null } });
+  });
+
+  it("keeps the reply and drops a malformed note", async () => {
+    const { ai } = setup(success({ ...payload, note: { ...notePayload, columns: ["a", "b"] } }));
+    const outcome = await ask(ai);
+    expect(outcome).toMatchObject({
+      ok: true,
+      value: { reply: "Nice! Where did you go?", note: null },
+    });
   });
 });
 
@@ -227,6 +307,7 @@ describe("a successful reply", () => {
         ],
         explanation: "Use the present perfect.",
         newWords: ["definitely"],
+        note: null,
         model: TUTOR_MODEL,
         usage: {
           inputTokens: 700,
@@ -796,10 +877,13 @@ describe("practiceRound", () => {
     expect(body.messages).toEqual([{ role: "user", content: roundRequest.turns[0].text }]);
   });
 
-  it("sends 1024 for the chat as before", async () => {
+  it("asks for up to 2048 tokens for a reply and keeps 1024 for a thread", async () => {
     const { ai, seen } = setup();
     await ai.reply({ system: request.system, turns: [...request.turns] });
-    expect(JSON.parse(seen[0].body).max_tokens).toBe(1024);
+    expect(JSON.parse(seen[0].body).max_tokens).toBe(2048);
+    const thread = setup(success({ reply: "x", newWords: [], withdrawn: [] }));
+    await thread.ai.replyInThread({ system: request.system, turns: [...request.turns] });
+    expect(JSON.parse(thread.seen[0].body).max_tokens).toBe(1024);
   });
 
   it("a round with no usable exercise is bad_response with its usage", async () => {
@@ -960,5 +1044,105 @@ describe("PRACTICE_ROUND_JSON_SCHEMA and ANSWER_GRADE_JSON_SCHEMA", () => {
       enum: ["choose", "fix", "gap", "translate"],
     });
     expect(ANSWER_GRADE_JSON_SCHEMA.properties.correct).toEqual({ type: "boolean" });
+  });
+});
+
+describe("studyNote", () => {
+  const notePayload = {
+    kind: "summary",
+    title: "Present perfect",
+    topic: "Have + past participle",
+    columns: [],
+    rows: [],
+    points: ["Use it for experience."],
+    remember: "Think of now.",
+  };
+  const noteRequest = {
+    system: "Write a note.",
+    turns: [{ role: "user" as const, text: '{"rule":"Present perfect"}' }],
+  };
+
+  it("returns the note and the usage of a study note", async () => {
+    const { ai } = setup(success(notePayload));
+    expect(await ai.studyNote(noteRequest)).toEqual({
+      ok: true,
+      value: {
+        note: {
+          kind: "summary",
+          title: "Present perfect",
+          topic: "Have + past participle",
+          content: { points: ["Use it for experience."], remember: "Think of now." },
+        },
+        model: TUTOR_MODEL,
+        usage: {
+          inputTokens: 700,
+          outputTokens: 150,
+          cacheCreationInputTokens: 0,
+          cacheReadInputTokens: 0,
+        },
+      },
+    });
+  });
+
+  it("sends the study note schema at the root, 2048 tokens and the key only in the header", async () => {
+    const { ai, seen } = setup(success(notePayload));
+    await ai.studyNote(noteRequest);
+    const body = JSON.parse(seen[0].body);
+    expect(body.output_config.format.schema).toEqual(STUDY_NOTE_JSON_SCHEMA);
+    expect(body.max_tokens).toBe(2048);
+    expect(seen[0].headers.get("x-api-key")).toBe(key);
+    expect(seen[0].body).not.toContain(key);
+  });
+
+  it("returns bad_response with the usage for a note that cannot be used", async () => {
+    const { ai } = setup(success({ ...notePayload, points: [] }));
+    expect(await ai.studyNote(noteRequest)).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: { inputTokens: 700, outputTokens: 150 },
+    });
+  });
+
+  it("returns invalid_key on a 401", async () => {
+    const { ai } = setup(errorResponse(401, "authentication_error"));
+    expect(await ai.studyNote(noteRequest)).toMatchObject({ ok: false, failure: "invalid_key" });
+  });
+
+  it("returns rate_limited on a 429", async () => {
+    const { ai } = setup(errorResponse(429, "rate_limit_error"));
+    expect(await ai.studyNote(noteRequest)).toMatchObject({ ok: false, failure: "rate_limited" });
+  });
+
+  it("returns network on a rejected fetch", async () => {
+    const { ai } = setup(new TypeError("Network request failed"));
+    expect(await ai.studyNote(noteRequest)).toMatchObject({ ok: false, failure: "network" });
+  });
+
+  it("returns network on a timeout", async () => {
+    jest.useFakeTimers();
+    const hang = jest.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const ai = createClaudeAi({
+      fetchFn: hang as unknown as typeof fetch,
+      readKey: async () => ({ ok: true, value: key }),
+      timeoutMs: 50,
+    });
+    const pending = ai.studyNote(noteRequest);
+    await jest.advanceTimersByTimeAsync(60);
+    expect(await pending).toMatchObject({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response on a body of the wrong shape", async () => {
+    expect(await setup(success({ nope: true })).ai.studyNote(noteRequest)).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+    });
+    expect(
+      await setup(new Response("<html>", { status: 200 })).ai.studyNote(noteRequest),
+    ).toMatchObject({ ok: false, failure: "bad_response" });
   });
 });

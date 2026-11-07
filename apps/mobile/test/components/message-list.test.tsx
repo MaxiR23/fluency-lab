@@ -18,19 +18,19 @@
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
-import { ScrollView, StyleSheet } from "react-native";
+import { ScrollView, StyleSheet, type ViewStyle } from "react-native";
 import { GestureHandlerRootView, State } from "react-native-gesture-handler";
 import { fireGestureHandler, getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { MessageList } from "@/components/message-list";
-import { motion as tokens, spacing } from "@/constants/theme";
+import { motion as tokens, size, spacing } from "@/constants/theme";
 import type { ChatItem } from "@/utils/chat-items";
 import { chatKeyboardLayout } from "@/utils/chat-keyboard";
 import { chatMotion, type ChatMotion } from "@/utils/chat-motion";
 
 const items: ChatItem[] = [
-  { kind: "tutor", id: "1", text: "Where did you go?" },
+  { kind: "tutor", id: "1", text: "Where did you go?", note: null },
   {
     kind: "user",
     id: "2",
@@ -50,6 +50,7 @@ function list(
     onReply?: (id: string) => void;
     onArm?: () => void;
     onAsk?: (messageId: string) => void;
+    onOpenNote?: (noteId: string) => void;
     layout?: "chat" | "thread";
   } = {},
 ) {
@@ -68,7 +69,7 @@ function list(
 }
 
 const quoted: ChatItem[] = [
-  { kind: "tutor", id: "1", text: "Where did you go?" },
+  { kind: "tutor", id: "1", text: "Where did you go?", note: null },
   {
     kind: "user",
     id: "2",
@@ -89,6 +90,17 @@ async function swipeRight(id: string) {
       { state: State.END, translationX: tokens.replySwipe },
     ]);
   });
+}
+
+// Walks up from a node to the first ancestor that sets a maxWidth: the bubble row.
+type Host = { props: { style?: unknown }; parent: Host | null };
+
+function rowWidth(node: Host | null) {
+  for (let at = node; at !== null; at = at.parent) {
+    const width = StyleSheet.flatten(at.props.style as ViewStyle | undefined)?.maxWidth;
+    if (width !== undefined) return width;
+  }
+  return undefined;
 }
 
 describe("MessageList", () => {
@@ -165,7 +177,7 @@ describe("MessageList", () => {
 
   it("draws a message added after mount", async () => {
     const { rerender } = await render(list(items));
-    const added: ChatItem = { kind: "tutor", id: "4", text: "Tell me more." };
+    const added: ChatItem = { kind: "tutor", id: "4", text: "Tell me more.", note: null };
     await rerender(list([...items, added]));
     const drawn = JSON.stringify(screen.toJSON());
     expect(drawn.indexOf("Tell me more.")).toBeGreaterThan(drawn.indexOf("itinerary"));
@@ -281,5 +293,64 @@ describe("MessageList and threads", () => {
       screen.getByTestId("message-list").props.contentContainerStyle,
     );
     expect(style).toMatchObject({ gap: spacing.card, paddingVertical: spacing.screenSide });
+  });
+
+  describe("a tutor row with a study note", () => {
+    const noted = (noteId: string | null): ChatItem[] => [
+      {
+        kind: "tutor",
+        id: "t1",
+        text: "Here is your table.",
+        note: {
+          noteId,
+          title: "Future forms",
+          topic: "Going to, will",
+          icon: "table",
+          preview: [{ lead: "going to", text: "plans" }],
+        },
+      },
+    ];
+
+    it("draws the card inside the bubble and opens the note when it is pressed", async () => {
+      const onOpenNote = jest.fn();
+      await render(list(noted("n1"), chatMotion(false), { onOpenNote }));
+      expect(screen.getByText("Here is your table.")).toBeTruthy();
+      expect(screen.getByText("Saved to Notes")).toBeTruthy();
+      await fireEvent.press(screen.getByRole("button", { name: "Future forms, study note" }));
+      expect(onOpenNote).toHaveBeenCalledWith("n1");
+    });
+
+    it("keeps the note bubble at the note width when the row can be swiped", async () => {
+      await render(list(noted("n1"), chatMotion(false), { onReply: () => {} }));
+      expect(rowWidth(screen.getByText("Here is your table."))).toBe(size.messageNoteMaxWidth);
+    });
+
+    it("draws the card without Saved to Notes and does not open it before the note is saved", async () => {
+      const onOpenNote = jest.fn();
+      await render(list(noted(null), chatMotion(false), { onOpenNote }));
+      expect(screen.queryByText("Saved to Notes")).toBeNull();
+      await fireEvent.press(screen.getByRole("button", { name: "Future forms, study note" }));
+      expect(onOpenNote).not.toHaveBeenCalled();
+    });
+
+    it("draws the card when no open callback is given", async () => {
+      await render(list(noted("n1")));
+      expect(screen.getByText("Future forms")).toBeTruthy();
+    });
+
+    it("enters over 700 ms, slower than a plain row, and not at all with reduce motion", async () => {
+      const { rerender } = await render(list([...noted("n1"), ...items.slice(0, 1)]));
+      expect(screen.getByTestId("row-t1").props.entering.getDuration()).toBe(700);
+      expect(screen.getByTestId("row-1").props.entering.getDuration()).toBe(240);
+      await rerender(list(noted("n1"), chatMotion(true)));
+      expect(screen.getByTestId("row-t1").props.entering).toBeUndefined();
+    });
+
+    it("gives the saved line its entering animation, and none with reduce motion", async () => {
+      const { rerender } = await render(list(noted("n1")));
+      expect(screen.getByTestId("note-saved").props.entering).toBeDefined();
+      await rerender(list(noted("n1"), chatMotion(true)));
+      expect(screen.getByTestId("note-saved").props.entering).toBeUndefined();
+    });
   });
 });

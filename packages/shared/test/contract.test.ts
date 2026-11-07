@@ -13,6 +13,7 @@
 // - The profile stats response and the account deleted response
 // - The progress responses and their page queries
 // - The practice schemas: the run to create, the items, the answer, the new target, the reads and the tutor payloads
+// - The study note schemas: both shapes, their limits, the create body, the stored note, the page and the loose payload
 // - The thread schemas: the stored correction with its withdrawn flag, the thread rows, the withdraw body, the reply counts and the thread reply payload
 //
 // What is covered:
@@ -35,6 +36,9 @@ import {
   messageCreateSchema,
   messageIdParamSchema,
   messageSchema,
+  notePageSchema,
+  studyNoteCreateSchema,
+  studyNoteSchema,
   monthProgressSchema,
   monthSpendSchema,
   openSessionsResponseSchema,
@@ -110,6 +114,7 @@ const message = {
   corrections: null,
   newWords: null,
   replyToId: null,
+  noteId: null,
   createdAt: stamp,
 };
 
@@ -294,7 +299,7 @@ describe("response schemas", () => {
   });
 
   it("parses a session body with no messages", () => {
-    const body = { session, messages: [], threadReplies: [] };
+    const body = { session, messages: [], threadReplies: [], notes: [] };
     expect(sessionMessagesResponseSchema.parse(body)).toEqual(body);
   });
 
@@ -307,7 +312,7 @@ describe("response schemas", () => {
       },
       newWords: ["definitely"],
     };
-    const body = { session, messages: [saved], threadReplies: [] };
+    const body = { session, messages: [saved], threadReplies: [], notes: [] };
     expect(sessionMessagesResponseSchema.parse(body)).toEqual(body);
     expect(messageSchema.safeParse({ ...message, corrections: "x" }).success).toBe(false);
   });
@@ -805,10 +810,15 @@ describe("thread schemas", () => {
   });
 
   it("requires the reply counts and accepts none", () => {
-    const body = { session, messages: [], threadReplies: [{ messageId: uuid, count: 2 }] };
+    const body = {
+      session,
+      messages: [],
+      threadReplies: [{ messageId: uuid, count: 2 }],
+      notes: [],
+    };
     expect(sessionMessagesResponseSchema.parse(body)).toEqual(body);
     expect(
-      sessionMessagesResponseSchema.parse({ ...body, threadReplies: [] }).threadReplies,
+      sessionMessagesResponseSchema.parse({ ...body, threadReplies: [], notes: [] }).threadReplies,
     ).toEqual([]);
     expect(sessionMessagesResponseSchema.safeParse({ session, messages: [] }).success).toBe(false);
     expect(threadRepliesSchema.safeParse([{ messageId: uuid, count: 0 }]).success).toBe(false);
@@ -840,6 +850,7 @@ describe("practice schemas", () => {
     costUsd: 0.01,
     createdAt: "2026-11-07T10:00:00.000Z",
     finishedAt: null,
+    noteId: null,
   };
   const stored = {
     id: uuid,
@@ -977,5 +988,142 @@ describe("practice schemas", () => {
       correct: false,
       explanation: "",
     });
+  });
+});
+
+describe("study notes", () => {
+  const table = {
+    kind: "table",
+    title: "Future forms",
+    topic: "Going to, will",
+    sessionId: null,
+    content: {
+      columns: ["Form", "When", "Example"],
+      rows: [["going to", "plans", "I'm going to study."]],
+      remember: "Plans use going to.",
+    },
+  };
+  const summary = {
+    kind: "summary",
+    title: "Present perfect",
+    topic: "Have + past participle",
+    sessionId: uuid,
+    content: { points: ["Use it for experience."], remember: "Think of now." },
+  };
+  const tableOf = (content: object) => ({ ...table, content: { ...table.content, ...content } });
+  const rowOf = (n: number) => Array.from({ length: n }, (_, i) => `c${i}`);
+
+  it("accepts a table note with three columns and rows of three cells", () => {
+    expect(studyNoteCreateSchema.safeParse(table).success).toBe(true);
+  });
+
+  it("accepts a summary note with points", () => {
+    expect(studyNoteCreateSchema.safeParse(summary).success).toBe(true);
+  });
+
+  it("rejects a table with two or four columns", () => {
+    expect(studyNoteCreateSchema.safeParse(tableOf({ columns: ["a", "b"] })).success).toBe(false);
+    expect(studyNoteCreateSchema.safeParse(tableOf({ columns: rowOf(4) })).success).toBe(false);
+  });
+
+  it("rejects a table row with two or four cells", () => {
+    expect(studyNoteCreateSchema.safeParse(tableOf({ rows: [rowOf(2)] })).success).toBe(false);
+    expect(studyNoteCreateSchema.safeParse(tableOf({ rows: [rowOf(4)] })).success).toBe(false);
+  });
+
+  it("rejects a table with no rows and one with nine", () => {
+    const rows = (n: number) => Array.from({ length: n }, () => rowOf(3));
+    expect(studyNoteCreateSchema.safeParse(tableOf({ rows: rows(0) })).success).toBe(false);
+    expect(studyNoteCreateSchema.safeParse(tableOf({ rows: rows(9) })).success).toBe(false);
+    expect(studyNoteCreateSchema.safeParse(tableOf({ rows: rows(1) })).success).toBe(true);
+    expect(studyNoteCreateSchema.safeParse(tableOf({ rows: rows(8) })).success).toBe(true);
+  });
+
+  it("rejects a summary with no points and one with nine", () => {
+    const points = (n: number) => rowOf(n);
+    const withPoints = (n: number) => ({
+      ...summary,
+      content: { ...summary.content, points: points(n) },
+    });
+    expect(studyNoteCreateSchema.safeParse(withPoints(0)).success).toBe(false);
+    expect(studyNoteCreateSchema.safeParse(withPoints(9)).success).toBe(false);
+    expect(studyNoteCreateSchema.safeParse(withPoints(8)).success).toBe(true);
+  });
+
+  it("rejects a note whose content does not match its kind", () => {
+    expect(studyNoteCreateSchema.safeParse({ ...summary, kind: "table" }).success).toBe(false);
+  });
+
+  it("rejects an empty remember line and a title over 80 characters", () => {
+    expect(studyNoteCreateSchema.safeParse(tableOf({ remember: " " })).success).toBe(false);
+    expect(studyNoteCreateSchema.safeParse({ ...table, title: "a".repeat(81) }).success).toBe(
+      false,
+    );
+    expect(studyNoteCreateSchema.safeParse({ ...table, title: "a".repeat(80) }).success).toBe(true);
+  });
+
+  it("rejects an unknown key in the content", () => {
+    expect(studyNoteCreateSchema.safeParse(tableOf({ extra: 1 })).success).toBe(false);
+  });
+
+  it("accepts a note create with a session id or with null", () => {
+    expect(studyNoteCreateSchema.safeParse({ ...table, sessionId: uuid }).success).toBe(true);
+    expect(studyNoteCreateSchema.safeParse({ ...table, sessionId: null }).success).toBe(true);
+    expect(studyNoteCreateSchema.safeParse({ ...table, sessionId: "x" }).success).toBe(false);
+  });
+
+  it("reads a stored note with its session title or none", () => {
+    const stored = {
+      ...table,
+      id: uuid,
+      sessionTitle: "Free chat",
+      createdAt: stamp,
+    };
+    expect(studyNoteSchema.parse(stored).sessionTitle).toBe("Free chat");
+    expect(studyNoteSchema.parse({ ...stored, sessionTitle: null }).sessionTitle).toBeNull();
+  });
+
+  it("parses a notes page with today", () => {
+    const item = { id: uuid, kind: "table", title: "t", topic: "p", day: "2026-11-07" };
+    const page = { items: [item], nextOffset: 20, today: "2026-11-07" };
+    expect(notePageSchema.parse(page)).toEqual(page);
+    const empty = { items: [], nextOffset: null, today: "2026-11-07" };
+    expect(notePageSchema.parse(empty)).toEqual(empty);
+  });
+
+  it("accepts a message create with a note id", () => {
+    expect(messageCreateSchema.safeParse({ role: "tutor", text: "Hi", noteId: uuid }).success).toBe(
+      true,
+    );
+    expect(messageCreateSchema.safeParse({ role: "tutor", text: "Hi", noteId: "x" }).success).toBe(
+      false,
+    );
+  });
+
+  it("accepts a note practice run and rejects one without its note", () => {
+    expect(
+      practiceRunCreateSchema.safeParse({ focus: "note", noteId: uuid, target: 5 }).success,
+    ).toBe(true);
+    expect(practiceRunCreateSchema.safeParse({ focus: "note", target: 5 }).success).toBe(false);
+  });
+
+  it("parses a tutor reply with and without a note", () => {
+    const base = { reply: "r", corrections: [], explanation: "", newWords: [] };
+    const note = {
+      kind: "table",
+      title: "t",
+      topic: "p",
+      columns: [],
+      rows: [],
+      points: [],
+      remember: "r",
+    };
+    expect(tutorReplySchema.parse({ ...base, note }).note).toEqual(note);
+    expect(tutorReplySchema.parse(base).note).toBeUndefined();
+  });
+
+  it("reads a message and a practice run with a null note id", () => {
+    expect(messageSchema.parse(message).noteId).toBeNull();
+    expect(messageSchema.parse({ ...message, noteId: uuid }).noteId).toBe(uuid);
   });
 });

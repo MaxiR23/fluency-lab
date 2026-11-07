@@ -7,7 +7,8 @@
 //   packages/shared appears quoted in the migrations
 // - Every grammar topic id, practice focus and practice kind appears quoted too
 // - Row level security is enabled on profiles, sessions, messages, thread_messages,
-//   practice_runs and practice_items
+//   practice_runs, practice_items and study_notes
+// - Every note kind appears quoted in the migrations
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -23,6 +24,7 @@ import {
   GRAMMAR_TOPIC_IDS,
   LEVELS,
   MESSAGE_ROLES,
+  NOTE_KINDS,
   PRACTICE_FOCUSES,
   PRACTICE_KINDS,
   PROVIDERS,
@@ -62,6 +64,10 @@ describe("migrations", () => {
     expect(missing([...GRAMMAR_TOPIC_IDS, ...PRACTICE_FOCUSES, ...PRACTICE_KINDS])).toEqual([]);
   });
 
+  it("lists every note kind", () => {
+    expect(missing([...NOTE_KINDS])).toEqual([]);
+  });
+
   it("enables row level security on the tables", () => {
     for (const table of [
       "profiles",
@@ -70,6 +76,7 @@ describe("migrations", () => {
       "thread_messages",
       "practice_runs",
       "practice_items",
+      "study_notes",
     ]) {
       expect(sql).toMatch(
         new RegExp(`alter table public\\.${table} enable row level security`, "i"),

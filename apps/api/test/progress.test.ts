@@ -4,6 +4,7 @@
 //
 // Tested:
 // - pageOf keeps one page and gives the next offset only when a row beyond it was read
+// - noteItem dates a note in the caller's zone
 // - historyItem and wordItem give each row its local day in the caller's zone
 // - mistakeGroup keeps a missing rule as null and nests the latest example
 //
@@ -16,7 +17,7 @@
 
 import type { Session } from "@fluency-lab/shared";
 import { describe, expect, it } from "vitest";
-import { PAGE_SIZE, historyItem, mistakeGroup, pageOf, wordItem } from "../src/progress";
+import { PAGE_SIZE, historyItem, mistakeGroup, noteItem, pageOf, wordItem } from "../src/progress";
 
 function rows(count: number): number[] {
   return Array.from({ length: count }, (_, index) => index);
@@ -89,6 +90,32 @@ describe("wordItem", () => {
       day: "2026-11-04",
     });
     expect(wordItem(row, "UTC").day).toBe("2026-11-05");
+  });
+});
+
+describe("noteItem", () => {
+  const row = {
+    id: "n1",
+    kind: "table" as const,
+    title: "T",
+    topic: "P",
+    createdAt: "2026-11-05T01:00:00+00:00",
+  };
+
+  it("dates a note in the caller's zone", () => {
+    expect(noteItem(row, "America/Argentina/Buenos_Aires")).toEqual({
+      id: "n1",
+      kind: "table",
+      title: "T",
+      topic: "P",
+      day: "2026-11-04",
+    });
+  });
+
+  it("dates a note at 23:30 UTC on the next local day in a zone ahead", () => {
+    const late = { ...row, createdAt: "2026-11-05T23:30:00+00:00" };
+    expect(noteItem(late, "Pacific/Auckland").day).toBe("2026-11-06");
+    expect(noteItem(late, "UTC").day).toBe("2026-11-05");
   });
 });
 

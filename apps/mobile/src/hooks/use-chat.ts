@@ -38,6 +38,7 @@ export function useChat(chatOrigin: ChatOrigin): {
   send: () => Promise<void>;
   retry: () => Promise<void>;
   end: () => Promise<void>;
+  openNote: (noteId: string) => void;
   updateKey: () => void;
 } {
   const [view, setView] = useState<ChatView>({ kind: "loading" });
@@ -118,6 +119,13 @@ export function useChat(chatOrigin: ChatOrigin): {
         if (session === null) return;
         if (step.write.kind === "message") {
           const saved = await data.addMessage(session.id, step.write.input);
+          if (!saved.ok) {
+            dispatch({ type: "write_failed", failure: { source: "data", failure: saved.failure } });
+            return;
+          }
+          dispatch({ type: "write_done", savedId: saved.value.id });
+        } else if (step.write.kind === "note") {
+          const saved = await data.createNote(step.write.input);
           if (!saved.ok) {
             dispatch({ type: "write_failed", failure: { source: "data", failure: saved.failure } });
             return;
@@ -206,6 +214,7 @@ export function useChat(chatOrigin: ChatOrigin): {
     send,
     retry,
     end,
+    openNote: (noteId) => router.push({ pathname: "/note", params: { id: noteId } }),
     updateKey: () => router.push("/api-key"),
   };
 }

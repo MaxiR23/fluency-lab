@@ -1,10 +1,11 @@
+import type { StudyNote } from "@fluency-lab/shared";
 import { router, useIsFocused } from "expo-router";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { ai } from "@/ai";
 import { data } from "@/data";
 import { keys } from "@/keys";
-import type { DataFailure } from "@/data/data-port";
+import type { DataFailure, DataOutcome } from "@/data/data-port";
 import { contextRefresh } from "@/utils/chat-state";
 import { deviceLanguage } from "@/utils/device-language";
 import type { PracticeOrigin } from "@/utils/practice-focus";
@@ -33,6 +34,7 @@ async function readRun(origin: PracticeOrigin | null): Promise<PracticeScreenVie
     opened: null,
     mistakes: null,
     words: null,
+    note: null,
     language,
   };
   if (!key.ok || !key.value || !profile.ok || origin === null) return practiceRunView(first);
@@ -47,11 +49,25 @@ async function readRun(origin: PracticeOrigin | null): Promise<PracticeScreenVie
       : opened !== null && opened.ok
         ? opened.value.run.focus
         : null;
-  const [mistakes, words] = await Promise.all([
+  // INFO: the note of a resumed run is null once its note was deleted, which the view turns into a failure.
+  const noteId =
+    origin.kind === "new"
+      ? origin.input.focus === "note"
+        ? origin.input.noteId
+        : null
+      : opened !== null && opened.ok
+        ? opened.value.run.noteId
+        : null;
+  const [mistakes, words, note] = await Promise.all([
     focus === "mistakes" ? data.listMistakes(0) : Promise.resolve(null),
     focus === "words" ? data.listWords(timeZone, 0) : Promise.resolve(null),
+    focus !== "note"
+      ? Promise.resolve(null)
+      : noteId === null
+        ? Promise.resolve<DataOutcome<StudyNote>>({ ok: false, failure: "not_found" })
+        : data.getNote(noteId),
   ]);
-  return practiceRunView({ ...first, spend, opened, mistakes, words });
+  return practiceRunView({ ...first, spend, opened, mistakes, words, note });
 }
 
 type Dispatch = (event: PracticeEvent) => void;
@@ -78,6 +94,10 @@ async function save(
     const saved = await data.addPracticeUsage(runId, write.usage);
     if (!saved.ok) return failed(saved.failure);
     dispatch({ type: "write_done" });
+  } else if (write.kind === "note") {
+    const saved = await data.createNote(write.input);
+    if (!saved.ok) return failed(saved.failure);
+    dispatch({ type: "write_done", noteId: saved.value.id });
   } else if (write.kind === "answer") {
     const saved = await data.answerPracticeItem(write.itemId, write.answer);
     if (!saved.ok) return failed(saved.failure);
@@ -123,6 +143,18 @@ async function drive(
           continue;
         }
         dispatch({ type: "round_received", round: answer.value });
+      } else if (step.kind === "note") {
+        const answer = await ai.studyNote(step.request);
+        if (!answer.ok) {
+          dispatch({
+            type: "note_failed",
+            failure: { source: "ai", failure: answer.failure, cause: answer.cause },
+            usage: answer.usage,
+          });
+          if (answer.usage === undefined) return;
+          continue;
+        }
+        dispatch({ type: "note_received", note: answer.value });
       } else {
         const answer = await ai.gradeAnswer(step.request);
         if (!answer.ok) {
@@ -150,6 +182,7 @@ export function usePracticeRun(origin: PracticeOrigin | null): {
   next: () => Promise<void>;
   keepGoing: () => Promise<void>;
   finish: () => Promise<void>;
+  makeNote: () => Promise<void>;
   stop: () => void;
   retry: () => Promise<void>;
   updateKey: () => void;
@@ -244,6 +277,20 @@ export function usePracticeRun(origin: PracticeOrigin | null): {
     router.dismissTo("/");
   }
 
+  // INFO: the run screen stays mounted under the note, so going back shows the same miss sheet.
+  function openSavedNote(): void {
+    const id = current.current?.openNote ?? null;
+    if (id === null) return;
+    dispatch({ type: "note_opened" });
+    router.push({ pathname: "/note", params: { id } });
+  }
+
+  async function makeNote(): Promise<void> {
+    dispatch({ type: "note_requested" });
+    await run();
+    openSavedNote();
+  }
+
   async function retry(): Promise<void> {
     const state = current.current;
     if (state === null) {
@@ -256,6 +303,8 @@ export function usePracticeRun(origin: PracticeOrigin | null): {
     // after an AI failure, and the writes left resume after a failed save.
     dispatch({ type: "retry" });
     await run();
+    // INFO: a note that failed and was asked again is opened like the first time.
+    openSavedNote();
   }
 
   return {
@@ -266,6 +315,7 @@ export function usePracticeRun(origin: PracticeOrigin | null): {
     next,
     keepGoing,
     finish,
+    makeNote,
     stop: () => router.dismissTo("/"),
     retry,
     updateKey: () => router.push("/api-key"),

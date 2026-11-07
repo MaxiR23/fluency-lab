@@ -4,6 +4,7 @@ import {
   GOALS,
   LEVELS,
   MESSAGE_ROLES,
+  NOTE_KINDS,
   PRACTICE_FOCUSES,
   PRACTICE_KINDS,
   PROVIDERS,
@@ -65,6 +66,92 @@ export const storedMessageCorrectionsSchema = z.strictObject({
 
 export const newWordsSchema = z.array(z.string().trim().min(1).max(60)).max(10);
 
+const noteCell = z.string().trim().min(1).max(120);
+const noteLabel = z.string().trim().min(1).max(40);
+const noteRemember = z.string().trim().min(1).max(300);
+
+export const noteTableContentSchema = z.strictObject({
+  columns: z.tuple([noteLabel, noteLabel, noteLabel]),
+  rows: z
+    .array(z.tuple([noteCell, noteCell, noteCell]))
+    .min(1)
+    .max(8),
+  remember: noteRemember,
+});
+
+export const noteSummaryContentSchema = z.strictObject({
+  points: z.array(z.string().trim().min(1).max(200)).min(1).max(8),
+  remember: noteRemember,
+});
+
+const noteTableShape = z.strictObject({
+  kind: z.literal("table"),
+  content: noteTableContentSchema,
+});
+
+const noteSummaryShape = z.strictObject({
+  kind: z.literal("summary"),
+  content: noteSummaryContentSchema,
+});
+
+// INFO: the one schema of a note's two shapes: the API validates a body and a row with it.
+export const studyNoteShapeSchema = z.discriminatedUnion("kind", [
+  noteTableShape,
+  noteSummaryShape,
+]);
+
+const noteText = z.string().trim().min(1).max(80);
+const noteFields = { title: noteText, topic: noteText };
+
+export const studyNoteCreateSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ ...noteTableShape.shape, ...noteFields, sessionId: z.uuid().nullable() }),
+  z.strictObject({ ...noteSummaryShape.shape, ...noteFields, sessionId: z.uuid().nullable() }),
+]);
+
+const storedNoteFields = {
+  id: z.string(),
+  sessionId: z.string().nullable(),
+  sessionTitle: z.string().nullable(),
+  title: z.string(),
+  topic: z.string(),
+  createdAt: z.string(),
+};
+
+export const studyNoteSchema = z.discriminatedUnion("kind", [
+  z.object({ ...noteTableShape.shape, ...storedNoteFields }),
+  z.object({ ...noteSummaryShape.shape, ...storedNoteFields }),
+]);
+
+export const noteListItemSchema = z.object({
+  id: z.string(),
+  kind: z.enum(NOTE_KINDS),
+  title: z.string(),
+  topic: z.string(),
+  day: z.iso.date(),
+});
+
+export const notePageSchema = z.object({
+  items: z.array(noteListItemSchema),
+  nextOffset: z.int().min(1).nullable(),
+  today: z.iso.date(),
+});
+
+export const noteIdParamSchema = z.object({ id: z.uuid() });
+
+export const noteDeletedSchema = z.object({ id: z.string() });
+
+// INFO: the structured output of a note, parsed loosely and normalized by the app (toStudyNote).
+// columns, rows and points are empty when they do not apply.
+export const studyNotePayloadSchema = z.object({
+  kind: z.string(),
+  title: z.string(),
+  topic: z.string(),
+  columns: z.array(z.string()),
+  rows: z.array(z.array(z.string())),
+  points: z.array(z.string()),
+  remember: z.string(),
+});
+
 // INFO: the shape of the structured output of the tutor. It is parsed loosely
 // here and normalized by the app before it is saved. rule is optional here so
 // a paid reply that lacks it is kept.
@@ -75,6 +162,7 @@ export const tutorReplySchema = z.object({
   ),
   explanation: z.string(),
   newWords: z.array(z.string()),
+  note: studyNotePayloadSchema.optional(),
 });
 
 export const messageCreateSchema = z.strictObject({
@@ -83,6 +171,7 @@ export const messageCreateSchema = z.strictObject({
   corrections: messageCorrectionsSchema.optional(),
   newWords: newWordsSchema.optional(),
   replyToId: z.uuid().optional(),
+  noteId: z.uuid().optional(),
 });
 
 export const threadMessageCreateSchema = z.strictObject({
@@ -153,6 +242,7 @@ export const messageSchema = z.object({
   corrections: storedMessageCorrectionsSchema.nullable(),
   newWords: newWordsSchema.nullable(),
   replyToId: z.string().nullable(),
+  noteId: z.string().nullable(),
   createdAt: z.string(),
 });
 
@@ -201,6 +291,8 @@ export const sessionMessagesResponseSchema = z.object({
   session: sessionSchema,
   messages: z.array(messageSchema),
   threadReplies: threadRepliesSchema,
+  // INFO: the notes saved in this session; a message's noteId names one of them.
+  notes: z.array(studyNoteSchema),
 });
 
 export const sessionSummarySchema = z.object({
@@ -283,6 +375,7 @@ export const practiceRunCreateSchema = z.union([
     topicId: z.enum(GRAMMAR_TOPIC_IDS),
     target: practiceTargetValue,
   }),
+  z.strictObject({ focus: z.literal("note"), noteId: z.uuid(), target: practiceTargetValue }),
 ]);
 
 export const practiceItemCreateSchema = z
@@ -331,6 +424,7 @@ export const practiceRunSchema = z.object({
   id: z.string(),
   focus: z.enum(PRACTICE_FOCUSES),
   topicId: z.enum(GRAMMAR_TOPIC_IDS).nullable(),
+  noteId: z.string().nullable(),
   target: practiceTargetValue,
   costUsd: z.number(),
   createdAt: z.string(),
@@ -424,3 +518,11 @@ export type PracticeItem = z.infer<typeof practiceItemSchema>;
 export type PracticeRunWithItems = z.infer<typeof practiceRunWithItemsSchema>;
 export type PracticeRoundPayload = z.infer<typeof practiceRoundSchema>;
 export type AnswerGradePayload = z.infer<typeof answerGradeSchema>;
+export type StudyNoteShape = z.infer<typeof studyNoteShapeSchema>;
+export type StudyNoteCreate = z.infer<typeof studyNoteCreateSchema>;
+export type StudyNote = z.infer<typeof studyNoteSchema>;
+export type NoteListItem = z.infer<typeof noteListItemSchema>;
+export type NotePage = z.infer<typeof notePageSchema>;
+export type StudyNotePayload = z.infer<typeof studyNotePayloadSchema>;
+// INFO: a create without its session; Omit does not distribute over the union.
+export type StudyNoteDraft = StudyNoteShape & { title: string; topic: string };

@@ -5,6 +5,8 @@
 // Tested:
 // - focusDataFrom picks the focus data a round sends
 // - roundRequest sends the focus data, the count, the missed rules and the language, and nothing else
+// - focusDataFrom and roundRequest carry a note as the focus of a note round
+// - studyNoteRequest asks for one study note on the missed item's rule and sends nothing personal
 // - gradeRequest sends the exercise, the accepted answers and the learner's answer only
 //
 // What is covered:
@@ -18,6 +20,8 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   RULE_PRACTICE_GRADE,
+  RULE_PRACTICE_NOTE,
+  RULE_STUDY_NOTE,
   RULE_PRACTICE_KINDS,
   RULE_PRACTICE_NO_TRANSLATE,
   RULE_PRACTICE_RULE,
@@ -25,9 +29,10 @@ import {
   focusDataFrom,
   gradeRequest,
   roundRequest,
+  studyNoteRequest,
   translateRule,
 } from "@/utils/practice-prompt";
-import { RULE_NO_KEY } from "@/utils/tutor-prompt";
+import { NOTE_SHAPE, RULE_NO_KEY } from "@/utils/tutor-prompt";
 
 const mistakes = (count: number) => ({
   items: Array.from({ length: count }, (_, index) => ({
@@ -54,7 +59,7 @@ function userTurn(request: { turns: { role: string; text: string }[] }) {
 
 describe("focusDataFrom", () => {
   it("sends the latest example of each mistake group with its rule", () => {
-    expect(focusDataFrom("mistakes", null, mistakes(2), words(0), "intermediate")).toEqual({
+    expect(focusDataFrom("mistakes", null, mistakes(2), words(0), "intermediate", null)).toEqual({
       kind: "mistakes",
       corrections: [
         { original: "bad 0", corrected: "good 0", rule: null },
@@ -64,29 +69,31 @@ describe("focusDataFrom", () => {
   });
 
   it("sends at most ten mistake groups and fifteen words", () => {
-    const data = focusDataFrom("mistakes", null, mistakes(14), words(20), null);
+    const data = focusDataFrom("mistakes", null, mistakes(14), words(20), null, null);
     expect(data.kind === "mistakes" && data.corrections).toHaveLength(10);
-    const wordData = focusDataFrom("words", null, mistakes(0), words(20), null);
+    const wordData = focusDataFrom("words", null, mistakes(0), words(20), null, null);
     expect(wordData.kind === "words" && wordData.words).toHaveLength(15);
   });
 
   it("sends only the words for the words focus", () => {
-    expect(focusDataFrom("words", null, mistakes(3), words(2), null)).toEqual({
+    expect(focusDataFrom("words", null, mistakes(3), words(2), null, null)).toEqual({
       kind: "words",
       words: ["word0", "word1"],
     });
   });
 
   it("sends the topic and the level for a topic", () => {
-    expect(focusDataFrom("topic", "conditionals", mistakes(0), words(0), "advanced")).toEqual({
-      kind: "topic",
-      topic: "Conditionals",
-      level: "advanced",
-    });
+    expect(focusDataFrom("topic", "conditionals", mistakes(0), words(0), "advanced", null)).toEqual(
+      {
+        kind: "topic",
+        topic: "Conditionals",
+        level: "advanced",
+      },
+    );
   });
 
   it("sends a null level when none is set", () => {
-    expect(focusDataFrom("topic", "articles", mistakes(0), words(0), null)).toEqual({
+    expect(focusDataFrom("topic", "articles", mistakes(0), words(0), null, null)).toEqual({
       kind: "topic",
       topic: "Articles",
       level: null,
@@ -114,7 +121,7 @@ describe("roundRequest", () => {
   it("sends no name, goals, interests or chat text", () => {
     const request = roundRequest({
       ...base,
-      focus: focusDataFrom("words", null, mistakes(0), words(2), "beginner"),
+      focus: focusDataFrom("words", null, mistakes(0), words(2), "beginner", null),
     });
     const everything = `${request.system}\n${request.turns.map((turn) => turn.text).join("\n")}`;
     expect(everything).not.toContain("private sentence");
@@ -184,5 +191,90 @@ describe("gradeRequest", () => {
       accepted: ["I've never been to Japan."],
       answer: "I have never visited Japan.",
     });
+  });
+});
+
+describe("study notes", () => {
+  const draft = {
+    kind: "table" as const,
+    title: "Future forms",
+    topic: "Going to, will",
+    content: {
+      columns: ["Form", "When", "Example"] as [string, string, string],
+      rows: [["going to", "plans", "I'm going to study."]] as [string, string, string][],
+      remember: "Plans use going to.",
+    },
+  };
+  const item = {
+    rule: "Going to vs will",
+    prompt: "I ___ visit Rome next week.",
+    accepted: ["am going to", "'m going to"],
+    explanation: "Plans use going to.",
+  };
+
+  it("asks for one study note on the missed item's rule", () => {
+    const request = studyNoteRequest(item);
+    expect(request.system).toContain(RULE_STUDY_NOTE);
+    expect(request.system).toContain(NOTE_SHAPE);
+    expect(request.system).toContain(RULE_NO_KEY);
+    expect(userTurn(request)).toEqual({
+      rule: "Going to vs will",
+      prompt: "I ___ visit Rome next week.",
+      answer: "am going to",
+      explanation: "Plans use going to.",
+    });
+  });
+
+  it("sends no name, goals or chat text with a study note", () => {
+    const request = studyNoteRequest(item);
+    expect(Object.keys(userTurn(request)).sort()).toEqual([
+      "answer",
+      "explanation",
+      "prompt",
+      "rule",
+    ]);
+    expect(request.turns).toHaveLength(1);
+  });
+
+  it("sends an empty answer when the item accepts none", () => {
+    expect(userTurn(studyNoteRequest({ ...item, accepted: [] })).answer).toBe("");
+  });
+
+  it("sends the note's kind, title, topic and content as the focus of a note round", () => {
+    const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft);
+    expect(data).toEqual({ kind: "note", note: draft });
+    const request = roundRequest({ focus: data, count: 5, missedRules: [], language: null });
+    expect(userTurn(request)).toEqual({
+      focus: {
+        kind: "note",
+        note: {
+          kind: "table",
+          title: "Future forms",
+          topic: "Going to, will",
+          content: draft.content,
+        },
+      },
+      count: 5,
+    });
+  });
+
+  it("asks a note round to practice the rules of the note", () => {
+    const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft);
+    const note = roundRequest({ focus: data, count: 5, missedRules: [], language: null });
+    expect(note.system).toContain(RULE_PRACTICE_NOTE);
+    const other = roundRequest({
+      focus: focusDataFrom("mistakes", null, mistakes(1), words(0), null, null),
+      count: 5,
+      missedRules: [],
+      language: null,
+    });
+    expect(other.system).not.toContain(RULE_PRACTICE_NOTE);
+  });
+
+  it("uses the grammar rule line for a note round", () => {
+    const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft);
+    const note = roundRequest({ focus: data, count: 5, missedRules: [], language: null });
+    expect(note.system).toContain(RULE_PRACTICE_RULE);
+    expect(note.system).not.toContain(RULE_PRACTICE_RULE_WORDS);
   });
 });

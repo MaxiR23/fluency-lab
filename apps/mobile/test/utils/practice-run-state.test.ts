@@ -14,13 +14,14 @@
 // SEE: apps/mobile/src/utils/practice-run-state.ts
 
 import { describe, expect, it } from "@jest/globals";
-import type { MistakePage, MonthSpend, Profile, WordPage } from "@fluency-lab/shared";
+import type { MistakePage, MonthSpend, Profile, StudyNote, WordPage } from "@fluency-lab/shared";
 
 import type { DataOutcome } from "@/data/data-port";
 import type { KeyPresenceOutcome } from "@/keys/key-port";
 import type { PracticeOrigin } from "@/utils/practice-focus";
 
 import {
+  practiceNoteGoneMessage,
   practiceNotFoundMessage,
   practiceNotice,
   practiceRunView,
@@ -30,6 +31,7 @@ import { practiceStep } from "@/utils/practice-run";
 import {
   completedProfile,
   mistakeGroupWith,
+  noteWith,
   practiceItemWith,
   practiceTodayWith,
 } from "../helpers/fake-data";
@@ -64,6 +66,7 @@ const base: ViewInput = {
   opened: null,
   mistakes,
   words: null,
+  note: null,
   language: null,
 };
 
@@ -190,6 +193,64 @@ describe("practiceRunView", () => {
         missedRules: [],
         language: null,
       }),
+    });
+  });
+
+  describe("a note run", () => {
+    const noteRun: PracticeOrigin = {
+      kind: "new",
+      input: { focus: "note", noteId: "note-1", target: 5 },
+    };
+    const note: DataOutcome<StudyNote> = { ok: true, value: noteWith() };
+
+    it("starts a note run with the note as its focus data", () => {
+      const view = practiceRunView({ ...base, origin: noteRun, mistakes: null, note });
+      expect(view.kind === "ready" && view.run.focus).toEqual({
+        kind: "note",
+        note: {
+          kind: "table",
+          title: "Future forms",
+          topic: "Going to, will",
+          content: (noteWith() as Extract<StudyNote, { kind: "table" }>).content,
+        },
+      });
+    });
+
+    it("waits for the note read", () => {
+      expect(practiceRunView({ ...base, origin: noteRun, mistakes: null, note: null })).toEqual({
+        kind: "loading",
+      });
+    });
+
+    it("fails with the note's failure", () => {
+      expect(
+        practiceRunView({
+          ...base,
+          origin: noteRun,
+          mistakes: null,
+          note: { ok: false, failure: "network" },
+        }),
+      ).toMatchObject({ kind: "failed" });
+    });
+
+    it("fails with practiceNoteGoneMessage when the run's note was deleted", () => {
+      expect(
+        practiceRunView({
+          ...base,
+          origin: { kind: "resume", runId: "run-1" },
+          opened: {
+            ok: true,
+            value: practiceTodayWith([], { focus: "note", noteId: null }),
+          },
+          mistakes: null,
+          note: { ok: false, failure: "not_found" },
+        }),
+      ).toEqual({ kind: "failed", message: practiceNoteGoneMessage });
+      expect(practiceNoteGoneMessage).toBe("The note of this practice was deleted.");
+    });
+
+    it("needs no note for another focus", () => {
+      expect(practiceRunView({ ...base, note: null }).kind).toBe("ready");
     });
   });
 

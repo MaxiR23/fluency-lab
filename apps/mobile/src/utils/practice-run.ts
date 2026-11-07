@@ -10,22 +10,29 @@ import {
   type Profile,
   type Provider,
   type SessionUsage,
+  type StudyNoteCreate,
 } from "@fluency-lab/shared";
 
-import type { AnswerGrade, PracticeRound, TutorRequest } from "@/ai/ai-port";
+import type { AnswerGrade, PracticeRound, StudyNoteReply, TutorRequest } from "@/ai/ai-port";
 import { round8, sendState, usageWrite, withContext } from "@/utils/chat-conversation";
 import type { ContextEvent } from "@/utils/chat-conversation";
 import type { ChatFailure } from "@/utils/chat-failure";
 import { gradeChoice, localGrade } from "@/utils/practice-grade";
 import { keepGoingTarget, missedRules, practiceNext, roundSize } from "@/utils/practice-escalation";
 import type { PracticeOrigin } from "@/utils/practice-focus";
-import { gradeRequest, roundRequest, type FocusData } from "@/utils/practice-prompt";
+import {
+  gradeRequest,
+  roundRequest,
+  studyNoteRequest,
+  type FocusData,
+} from "@/utils/practice-prompt";
 import { splitGap } from "@/utils/practice-round";
 
 export type PracticeWrite =
   | { kind: "create"; input: PracticeRunCreate }
   | { kind: "items"; items: PracticeItemCreate[] }
   | { kind: "usage"; usage: SessionUsage }
+  | { kind: "note"; input: StudyNoteCreate }
   | { kind: "answer"; itemId: string; answer: PracticeAnswer }
   | { kind: "target"; target: 10 | 15 }
   | { kind: "finish" };
@@ -42,6 +49,10 @@ export type Feedback = {
   itemId: string;
 };
 
+// INFO: the study note asked for from a missed item: asking the tutor, saving the note, or failed
+// (the sheet stays and Try again asks again).
+export type NoteRequest = { itemId: string; status: "asking" | "saving" | "failed" };
+
 export type PracticeRunState = {
   origin: PracticeOrigin;
   run: PracticeRun | null;
@@ -52,6 +63,9 @@ export type PracticeRunState = {
   draft: string;
   picked: string | null;
   feedback: Feedback | null;
+  noteRequest: NoteRequest | null;
+  // INFO: the id of a note that was just saved, which the screen opens; cleared once opened.
+  openNote: string | null;
   phase: PracticePhase;
   writes: PracticeWrite[];
   failure: ChatFailure | null;
@@ -70,7 +84,13 @@ export type PracticeEvent =
   | { type: "grade_received"; grade: AnswerGrade }
   | { type: "grade_failed"; failure: ChatFailure; usage?: AnswerGrade["usage"] }
   // INFO: run follows a create, target or finish write; items follow an items write (every item of the run).
-  | { type: "write_done"; run?: PracticeRun; items?: PracticeItem[] }
+  | { type: "note_requested" }
+  | { type: "note_received"; note: StudyNoteReply }
+  // INFO: usage is present when the provider answered and billed a note that was not usable.
+  | { type: "note_failed"; failure: ChatFailure; usage?: StudyNoteReply["usage"] }
+  | { type: "note_opened" }
+  // INFO: noteId follows a note write.
+  | { type: "write_done"; run?: PracticeRun; items?: PracticeItem[]; noteId?: string }
   | { type: "write_failed"; failure: ChatFailure }
   | { type: "continue" }
   | { type: "keep_going" }
@@ -82,7 +102,8 @@ export type PracticeStep =
   | { kind: "none" }
   | { kind: "write"; write: PracticeWrite }
   | { kind: "round"; request: TutorRequest }
-  | { kind: "grade"; request: TutorRequest };
+  | { kind: "grade"; request: TutorRequest }
+  | { kind: "note"; request: TutorRequest };
 
 export type SegmentState = "done" | "missed" | "current" | "pending";
 
@@ -126,6 +147,8 @@ export function startPractice(input: {
     draft: "",
     picked: null,
     feedback: null,
+    noteRequest: null,
+    openNote: null,
     phase: "creating",
     writes:
       origin.kind === "new" && opened === null ? [{ kind: "create", input: origin.input }] : [],
@@ -238,6 +261,9 @@ function applyWrite(s: PracticeRunState, event: Extract<PracticeEvent, { type: "
     next = { ...next, run: event.run };
   }
   if (event.run !== undefined && done.kind === "target") next = { ...next, run: event.run };
+  if (event.noteId !== undefined && done.kind === "note") {
+    next = { ...next, openNote: event.noteId, noteRequest: null };
+  }
   if (event.items !== undefined && done.kind === "items") {
     next = { ...next, items: [...event.items].sort((a, b) => a.position - b.position) };
   }
@@ -318,9 +344,56 @@ export function practiceReducer(s: PracticeRunState, event: PracticeEvent): Prac
       return applyWrite(s, event);
     case "write_failed":
       return { ...s, failure: event.failure };
-    case "continue":
+    case "note_requested": {
+      const miss = s.feedback?.tone === "miss" && s.focus.kind !== "words";
+      const inFlight = s.noteRequest !== null && s.noteRequest.status !== "failed";
+      if (s.phase !== "feedback" || s.feedback === null || !miss || inFlight) return s;
+      if (sendState(s).locked) return s;
+      return {
+        ...s,
+        failure: null,
+        noteRequest: { itemId: s.feedback.itemId, status: "asking" },
+      };
+    }
+    case "note_received": {
+      if (s.noteRequest?.status !== "asking") return s;
+      const { note } = event;
+      return {
+        ...withCost(s, note.model, note.usage),
+        failure: null,
+        noteRequest: { ...s.noteRequest, status: "saving" },
+        writes: [
+          ...s.writes,
+          { kind: "note", input: { ...note.note, sessionId: null } },
+          { kind: "usage", usage: usageWrite(note.model, note.usage) },
+        ],
+        phase: "saving",
+      };
+    }
+    case "note_failed": {
+      if (s.noteRequest?.status !== "asking") return s;
+      return withUsageWrite(
+        { ...s, noteRequest: { ...s.noteRequest, status: "failed" } },
+        event.failure,
+        event.usage,
+      );
+    }
+    case "note_opened":
+      return { ...s, openNote: null };
+    case "continue": {
       if (s.phase !== "feedback") return s;
-      return settle({ ...s, feedback: null, picked: null, draft: "" });
+      // INFO: a note being asked for or saved holds the sheet; a failed one is dropped with its failure.
+      if (s.noteRequest !== null && s.noteRequest.status !== "failed") return s;
+      const failure = s.noteRequest === null ? s.failure : null;
+      return settle({
+        ...s,
+        feedback: null,
+        picked: null,
+        draft: "",
+        noteRequest: null,
+        failure,
+      });
+    }
     case "keep_going": {
       if (s.phase !== "result" || s.run === null || s.writes.length > 0) return s;
       if (practiceNext(s.items, s.run.target) !== "offer") return s;
@@ -338,6 +411,9 @@ export function practiceReducer(s: PracticeRunState, event: PracticeEvent): Prac
       return { ...s, writes: [{ kind: "finish" }], phase: "finishing" };
     case "retry": {
       if (s.failure === null) return s;
+      if (s.noteRequest?.status === "failed" && s.failure.source === "ai") {
+        return { ...s, failure: null, noteRequest: { ...s.noteRequest, status: "asking" } };
+      }
       const base = { ...s, failure: null };
       if (base.writes.length > 0) return base;
       const item = currentItem(base);
@@ -373,6 +449,10 @@ export function practiceStep(s: PracticeRunState): PracticeStep {
       }),
     };
   }
+  if (s.noteRequest?.status === "asking") {
+    const missed = s.items.find((entry) => entry.id === s.noteRequest?.itemId);
+    if (missed !== undefined) return { kind: "note", request: studyNoteRequest(missed) };
+  }
   const item = currentItem(s);
   if (s.phase === "grading" && item !== null) {
     return { kind: "grade", request: gradeRequest(item, s.draft.trim()) };
@@ -384,6 +464,20 @@ export function practiceStep(s: PracticeRunState): PracticeStep {
 // writes left resume without asking the tutor again.
 export function practiceRetryKind(s: PracticeRunState): "resend" | "resume" {
   return s.failure?.source === "ai" ? "resend" : "resume";
+}
+
+// INFO: what the miss sheet's "Make me a study note" shows; null when the sheet has none: a right
+// answer and a words run (notes are for grammar).
+export function noteAction(s: PracticeRunState): { busy: boolean; disabled: boolean } | null {
+  if (s.feedback === null || s.feedback.tone !== "miss" || s.focus.kind === "words") return null;
+  const inFlight = s.noteRequest !== null && s.noteRequest.status !== "failed";
+  return { busy: inFlight, disabled: sendState(s).locked };
+}
+
+// INFO: Continue is busy while the run saves and while the note is being asked for or saved.
+export function continueBusy(s: PracticeRunState): boolean {
+  const action = noteAction(s);
+  return s.phase === "saving" || (action !== null && action.busy);
 }
 
 export function runTarget(s: PracticeRunState): number {

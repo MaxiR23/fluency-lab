@@ -13,6 +13,9 @@ import {
   type SessionUsage,
   type SessionWithMessages,
   type StoredCorrection,
+  type StudyNote,
+  type StudyNoteCreate,
+  type StudyNoteDraft,
   type TokenUsage,
   type TopicId,
 } from "@fluency-lab/shared";
@@ -26,6 +29,7 @@ import {
   topicGreeting,
   type ChatOrigin,
 } from "@/utils/chat-opening";
+import { noteDraft } from "@/utils/note";
 import { spendLevel } from "@/utils/spend-limit";
 import { tutorPrompt } from "@/utils/tutor-prompt";
 import { replyTargetId, tutorTurns } from "@/utils/chat-reply";
@@ -36,6 +40,9 @@ export const MAX_MESSAGE_LENGTH = 4000;
 
 // INFO: the list id of the tutor's opening line, which a new chat writes before its first ask.
 export const OPENING_ID = "opening";
+
+// INFO: the note a tutor message came with; savedId is null until its write returns.
+export type ChatNote = { draft: StudyNoteDraft; savedId: string | null };
 
 export type ChatMessage = {
   id: string;
@@ -50,10 +57,13 @@ export type ChatMessage = {
   replyTo: string | null;
   // INFO: the id the database gave the message; null for a local one until its write returns.
   savedId: string | null;
+  note: ChatNote | null;
 };
 
 export type Write =
   | { kind: "message"; localId: string; input: MessageCreate }
+  // INFO: localId is the list id of the tutor message the note came with.
+  | { kind: "note"; localId: string; input: StudyNoteCreate }
   | { kind: "usage"; usage: SessionUsage };
 
 export type Learner = {
@@ -126,7 +136,17 @@ export type SendState = {
   notice: "unsupported" | "limit" | "warning" | null;
 };
 
-export function fromMessage(message: Message, threadReplies: number): ChatMessage {
+function noteOf(message: Message, notes: readonly StudyNote[]): ChatNote | null {
+  const found =
+    message.noteId === null ? undefined : notes.find((note) => note.id === message.noteId);
+  return found === undefined ? null : { draft: noteDraft(found), savedId: found.id };
+}
+
+export function fromMessage(
+  message: Message,
+  threadReplies: number,
+  notes: readonly StudyNote[],
+): ChatMessage {
   return {
     id: message.id,
     role: message.role,
@@ -137,6 +157,7 @@ export function fromMessage(message: Message, threadReplies: number): ChatMessag
     threadReplies,
     replyTo: message.replyToId,
     savedId: message.id,
+    note: noteOf(message, notes),
   };
 }
 
@@ -151,6 +172,7 @@ function localMessage(id: string, role: "user" | "tutor", text: string): ChatMes
     threadReplies: 0,
     replyTo: null,
     savedId: null,
+    note: null,
   };
 }
 
@@ -182,14 +204,14 @@ export function startConversation(input: {
     spentUsd: input.spentUsd,
   };
   if (origin.kind === "resume" && input.opened !== undefined) {
-    const { session, messages, threadReplies } = input.opened;
+    const { session, messages, threadReplies, notes } = input.opened;
     return {
       ...base,
       session,
       title: session.title,
       topicTitle: promptTopic(session),
       opening: openingOf(messages),
-      messages: messages.map((m) => fromMessage(m, countOf(threadReplies, m.id))),
+      messages: messages.map((m) => fromMessage(m, countOf(threadReplies, m.id), notes)),
     };
   }
   if (origin.kind === "topic") {
@@ -244,6 +266,7 @@ function replyWrites(
   reply: TutorReply,
   ids: { user: string; tutor: string },
   replyToId: string | null,
+  sessionId: string | null,
 ): Write[] {
   const user: MessageCreate = { role: "user", text: pending };
   if (replyToId !== null) user.replyToId = replyToId;
@@ -251,8 +274,14 @@ function replyWrites(
     user.corrections = { items: reply.corrections, explanation: reply.explanation };
   }
   if (reply.newWords.length > 0) user.newWords = reply.newWords;
+  // INFO: the note is saved first, so the tutor message can name it.
+  const note: Write[] =
+    reply.note === null
+      ? []
+      : [{ kind: "note", localId: ids.tutor, input: { ...reply.note, sessionId } }];
   return [
     messageWrite(user, ids.user),
+    ...note,
     messageWrite({ role: "tutor", text: reply.reply }, ids.tutor),
     { kind: "usage", usage: usageWrite(reply.model, reply.usage) },
   ];
@@ -344,14 +373,25 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
         threadReplies: 0,
         replyTo: c.pendingReplyTo,
         savedId: null,
+        note: null,
+      };
+      const tutor: ChatMessage = {
+        ...localMessage(`message-${id + 1}`, "tutor", reply.reply),
+        note: reply.note === null ? null : { draft: reply.note, savedId: null },
       };
       const ids = { user: `message-${id}`, tutor: `message-${id + 1}` };
       return {
         ...c,
-        messages: [...c.messages, user, localMessage(ids.tutor, "tutor", reply.reply)],
+        messages: [...c.messages, user, tutor],
         writes: [
           ...c.writes,
-          ...replyWrites(pending, reply, ids, replyTargetId(c.messages, c.pendingReplyTo)),
+          ...replyWrites(
+            pending,
+            reply,
+            ids,
+            replyTargetId(c.messages, c.pendingReplyTo),
+            c.session?.id ?? null,
+          ),
         ],
         spentUsd: round8(c.spentUsd + usageCostUsd(reply.model, reply.usage)),
         pending: null,
@@ -381,8 +421,26 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
       };
     }
     case "write_done": {
-      const [done, ...writes] = c.writes;
+      const [done, ...rest] = c.writes;
       const saved = event.savedId;
+      if (saved !== undefined && done?.kind === "note") {
+        // INFO: the saved note's id goes to its tutor message and to the message's queued write.
+        const writes = rest.map((w) =>
+          w.kind === "message" && w.localId === done.localId
+            ? { ...w, input: { ...w.input, noteId: saved } }
+            : w,
+        );
+        return {
+          ...c,
+          messages: c.messages.map((m) =>
+            m.id === done.localId && m.note !== null
+              ? { ...m, note: { ...m.note, savedId: saved } }
+              : m,
+          ),
+          writes,
+          phase: writes.length === 0 && c.phase === "saving" ? "idle" : c.phase,
+        };
+      }
       const messages =
         saved !== undefined && done?.kind === "message"
           ? c.messages.map((m) => (m.id === done.localId ? { ...m, savedId: saved } : m))
@@ -390,8 +448,8 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
       return {
         ...c,
         messages,
-        writes,
-        phase: writes.length === 0 && c.phase === "saving" ? "idle" : c.phase,
+        writes: rest,
+        phase: rest.length === 0 && c.phase === "saving" ? "idle" : c.phase,
       };
     }
     case "write_failed":
@@ -424,6 +482,7 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
             corrections: message.corrections?.items ?? [],
             explanation: message.corrections?.explanation ?? null,
             threadReplies: countOf(event.opened.threadReplies, message.id),
+            note: noteOf(message, event.opened.notes),
           };
         }),
       };

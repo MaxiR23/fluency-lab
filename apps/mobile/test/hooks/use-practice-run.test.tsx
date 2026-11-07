@@ -7,6 +7,7 @@
 // - A new run is created, the first round is asked with the focus data only, and its items and usage are saved
 // - A right pick and a typed match are answered with no tutor call; a typed miss asks the tutor
 // - A billed AI failure saves its usage; an AI failure resends and a write failure resumes
+// - A note run reads its note and sends it in the round call; a missed exercise makes a study note, saves it with no session, adds its usage to the run and opens it
 // - Keep going, finish and stop; update key
 // - Regaining focus re-reads the context
 //
@@ -23,7 +24,7 @@ import { router, useIsFocused } from "expo-router";
 
 import { usePracticeRun } from "@/hooks/use-practice-run";
 import { dataFailureMessage } from "@/utils/data-message";
-import { practiceNotFoundMessage } from "@/utils/practice-run-state";
+import { practiceNoteGoneMessage, practiceNotFoundMessage } from "@/utils/practice-run-state";
 import type { PracticeOrigin } from "@/utils/practice-focus";
 import {
   answerGradeWith,
@@ -31,6 +32,7 @@ import {
   fakeAi,
   practiceRoundWith,
   resetFakeAi,
+  studyNoteReplyWith,
 } from "../helpers/fake-ai";
 import {
   fakeData,
@@ -476,5 +478,120 @@ describe("usePracticeRun", () => {
     await rerender({});
     await waitFor(() => expect(ready(result).spentUsd).toBe(3));
     expect(ready(result).items).toHaveLength(5);
+  });
+});
+
+describe("usePracticeRun with study notes", () => {
+  beforeEach(() => {
+    resetFakeData();
+    resetFakeKeys();
+    resetFakeAi();
+    jest.mocked(useIsFocused).mockReturnValue(true);
+    jest.mocked(router.push).mockClear();
+    jest.mocked(router.dismissTo).mockClear();
+  });
+
+  const noteRun: PracticeOrigin = {
+    kind: "new",
+    input: { focus: "note", noteId: "note-1", target: 5 },
+  };
+
+  it("reads the note of a note run and sends it in the round call", async () => {
+    withKey();
+    const { result } = await renderHook(() => usePracticeRun(noteRun));
+    await waitFor(() => expect(ready(result).phase).toBe("answering"));
+    expect(fakeData.getNote).toHaveBeenCalledWith("note-1");
+    expect(fakeData.createPracticeRun).toHaveBeenCalledWith({
+      focus: "note",
+      noteId: "note-1",
+      target: 5,
+    });
+    const turn = fakeAi.practiceRound.mock.calls[0]?.[0].turns[0]?.text ?? "";
+    const sent = JSON.parse(turn) as { focus: { kind: string; note: { title: string } } };
+    expect(sent.focus.kind).toBe("note");
+    expect(sent.focus.note.title).toBe("Future forms");
+    expect(turn).toContain("going to");
+    expect(turn).not.toContain("note-1");
+  });
+
+  it("reads the note of a resumed note run", async () => {
+    withKey();
+    fakeData.openPracticeRun.mockResolvedValue({
+      ok: true,
+      value: practiceTodayWith([practiceItemWith()], { focus: "note", noteId: "note-1" }),
+    });
+    const { result } = await renderHook(() => usePracticeRun({ kind: "resume", runId: "run-1" }));
+    await waitFor(() => expect(ready(result).phase).toBe("answering"));
+    expect(fakeData.getNote).toHaveBeenCalledWith("note-1");
+  });
+
+  it("fails when the note of a resumed run was deleted", async () => {
+    withKey();
+    fakeData.openPracticeRun.mockResolvedValue({
+      ok: true,
+      value: practiceTodayWith([practiceItemWith()], { focus: "note", noteId: null }),
+    });
+    const { result } = await renderHook(() => usePracticeRun({ kind: "resume", runId: "run-1" }));
+    await waitFor(() =>
+      expect(result.current.view).toEqual({ kind: "failed", message: practiceNoteGoneMessage }),
+    );
+    expect(fakeData.getNote).not.toHaveBeenCalled();
+  });
+
+  async function onMissSheet() {
+    withKey();
+    const hook = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(ready(hook.result).phase).toBe("answering"));
+    await act(async () => hook.result.current.pick("was"));
+    await waitFor(() => expect(ready(hook.result).phase).toBe("feedback"));
+    return hook.result;
+  }
+
+  it("makes a study note, saves it with no session, adds its usage to the run and opens it", async () => {
+    const result = await onMissSheet();
+    fakeData.addPracticeUsage.mockClear();
+    const reply = studyNoteReplyWith();
+    fakeAi.studyNote.mockResolvedValue({ ok: true, value: reply });
+    await act(async () => result.current.makeNote());
+    expect(fakeAi.studyNote).toHaveBeenCalledTimes(1);
+    expect(fakeData.createNote).toHaveBeenCalledWith({ ...reply.note, sessionId: null });
+    expect(fakeData.addPracticeUsage).toHaveBeenCalledWith("run-1", {
+      model: reply.model,
+      ...reply.usage,
+    });
+    expect(router.push).toHaveBeenCalledWith({ pathname: "/note", params: { id: "note-1" } });
+    expect(ready(result).feedback?.tone).toBe("miss");
+    expect(ready(result).openNote).toBeNull();
+  });
+
+  it("stays on the sheet when the note save fails", async () => {
+    const result = await onMissSheet();
+    fakeData.createNote.mockResolvedValue({ ok: false, failure: "network" });
+    await act(async () => result.current.makeNote());
+    expect(router.push).not.toHaveBeenCalled();
+    expect(ready(result).failure).toMatchObject({ source: "data", failure: "network" });
+    expect(ready(result).feedback).not.toBeNull();
+  });
+
+  it("stays on the sheet and shows the failure when the tutor fails", async () => {
+    const result = await onMissSheet();
+    fakeAi.studyNote.mockResolvedValue({ ok: false, failure: "rate_limited" });
+    await act(async () => result.current.makeNote());
+    expect(router.push).not.toHaveBeenCalled();
+    expect(ready(result).failure).toMatchObject({ source: "ai", failure: "rate_limited" });
+    expect(fakeData.createNote).not.toHaveBeenCalled();
+  });
+
+  it("saves the usage of a billed note failure", async () => {
+    const result = await onMissSheet();
+    fakeData.addPracticeUsage.mockClear();
+    fakeAi.studyNote.mockResolvedValue({
+      ok: false,
+      failure: "bad_response",
+      usage: studyNoteReplyWith().usage,
+    });
+    await act(async () => result.current.makeNote());
+    expect(fakeData.addPracticeUsage).toHaveBeenCalledTimes(1);
+    expect(router.push).not.toHaveBeenCalled();
   });
 });

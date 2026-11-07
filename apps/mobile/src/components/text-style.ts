@@ -67,7 +67,9 @@ export type TextVariant =
   | "sheetTitle"
   | "score"
   | "resultTitle"
-  | "row";
+  | "row"
+  | "noteLead"
+  | "cell";
 
 const variants: Record<TextVariant, TextStyle> = {
   title: {
@@ -346,6 +348,18 @@ const variants: Record<TextVariant, TextStyle> = {
     color: colors.textPlaceholder,
     lineHeight: lineHeight.small,
     textDecorationLine: "line-through",
+  },
+  noteLead: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.caption,
+    color: colors.accent,
+    lineHeight: lineHeight.explanation,
+  },
+  cell: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.caption,
+    color: colors.text,
+    lineHeight: lineHeight.explanation,
   },
   eyebrow: {
     fontFamily: fontFamily.semibold,

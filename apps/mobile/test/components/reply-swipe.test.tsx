@@ -17,13 +17,24 @@
 
 import { describe, expect, it, jest } from "@jest/globals";
 import { act, render, screen } from "@testing-library/react-native";
-import { StyleSheet, Text, processColor } from "react-native";
+import { StyleSheet, Text, processColor, type ViewStyle } from "react-native";
 import { GestureHandlerRootView, State } from "react-native-gesture-handler";
 import { fireGestureHandler, getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 
 import { ReplySwipe } from "@/components/reply-swipe";
 import { borderWidth, colors, motion, radius, size } from "@/constants/theme";
 import { chatMotion } from "@/utils/chat-motion";
+
+// Walks up from a node to the first ancestor that sets a maxWidth: the bubble row.
+type Host = { props: { style?: unknown }; parent: Host | null };
+
+function rowWidth(node: Host | null) {
+  for (let at = node; at !== null; at = at.parent) {
+    const width = StyleSheet.flatten(at.props.style as ViewStyle | undefined)?.maxWidth;
+    if (width !== undefined) return width;
+  }
+  return undefined;
+}
 
 function swipe(props: Partial<React.ComponentProps<typeof ReplySwipe>> = {}) {
   return (
@@ -130,6 +141,14 @@ describe("ReplySwipe", () => {
     const stroke = `"stroke":{"type":0,"payload":${String(processColor(colors.accent))}}`;
     expect(screen.getByTestId("icon-reply", { includeHiddenElements: true })).toBeTruthy();
     expect(JSON.stringify(screen.toJSON())).toContain(stroke);
+  });
+
+  it("draws the row at the plain width, and wider with a note", async () => {
+    const { rerender } = await render(swipe());
+    const row = () => rowWidth(screen.getByText("Where did you go?"));
+    expect(row()).toBe(size.messageMaxWidth);
+    await rerender(swipe({ note: true }));
+    expect(row()).toBe(size.messageNoteMaxWidth);
   });
 
   it("draws its child", async () => {

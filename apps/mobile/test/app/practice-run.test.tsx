@@ -12,6 +12,7 @@
 // - A typed match is graded with no tutor call; a typed miss asks the tutor and shows its explanation
 // - The result: the offer at 5 with a miss, Keep going asking a round, Finish for today going Home, no offer at 15
 // - The 100% limit locks answering, the 80% warning keeps going, an invalid key offers Update key
+// - The study note: Make me a study note on a miss, opening the saved note, hidden on a right answer and in a words run, its failures
 // - Stop goes Home
 //
 // What is covered:
@@ -271,6 +272,80 @@ describe("Practice run", () => {
     expect(within(screen.getByTestId("feedback-sheet")).getByText(/have been/)).toBeTruthy();
     expect(fakeHaptics.play).toHaveBeenCalledWith("miss");
     expect(fakeHaptics.play).toHaveBeenCalledTimes(1);
+  });
+
+  describe("the study note", () => {
+    it("shows Make me a study note on a miss and opens the saved note", async () => {
+      withKey();
+      await renderAppAt(start, fakeSession());
+      await fireEvent.press(screen.getByRole("button", { name: "was" }));
+      await fireEvent.press(screen.getByRole("button", { name: "Make me a study note" }));
+
+      expect(fakeAi.studyNote).toHaveBeenCalledTimes(1);
+      expect(fakeData.createNote).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: null, kind: "table", title: "Future forms" }),
+      );
+      expect(fakeData.addPracticeUsage).toHaveBeenCalledTimes(2);
+      expect(screen).toHavePathname("/note");
+      expect(screen).toHaveSearchParams({ id: "note-1" });
+      expect(await screen.findByRole("header", { name: "Future forms" })).toBeTruthy();
+    });
+
+    it("goes back to the same miss sheet from the note", async () => {
+      withKey();
+      await renderAppAt(start, fakeSession());
+      await fireEvent.press(screen.getByRole("button", { name: "was" }));
+      await fireEvent.press(screen.getByRole("button", { name: "Make me a study note" }));
+      await screen.findByRole("header", { name: "Future forms" });
+      await fireEvent.press(screen.getByRole("button", { name: "Back" }));
+
+      expect(screen).toHavePathname("/practice-run");
+      expect(screen.getByText("Not quite")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Make me a study note" })).toBeTruthy();
+    });
+
+    it("does not show it on a right answer", async () => {
+      withKey();
+      await renderAppAt(start, fakeSession());
+      await fireEvent.press(screen.getByRole("button", { name: "have been" }));
+      expect(screen.getByText("Nice one!")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Make me a study note" })).toBeNull();
+    });
+
+    it("does not show it in a words run", async () => {
+      withKey();
+      await renderAppAt({ pathname: "/practice-run", params: { focus: "words" } }, fakeSession());
+      await fireEvent.press(screen.getByRole("button", { name: "was" }));
+      expect(screen.getByText("Not quite")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Make me a study note" })).toBeNull();
+    });
+
+    it("shows the note failure with Try again and asks again", async () => {
+      withKey();
+      fakeAi.studyNote.mockResolvedValueOnce({ ok: false, failure: "rate_limited" });
+      await renderAppAt(start, fakeSession());
+      await fireEvent.press(screen.getByRole("button", { name: "was" }));
+      await fireEvent.press(screen.getByRole("button", { name: "Make me a study note" }));
+
+      expect(screen.getByText("Not quite")).toBeTruthy();
+      expect(screen).toHavePathname("/practice-run");
+      await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+
+      expect(fakeAi.studyNote).toHaveBeenCalledTimes(2);
+      expect(screen).toHavePathname("/note");
+    });
+
+    it("keeps the sheet and shows the failure when the note cannot be saved", async () => {
+      withKey();
+      fakeData.createNote.mockResolvedValue({ ok: false, failure: "network" });
+      await renderAppAt(start, fakeSession());
+      await fireEvent.press(screen.getByRole("button", { name: "was" }));
+      await fireEvent.press(screen.getByRole("button", { name: "Make me a study note" }));
+
+      expect(screen).toHavePathname("/practice-run");
+      expect(screen.getByText("Not quite")).toBeTruthy();
+      expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    });
   });
 
   it("goes on to the next exercise on Continue", async () => {

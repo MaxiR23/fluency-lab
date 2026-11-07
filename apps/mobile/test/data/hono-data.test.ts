@@ -14,6 +14,7 @@
 // - getMonthProgress, listHistory, listMistakes and listWords
 // - The practice calls: getTodayPractice, createPracticeRun, openPracticeRun, addPracticeItems,
 //   answerPracticeItem, addPracticeUsage, setPracticeTarget and finishPracticeRun
+// - The note calls: createNote, getNote, deleteNote and listNotes (createNote, getNote and deleteNote have no expected empty: a note exists or is not_found)
 // - openThread, addThreadMessage and withdrawCorrections; openSession carries the thread reply counts
 //
 // What is covered:
@@ -64,6 +65,23 @@ const message = {
   corrections: null,
   newWords: null,
   replyToId: null,
+  noteId: null,
+  createdAt: stamp,
+};
+
+const noteContent = {
+  columns: ["Form", "When", "Example"],
+  rows: [["going to", "plans", "I'm going to study."]],
+  remember: "Plans use going to.",
+};
+const storedNote = {
+  id,
+  kind: "table",
+  title: "Future forms",
+  topic: "Going to, will",
+  sessionId: id,
+  sessionTitle: "Free chat",
+  content: noteContent,
   createdAt: stamp,
 };
 
@@ -400,21 +418,23 @@ describe("createSession with a starter", () => {
 
 describe("openSession", () => {
   it("returns the session and its messages", async () => {
-    const { data, seen } = setup(reply({ session, messages: [message], threadReplies: [] }));
+    const { data, seen } = setup(
+      reply({ session, messages: [message], threadReplies: [], notes: [] }),
+    );
 
     expect(await data.openSession(id)).toEqual({
       ok: true,
-      value: { session, messages: [message], threadReplies: [] },
+      value: { session, messages: [message], threadReplies: [], notes: [] },
     });
     expect(seen[0].method).toBe("GET");
     expect(seen[0].url).toBe(`http://api.test/sessions/${id}/messages`);
   });
 
   it("returns a session with no messages as a success", async () => {
-    const { data } = setup(reply({ session, messages: [], threadReplies: [] }));
+    const { data } = setup(reply({ session, messages: [], threadReplies: [], notes: [] }));
     expect(await data.openSession(id)).toEqual({
       ok: true,
-      value: { session, messages: [], threadReplies: [] },
+      value: { session, messages: [], threadReplies: [], notes: [] },
     });
   });
 
@@ -424,20 +444,34 @@ describe("openSession", () => {
       corrections: { items: [{ original: "a", corrected: "b" }], explanation: "Because." },
       newWords: ["word"],
     };
-    const { data } = setup(reply({ session, messages: [saved], threadReplies: [] }));
+    const { data } = setup(reply({ session, messages: [saved], threadReplies: [], notes: [] }));
     expect(await data.openSession(id)).toEqual({
       ok: true,
-      value: { session, messages: [saved], threadReplies: [] },
+      value: { session, messages: [saved], threadReplies: [], notes: [] },
     });
   });
 
   it("returns the thread reply counts and no counts as a success", async () => {
     const counts = [{ messageId: id, count: 2 }];
-    const { data } = setup(reply({ session, messages: [message], threadReplies: counts }));
+    const { data } = setup(
+      reply({ session, messages: [message], threadReplies: counts, notes: [] }),
+    );
     expect(await data.openSession(id)).toMatchObject({
       ok: true,
-      value: { threadReplies: counts },
+      value: { threadReplies: counts, notes: [] },
     });
+  });
+
+  it("returns the notes saved in the session", async () => {
+    const { data } = setup(
+      reply({ session, messages: [message], threadReplies: [], notes: [storedNote] }),
+    );
+    expect(await data.openSession(id)).toMatchObject({ ok: true, value: { notes: [storedNote] } });
+  });
+
+  it("returns bad_response when the notes are missing", async () => {
+    const { data } = setup(reply({ session, messages: [], threadReplies: [] }));
+    expect(await data.openSession(id)).toEqual({ ok: false, failure: "bad_response" });
   });
 
   it("returns bad_response when the thread reply counts are missing", async () => {
@@ -1142,6 +1176,7 @@ describe("the practice calls", () => {
     id: runId,
     focus: "mistakes",
     topicId: null,
+    noteId: null,
     target: 5,
     costUsd: 0,
     createdAt: stamp,
@@ -1339,4 +1374,109 @@ describe("the practice calls", () => {
       value: { finishedAt: stamp },
     });
   });
+});
+
+describe("the note calls", () => {
+  const draft = {
+    kind: "table" as const,
+    title: "Future forms",
+    topic: "Going to, will",
+    sessionId: id,
+    content: {
+      columns: ["Form", "When", "Example"] as [string, string, string],
+      rows: [["going to", "plans", "I'm going to study."]] as [string, string, string][],
+      remember: "Plans use going to.",
+    },
+  };
+  const page = {
+    items: [
+      { id, kind: "table", title: "Future forms", topic: "Going to, will", day: "2026-11-05" },
+    ],
+    nextOffset: 20,
+    today: "2026-11-07",
+  };
+  const empty = { items: [], nextOffset: null, today: "2026-11-07" };
+
+  async function hang(call: (data: DataPort) => Promise<unknown>) {
+    const never = jest.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const data = createHonoData({
+      baseUrl: "http://api.test",
+      fetchFn: never as unknown as typeof fetch,
+      readToken: async () => ({ ok: true, token: "token-1" }),
+      timeoutMs: 20,
+    });
+    return call(data);
+  }
+
+  const calls: { name: string; run: (data: DataPort) => Promise<unknown>; body: unknown }[] = [
+    { name: "createNote", run: (data) => data.createNote(draft), body: storedNote },
+    { name: "getNote", run: (data) => data.getNote(id), body: storedNote },
+    { name: "deleteNote", run: (data) => data.deleteNote(id), body: { id } },
+    { name: "listNotes", run: (data) => data.listNotes("UTC", 0), body: page },
+  ];
+
+  it("posts the note to /notes and returns the stored note", async () => {
+    const { data, seen } = setup(reply(storedNote, 201));
+    expect(await data.createNote(draft)).toEqual({ ok: true, value: storedNote });
+    expect(seen[0].method).toBe("POST");
+    expect(seen[0].url).toBe("http://api.test/notes");
+    expect(JSON.parse(seen[0].body ?? "null")).toEqual(draft);
+  });
+
+  it("reads a note from /notes/:id", async () => {
+    const { data, seen } = setup(reply(storedNote));
+    expect(await data.getNote(id)).toEqual({ ok: true, value: storedNote });
+    expect(seen[0].method).toBe("GET");
+    expect(seen[0].url).toBe(`http://api.test/notes/${id}`);
+  });
+
+  it("deletes a note at /notes/:id and returns its id", async () => {
+    const { data, seen } = setup(reply({ id }));
+    expect(await data.deleteNote(id)).toEqual({ ok: true, value: { id } });
+    expect(seen[0].method).toBe("DELETE");
+    expect(seen[0].url).toBe(`http://api.test/notes/${id}`);
+  });
+
+  it("sends the zone and the offset and returns the page of notes", async () => {
+    const { data, seen } = setup(reply(page));
+    expect(await data.listNotes("UTC", 20)).toEqual({ ok: true, value: page });
+    expect(seen[0].url).toBe("http://api.test/progress/notes?tz=UTC&offset=20");
+    expect(seen[0].method).toBe("GET");
+  });
+
+  it("returns an empty page of notes as a success", async () => {
+    const { data } = setup(reply(empty));
+    expect(await data.listNotes("UTC", 0)).toEqual({ ok: true, value: empty });
+  });
+
+  for (const call of calls) {
+    it(`${call.name} returns not_found on 404`, async () => {
+      const { data } = setup(reply({ error: "not_found" }, 404));
+      expect(await call.run(data)).toEqual({ ok: false, failure: "not_found" });
+    });
+
+    it(`${call.name} returns unauthorized on 401`, async () => {
+      const { data } = setup(reply({ error: "unauthorized" }, 401));
+      expect(await call.run(data)).toEqual({ ok: false, failure: "unauthorized" });
+    });
+
+    it(`${call.name} returns network when the fetch rejects`, async () => {
+      const { data } = setup(new TypeError("network down"));
+      expect(await call.run(data)).toEqual({ ok: false, failure: "network" });
+    });
+
+    it(`${call.name} returns network on a timeout`, async () => {
+      expect(await hang(call.run)).toEqual({ ok: false, failure: "network" });
+    });
+
+    it(`${call.name} returns bad_response for a body of the wrong shape`, async () => {
+      const { data } = setup(reply({ nope: true }));
+      expect(await call.run(data)).toEqual({ ok: false, failure: "bad_response" });
+    });
+  }
 });

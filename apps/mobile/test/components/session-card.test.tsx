@@ -70,4 +70,24 @@ describe("SessionCard", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Weekend plans" }));
     expect(onPress).toHaveBeenCalledTimes(1);
   });
+
+  it("draws the time after the texts and none in the title row when placed at the end", async () => {
+    await render(<SessionCard {...card} timePlacement="end" onPress={jest.fn()} />);
+    expect(screen.getByText("Weekend plans").parent?.children).toHaveLength(1);
+    const time = screen.getByText("Nov 5");
+    expect(time).toBeTruthy();
+    expect(time.parent).not.toBe(screen.getByText("Weekend plans").parent);
+  });
+
+  it("keeps the time in the title row by default", async () => {
+    await render(<SessionCard {...card} onPress={jest.fn()} />);
+    expect(screen.getByText("Weekend plans").parent?.children).toHaveLength(2);
+  });
+
+  it("draws the icon at the size it is given", async () => {
+    await render(<SessionCard {...card} iconSize={18} onPress={jest.fn()} />);
+    const icon = screen.getByTestId("icon-chat", { includeHiddenElements: true });
+    expect(icon.props.width).toBe(18);
+    expect(icon.props.height).toBe(18);
+  });
 });

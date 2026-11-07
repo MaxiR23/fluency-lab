@@ -58,6 +58,7 @@ function opened(overrides: Partial<CorrectionThread["message"]> = {}): {
         sessionId: "s1",
         role: "user",
         text: "I never been",
+        noteId: null,
         corrections: {
           items: [{ original: "I never been", corrected: "I've never been" }],
           explanation: null,

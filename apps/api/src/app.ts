@@ -2,6 +2,7 @@ import {
   messageCreateSchema,
   messageIdParamSchema,
   mistakesQuerySchema,
+  noteIdParamSchema,
   practiceAnswerSchema,
   practiceItemIdParamSchema,
   practiceItemsCreateSchema,
@@ -15,6 +16,7 @@ import {
   sessionTitle,
   sessionUsageSchema,
   starterById,
+  studyNoteCreateSchema,
   threadMessageCreateSchema,
   usageCostUsd,
   weekQuerySchema,
@@ -30,7 +32,7 @@ import { requireAuth, readBearerToken, readTokenUser, type AuthConfig } from "./
 import { MONTH_LOOKBACK_MS, currentMonthStart, monthSpend } from "./month";
 import type { Caller, Store, StoreFailure } from "./store";
 import { PRACTICE_LOOKBACK_MS, todayRun } from "./practice";
-import { PAGE_SIZE, historyItem, mistakeGroup, pageOf, wordItem } from "./progress";
+import { PAGE_SIZE, historyItem, mistakeGroup, noteItem, pageOf, wordItem } from "./progress";
 import { dayStreak } from "./streak";
 import { sessionSummary } from "./summary";
 import { WEEK_LOOKBACK_MS, currentWeek, isTimeZone, sessionDays } from "./week";
@@ -217,6 +219,84 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
         );
       },
     )
+    .get(
+      "/progress/notes",
+      auth,
+      caller,
+      zValidator(
+        "query",
+        progressPageQuerySchema.refine((query) => isTimeZone(query.tz)),
+        invalidInput,
+      ),
+      async (c) => {
+        const { tz, offset = 0 } = c.req.valid("query");
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .listNotes(offset, PAGE_SIZE + 1);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        const page = pageOf(outcome.value, offset);
+        return c.json(
+          {
+            items: page.items.map((row) => noteItem(row, tz)),
+            nextOffset: page.nextOffset,
+            today: currentWeek(now(), tz).today,
+          },
+          200,
+        );
+      },
+    )
+    .post(
+      "/notes",
+      auth,
+      caller,
+      zValidator("json", studyNoteCreateSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store.forUser(c.get("caller")).createNote(c.req.valid("json"));
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 201);
+      },
+    )
+    .get(
+      "/notes/:id",
+      auth,
+      caller,
+      zValidator("param", noteIdParamSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .getNote(c.req.valid("param").id);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
+      },
+    )
+    .delete(
+      "/notes/:id",
+      auth,
+      caller,
+      zValidator("param", noteIdParamSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .deleteNote(c.req.valid("param").id);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
+      },
+    )
     .delete("/account", auth, caller, async (c) => {
       const outcome = await config.store.forUser(c.get("caller")).deleteAccount();
       if (!outcome.ok) {
@@ -331,7 +411,14 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
           const { status, body } = failureResponse(counts.failure);
           return c.json(body, status);
         }
-        return c.json({ ...outcome.value, threadReplies: counts.value }, 200);
+        const notes = await config.store
+          .forUser(c.get("caller"))
+          .listSessionNotes(c.req.valid("param").id);
+        if (!notes.ok) {
+          const { status, body } = failureResponse(notes.failure);
+          return c.json(body, status);
+        }
+        return c.json({ ...outcome.value, threadReplies: counts.value, notes: notes.value }, 200);
       },
     )
     .get(
@@ -495,6 +582,7 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
           const { status, body } = failureResponse(outcome.failure);
           return c.json(body, status);
         }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
         return c.json(outcome.value, 201);
       },
     )
