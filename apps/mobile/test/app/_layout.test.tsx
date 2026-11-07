@@ -5,6 +5,7 @@
 // Tested:
 // - The splash stays until the fonts settle and the session loads
 // - The stack renders only after that, with the guarded screens
+// - The launch failure with Try again when the session cannot be restored, and the retry
 // - The faces are loaded under the names the theme uses
 // - The root view background is set to the background token when the module loads
 // - The tree is wrapped in a ThemeProvider with the token dark theme
@@ -18,8 +19,8 @@
 //
 // SEE: apps/mobile/src/app/_layout.tsx
 
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { act, render, screen } from "@testing-library/react-native";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { useFonts } from "expo-font";
 import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -29,7 +30,8 @@ import type { ReactNode } from "react";
 import RootLayout from "@/app/_layout";
 import { colors, fontFamily } from "@/constants/theme";
 import { darkNavigationTheme } from "@/utils/navigation-theme";
-import { emitSession, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
+import { RESTORE_TIMEOUT_MS } from "@/utils/session-state";
+import { emitSession, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { resetFakeData } from "../helpers/fake-data";
 import { fakeHapticsSetting } from "../helpers/fake-haptics";
 
@@ -156,5 +158,56 @@ describe("RootLayout", () => {
     await render(<RootLayout />);
     await act(async () => emitSession(null));
     expect(fakeHapticsSetting.read).toHaveBeenCalledTimes(1);
+  });
+
+  describe("when the session cannot be restored", () => {
+    const unreachable = "Could not reach the server. Check your connection and try again.";
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("draws the failure with Try again and hides the splash when the restore fails", async () => {
+      jest.mocked(useFonts).mockReturnValue([true, null]);
+      fakeAuth.currentSession.mockResolvedValue({ ok: false, failure: "network" });
+      await render(<RootLayout />);
+      expect(screen.getByText(unreachable)).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+      expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
+      expect(Stack).not.toHaveBeenCalled();
+    });
+
+    it("draws the failure when the restore does not settle before the deadline, never a blank screen", async () => {
+      jest.useFakeTimers();
+      jest.mocked(useFonts).mockReturnValue([true, null]);
+      await render(<RootLayout />);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(RESTORE_TIMEOUT_MS);
+      });
+      expect(screen.getByText(unreachable)).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+      expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
+      expect(Stack).not.toHaveBeenCalled();
+    });
+
+    it("renders the stack after Try again restores the session", async () => {
+      jest.mocked(useFonts).mockReturnValue([true, null]);
+      fakeAuth.currentSession.mockResolvedValueOnce({ ok: false, failure: "network" });
+      await render(<RootLayout />);
+      fakeAuth.currentSession.mockResolvedValueOnce({ ok: true, value: null });
+      await act(async () => {
+        fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+      });
+      expect(Stack).toHaveBeenCalled();
+      expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the splash while the fonts load even when the restore failed", async () => {
+      jest.mocked(useFonts).mockReturnValue([false, null]);
+      fakeAuth.currentSession.mockResolvedValue({ ok: false, failure: "network" });
+      await render(<RootLayout />);
+      expect(screen.queryByText(unreachable)).toBeNull();
+      expect(SplashScreen.hide).not.toHaveBeenCalled();
+    });
   });
 });

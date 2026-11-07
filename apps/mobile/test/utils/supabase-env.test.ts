@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The Supabase variables are read, and a missing one fails at load
+// - The url takes Metro's host when one is given
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -46,5 +47,28 @@ describe("readSupabaseEnv", () => {
     expect(() => readSupabaseEnv({ url: "http://secret-host:1", publishableKey: " " })).toThrow(
       /^((?!secret-host).)*$/,
     );
+  });
+
+  it("puts the given host in the url and keeps its port", () => {
+    expect(
+      readSupabaseEnv({
+        url: "http://192.168.1.88:54321",
+        publishableKey: "key-1",
+        host: "192.168.1.89",
+      }),
+    ).toEqual({ url: "http://192.168.1.89:54321", publishableKey: "key-1" });
+  });
+
+  it("keeps the url as it is without a host", () => {
+    expect(
+      readSupabaseEnv({ url: "http://192.168.1.88:54321", publishableKey: "key-1", host: null })
+        .url,
+    ).toBe("http://192.168.1.88:54321");
+  });
+
+  it("still throws for a missing url when a host is given", () => {
+    expect(() =>
+      readSupabaseEnv({ url: undefined, publishableKey: "key-1", host: "192.168.1.89" }),
+    ).toThrow("EXPO_PUBLIC_SUPABASE_URL");
   });
 });

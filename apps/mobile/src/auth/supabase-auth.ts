@@ -8,6 +8,7 @@ import type {
 } from "@/auth/auth-port";
 import { describeAuthCause, toAuthFailure } from "@/utils/auth-error";
 import { toAuthSession } from "@/utils/auth-session";
+import { DEADLINE, withinDeadline } from "@/utils/deadline";
 
 type LibError = { name: string; code?: string; message?: string } | null;
 type LibSession = { access_token: string; user: { id: string; email?: string } };
@@ -179,11 +180,30 @@ export function createSupabaseAuth(client: SupabaseAuthClient): AuthPort {
       }),
     currentSession: () => guarded(async () => fromOptionalSessionResult(await client.getSession())),
     onSessionChange(listener) {
-      const { data } = client.onAuthStateChange((_event, session) => {
+      const { data } = client.onAuthStateChange((event, session) => {
+        // INFO: the first event is null both for no session and for a refresh that could not
+        // reach the server; the launch reads currentSession instead.
+        if (event === "INITIAL_SESSION") return;
         listener(session === null ? null : toAuthSession(session));
       });
       return () => data.subscription.unsubscribe();
     },
+  };
+}
+
+// INFO: the same deadline as the data adapter.
+export const SUPABASE_REQUEST_TIMEOUT_MS = 10000;
+
+// INFO: the client's fetch contract is to reject on a transport failure; auth-js turns any
+// rejection into AuthRetryableFetchError, which the port maps to network. auth-js 2.118
+// never passes a signal, so none is overwritten.
+type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+export function withRequestDeadline(fetchFn: FetchFn, timeoutMs: number): FetchFn {
+  return async (input, init) => {
+    const read = await withinDeadline(timeoutMs, (signal) => fetchFn(input, { ...init, signal }));
+    if (read === DEADLINE) throw new Error("Request timed out");
+    return read;
   };
 }
 

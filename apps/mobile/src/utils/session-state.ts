@@ -1,10 +1,20 @@
-import type { AppleSignInOutcome, AuthSession, PasswordResetOutcome } from "@/auth/auth-port";
+import type {
+  AppleSignInOutcome,
+  AuthFailure,
+  AuthOutcome,
+  AuthSession,
+  FailureCause,
+  PasswordResetOutcome,
+} from "@/auth/auth-port";
+import { DEADLINE } from "@/utils/deadline";
 
 export type SessionState = {
   loaded: boolean;
   session: AuthSession | null;
   resetRunning: boolean;
   appleRunning: boolean;
+  restoreRunning: boolean;
+  restoreFailure: { failure: AuthFailure; cause?: FailureCause } | null;
 };
 
 export type SessionEvent =
@@ -12,19 +22,29 @@ export type SessionEvent =
   | { type: "reset_started" }
   | { type: "reset_finished" }
   | { type: "apple_started" }
-  | { type: "apple_finished" };
+  | { type: "apple_finished" }
+  | { type: "restore_started" }
+  | { type: "restore_finished"; outcome: AuthOutcome<AuthSession | null> };
 
 export const initialSessionState: SessionState = {
   loaded: false,
   session: null,
   resetRunning: false,
   appleRunning: false,
+  restoreRunning: false,
+  restoreFailure: null,
 };
 
 export function sessionReducer(state: SessionState, event: SessionEvent): SessionState {
   switch (event.type) {
     case "session_changed":
-      return { ...state, loaded: true, session: event.session };
+      return {
+        ...state,
+        loaded: true,
+        session: event.session,
+        restoreRunning: false,
+        restoreFailure: null,
+      };
     case "reset_started":
       return { ...state, resetRunning: true };
     case "reset_finished":
@@ -33,11 +53,59 @@ export function sessionReducer(state: SessionState, event: SessionEvent): Sessio
       return { ...state, appleRunning: true };
     case "apple_finished":
       return { ...state, appleRunning: false };
+    case "restore_started":
+      return state.loaded ? state : { ...state, restoreRunning: true };
+    case "restore_finished": {
+      if (state.loaded) return state;
+      const outcome = event.outcome;
+      if (outcome.ok) {
+        return {
+          ...state,
+          loaded: true,
+          session: outcome.value,
+          restoreRunning: false,
+          restoreFailure: null,
+        };
+      }
+      return {
+        ...state,
+        restoreRunning: false,
+        restoreFailure:
+          outcome.cause === undefined
+            ? { failure: outcome.failure }
+            : { failure: outcome.failure, cause: outcome.cause },
+      };
+    }
   }
 }
 
-export function isAppReady(fontsSettled: boolean, state: SessionState): boolean {
-  return fontsSettled && state.loaded;
+// INFO: longer than one Supabase request (10 s), so a slow refresh that answers still wins.
+export const RESTORE_TIMEOUT_MS = 15000;
+
+export function toRestoreOutcome(
+  read: AuthOutcome<AuthSession | null> | typeof DEADLINE,
+): AuthOutcome<AuthSession | null> {
+  if (read === DEADLINE) return { ok: false, failure: "network" };
+  return read;
+}
+
+export type LaunchView =
+  | { kind: "waiting" }
+  | { kind: "failed"; failure: AuthFailure; cause?: FailureCause; retrying: boolean }
+  | { kind: "ready" };
+
+export function launchView(fontsSettled: boolean, state: SessionState): LaunchView {
+  if (!fontsSettled) return { kind: "waiting" };
+  if (state.loaded) return { kind: "ready" };
+  if (state.restoreFailure !== null) {
+    return {
+      kind: "failed",
+      failure: state.restoreFailure.failure,
+      cause: state.restoreFailure.cause,
+      retrying: state.restoreRunning,
+    };
+  }
+  return { kind: "waiting" };
 }
 
 // INFO: verifyOtp issues a session before the password is set, so while a

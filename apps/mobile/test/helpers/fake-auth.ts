@@ -51,6 +51,9 @@ export function resetFakeAuth(): void {
   for (const fn of Object.values(fakeApple)) {
     fn.mockReset();
   }
+  // INFO: the launch restore never settles by default, so tests keep driving the launch
+  // with emitSession.
+  fakeAuth.currentSession.mockReturnValue(new Promise(() => {}));
   fakeApple.isAvailable.mockResolvedValue({ ok: true, value: false });
   fakeAuth.onSessionChange.mockImplementation((next) => {
     listener = next;

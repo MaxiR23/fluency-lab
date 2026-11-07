@@ -5,6 +5,7 @@
 // Tested:
 // - Every call sends the token as a Bearer header to the API url
 // - A failed token read is returned without calling the API
+// - The token read counts inside the deadline
 // - Each call: success, expected empty, 400/401/404, network failure, bad body
 // - The chat calls: createSession with a starter, openSession, addMessage, addUsage,
 //   endSession and getMonthSpend
@@ -191,6 +192,19 @@ describe("getProfile", () => {
     });
 
     expect(await data.getProfile()).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns network when the token read does not settle before the deadline", async () => {
+    const fetchFn = jest.fn();
+    const data = createHonoData({
+      baseUrl: "http://api.test",
+      fetchFn: fetchFn as unknown as typeof fetch,
+      readToken: () => new Promise(() => {}),
+      timeoutMs: 20,
+    });
+
+    expect(await data.getProfile()).toEqual({ ok: false, failure: "network" });
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it("returns network when the body stalls after the headers", async () => {

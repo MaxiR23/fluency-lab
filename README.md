@@ -76,8 +76,11 @@ the status output. Filter it so that no other secret is printed:
 The secret key goes only in `apps/api/.env.local`, never in a mobile env file or a
 doc. It is used only to delete an account.
 
-The phone reaches the stack on the Mac's LAN IP (`ipconfig getifaddr en0`);
-update the mobile URL when the network changes. `SUPABASE_URL` in `apps/api`
+The phone reaches the stack on the Mac's LAN IP (`ipconfig getifaddr en0`).
+In development the app puts Metro's host in both mobile URLs, so they keep
+working when the address changes; the values in `.env.local` are the fallback
+and the production values. With `expo start --tunnel` the Metro host serves
+only Metro, so the API and Supabase are not reachable through it. `SUPABASE_URL` in `apps/api`
 stays on `127.0.0.1` because the token's `iss` is always
 `http://127.0.0.1:54321/auth/v1`. No other key of the status output goes into
 a mobile env file or a doc. Read the emails the stack sends in Mailpit at

@@ -52,7 +52,7 @@ export type AuthPort = {
   saveName(name: ProfileName): Promise<AuthOutcome<null>>;
   signOut(): Promise<AuthOutcome<null>>;
   currentSession(): Promise<AuthOutcome<AuthSession | null>>;
-  // INFO: returns the unsubscribe function. Fires at once with the current session.
+  // INFO: returns the unsubscribe function. Reports changes after launch; the session at launch comes from currentSession.
   onSessionChange(listener: (session: AuthSession | null) => void): () => void;
 };
 

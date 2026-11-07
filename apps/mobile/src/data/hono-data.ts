@@ -31,7 +31,7 @@ import {
 import type { AppType } from "api";
 import { hc } from "hono/client";
 
-import type { DataOutcome, DataPort } from "@/data/data-port";
+import type { DataFailure, DataOutcome, DataPort } from "@/data/data-port";
 import { toDataFailure } from "@/utils/data-error";
 import { DEADLINE, withinDeadline } from "@/utils/deadline";
 import type { TokenRead } from "@/utils/data-token";
@@ -57,13 +57,16 @@ export function createHonoData(config: HonoDataConfig): DataPort {
     send: (client: Client) => Promise<Res>,
     parser: Parser<T>,
   ): Promise<DataOutcome<T>> {
-    const token = await config.readToken();
-    if (!token.ok) return { ok: false, failure: token.failure };
     type Read =
-      { kind: "status"; status: number } | { kind: "body"; body: unknown } | { kind: "bad" };
+      | { kind: "token"; failure: DataFailure }
+      | { kind: "status"; status: number }
+      | { kind: "body"; body: unknown }
+      | { kind: "bad" };
     let read: Read | typeof DEADLINE;
     try {
       read = await withinDeadline<Read>(timeoutMs, async (signal) => {
+        const token = await config.readToken();
+        if (!token.ok) return { kind: "token", failure: token.failure };
         const client = hc<AppType>(config.baseUrl, {
           fetch: ((input, init) => config.fetchFn(input, { ...init, signal })) as typeof fetch,
           headers: { Authorization: `Bearer ${token.token}` },
@@ -80,6 +83,7 @@ export function createHonoData(config: HonoDataConfig): DataPort {
       return { ok: false, failure: "network" };
     }
     if (read === DEADLINE) return { ok: false, failure: "network" };
+    if (read.kind === "token") return { ok: false, failure: read.failure };
     if (read.kind === "status") return { ok: false, failure: toDataFailure(read.status) };
     if (read.kind === "bad") return { ok: false, failure: "bad_response" };
     const parsed = parser.safeParse(read.body);
