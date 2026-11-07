@@ -7,6 +7,7 @@
 // - The typed text and the send press are reported
 // - Busy keeps the open input and disables Send
 // - The input takes several lines, grows to five, then scrolls; Send stays at the bottom of the row
+// - A cleared value takes the input back to one line, the control height and the pill, on the same input
 // - The label prop names the input
 // - The row's top padding is 4 below the chips
 // - Send scales while pressed, and not with reduce motion on (press null)
@@ -26,7 +27,7 @@ import * as Reanimated from "react-native-reanimated";
 
 import { ChatComposer } from "@/components/chat-composer";
 import { composerMaxHeight } from "@/components/chat-composer-style";
-import { colors, motion, radius, size, spacing } from "@/constants/theme";
+import { colors, lineHeight, motion, radius, size, spacing } from "@/constants/theme";
 import { chatMotion } from "@/utils/chat-motion";
 
 // INFO: Reanimated styles do not advance under jest, so the press is proven by the target
@@ -197,7 +198,7 @@ describe("ChatComposer", () => {
   });
 
   it("rounds the input to the control radius once it grows past one line, and back", async () => {
-    await render(composer());
+    await render(composer({ value: "Hello" }));
     const input = screen.getByLabelText("Message");
     await fireEvent(input, "layout", {
       nativeEvent: { layout: { x: 0, y: 0, width: 300, height: composerMaxHeight } },
@@ -211,6 +212,49 @@ describe("ChatComposer", () => {
     expect(StyleSheet.flatten(screen.getByLabelText("Message").props.style).borderRadius).toBe(
       radius.pill,
     );
+  });
+
+  it("goes back to one line, the control height and the pill when a multi-line value is cleared", async () => {
+    const { rerender } = await render(composer({ value: "One\nTwo\nThree\nFour\nFive\nSix" }));
+    await fireEvent(screen.getByLabelText("Message"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: composerMaxHeight } },
+    });
+    const grown = StyleSheet.flatten(screen.getByLabelText("Message").props.style);
+    expect(grown.borderRadius).toBe(radius.control);
+    expect(grown).not.toHaveProperty("height");
+    await rerender(composer({ value: "" }));
+    const cleared = StyleSheet.flatten(screen.getByLabelText("Message").props.style);
+    expect(cleared.height).toBe(size.control);
+    expect(cleared.borderRadius).toBe(radius.pill);
+  });
+
+  it("grows again from one line when typing after a clear", async () => {
+    const { rerender } = await render(composer({ value: "One\nTwo\nThree" }));
+    await fireEvent(screen.getByLabelText("Message"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: composerMaxHeight } },
+    });
+    await rerender(composer({ value: "" }));
+    await rerender(composer({ value: "Hi" }));
+    await fireEvent(screen.getByLabelText("Message"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: size.control } },
+    });
+    const one = StyleSheet.flatten(screen.getByLabelText("Message").props.style);
+    expect(one).not.toHaveProperty("height");
+    expect(one.borderRadius).toBe(radius.pill);
+    expect(one.maxHeight).toBe(composerMaxHeight);
+    await fireEvent(screen.getByLabelText("Message"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: size.control + lineHeight.body } },
+    });
+    expect(StyleSheet.flatten(screen.getByLabelText("Message").props.style).borderRadius).toBe(
+      radius.control,
+    );
+  });
+
+  it("keeps the same input when its value is cleared", async () => {
+    const { rerender } = await render(composer({ value: "One\nTwo" }));
+    const before = screen.getByLabelText("Message");
+    await rerender(composer({ value: "" }));
+    expect(screen.getByLabelText("Message")).toBe(before);
   });
 
   it("starts as a pill before it is laid out", async () => {

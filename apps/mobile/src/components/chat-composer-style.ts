@@ -22,6 +22,16 @@ export function composerLines(height: number): number {
   return Math.min(Math.max(lines, 1), MAX_COMPOSER_LINES);
 }
 
+// INFO: an empty value takes the control height: the native multiline input measures its
+// last typed text when the value is cleared from code, so its own height would stay grown.
+export function composerSize(
+  value: string,
+  measuredHeight: number,
+): { height: number | null; lines: number } {
+  if (value === "") return { height: size.control, lines: 1 };
+  return { height: null, lines: composerLines(measuredHeight) };
+}
+
 // INFO: chat-reply.html draws the form with 10 on top under a reply preview; the other chat
 // designs draw 12.
 // A thread draws the composer 4 below its quick-ask chips, which carry their own 10.
@@ -35,7 +45,15 @@ export function composerRowStyle(replying: boolean, belowChips = false): ViewSty
   };
 }
 
-export function composerInputStyle({ locked, lines }: { locked: boolean; lines: number }): {
+export function composerInputStyle({
+  locked,
+  lines,
+  height = null,
+}: {
+  locked: boolean;
+  lines: number;
+  height?: number | null;
+}): {
   input: TextStyle;
   placeholderColor: string;
 } {
@@ -50,6 +68,7 @@ export function composerInputStyle({ locked, lines }: { locked: boolean; lines: 
     fontSize: fontSize.body,
     lineHeight: lineHeight.body,
     maxHeight: composerMaxHeight,
+    ...(height === null ? {} : { height }),
   };
   if (locked) {
     return {

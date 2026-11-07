@@ -5,6 +5,7 @@
 // Tested:
 // - Loading, no key, ready (the opener or greeting) and the key, profile and spend read errors
 // - The header: the starter's title or Free chat, the provider line, Back and the X (End session)
+// - The composer is one line and the pill again after a long message is sent
 // - A message gets a tutor reply with corrections and new words, with the typing indicator
 // - A saved session from Continue draws its messages and corrections
 // - Each AI failure draws its message and action; the cause line shows in development only
@@ -32,10 +33,12 @@ import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals
 import { STARTERS, type Message, type Session } from "@fluency-lab/shared";
 import { act, fireEvent, screen, within } from "@testing-library/react-native";
 import { type Href, router } from "expo-router";
-import { Alert, type AlertButton } from "react-native";
+import { Alert, type AlertButton, StyleSheet } from "react-native";
 import { State } from "react-native-gesture-handler";
 import { fireGestureHandler, getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 
+import { composerMaxHeight } from "@/components/chat-composer-style";
+import { radius, size } from "@/constants/theme";
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { fakeAi, resetFakeAi, tutorReplyWith } from "../helpers/fake-ai";
@@ -243,6 +246,23 @@ describe("Chat", () => {
     expect(screen.getByRole("button", { name: "Send", disabled: false })).toBeTruthy();
     await fireEvent.changeText(input, "");
     expect(screen.getByRole("button", { name: "Send", disabled: true })).toBeTruthy();
+  });
+
+  it("takes the composer back to one line and the pill after a long message is sent", async () => {
+    withKey();
+    await renderAppAt("/chat", fakeSession());
+    const lines = "First line\nSecond line\nThird line\nFourth line\nFifth line\nSixth line";
+    await fireEvent.changeText(screen.getByPlaceholderText("Write in English\u2026"), lines);
+    await fireEvent(screen.getByLabelText("Message"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: composerMaxHeight } },
+    });
+    expect(StyleSheet.flatten(screen.getByLabelText("Message").props.style).borderRadius).toBe(
+      radius.control,
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Send", disabled: false }));
+    const cleared = StyleSheet.flatten(screen.getByLabelText("Message").props.style);
+    expect(cleared.height).toBe(size.control);
+    expect(cleared.borderRadius).toBe(radius.pill);
   });
 
   it("plays the send haptic when Send is pressed", async () => {
