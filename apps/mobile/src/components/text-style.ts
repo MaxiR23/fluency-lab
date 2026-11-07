@@ -1,6 +1,14 @@
-import type { TextStyle } from "react-native";
+import type { TextStyle, ViewStyle } from "react-native";
 
-import { colors, fontFamily, fontSize, letterSpacing, lineHeight } from "@/constants/theme";
+import {
+  borderWidth,
+  colors,
+  fontFamily,
+  fontSize,
+  letterSpacing,
+  lineHeight,
+  size,
+} from "@/constants/theme";
 
 export type TextVariant =
   | "title"
@@ -403,6 +411,8 @@ const variants: Record<TextVariant, TextStyle> = {
     color: colors.accent,
     lineHeight: lineHeight.prompt,
     letterSpacing: letterSpacing.prompt,
+    textDecorationLine: "underline",
+    textDecorationColor: colors.accent,
   },
   option: {
     fontFamily: fontFamily.semibold,
@@ -446,4 +456,16 @@ const variants: Record<TextVariant, TextStyle> = {
 
 export function textStyle(variant: TextVariant = "body"): TextStyle {
   return variants[variant];
+}
+
+// INFO: the empty gap is a view nested in the prompt's Text, which React Native sizes only from an
+// explicit width and height (a nested view's min size is dropped). Its bottom sits on the
+// baseline, so it is only its 2 point underline, like the design's empty inline-block.
+export function gapSlotStyle(): ViewStyle {
+  return {
+    width: size.gapSlot,
+    height: borderWidth.slot,
+    borderBottomWidth: borderWidth.slot,
+    borderBottomColor: colors.accent,
+  };
 }

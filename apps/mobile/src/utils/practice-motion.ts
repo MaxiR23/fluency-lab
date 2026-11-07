@@ -25,7 +25,6 @@ export type ExerciseMotion = {
   fill: { duration: number; curve: Curve };
   pick: { duration: number };
   check: { delay: number; up: number; scale: number; settle: number };
-  slot: { delay: number; duration: number; offset: number };
   sheet: { delayRight: number; delayMiss: number; duration: number; curve: Curve };
   shake: Step[];
   wrong: { duration: number };
@@ -99,11 +98,6 @@ const EXERCISE: ExerciseMotion = {
     up: motion.exercise.checkUp,
     scale: motion.exercise.checkScale,
     settle: motion.exercise.checkSettle,
-  },
-  slot: {
-    delay: motion.exercise.slotDelay,
-    duration: motion.exercise.slotDuration,
-    offset: motion.exercise.slotOffset,
   },
   sheet: {
     delayRight: motion.exercise.sheetDelayRight,

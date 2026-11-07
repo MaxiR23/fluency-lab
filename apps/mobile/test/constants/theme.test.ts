@@ -549,7 +549,6 @@ describe("theme", () => {
     expect(motion.exercise.fillDuration).toBe(Math.round(0.2 * 5000));
     expect(motion.exercise.pickDuration).toBe(Math.round(0.06 * 5000));
     expect(motion.exercise.checkDelay).toBe(Math.round(0.04 * 5000));
-    expect(motion.exercise.slotDuration).toBe(Math.round(0.08 * 5000));
     expect(motion.exercise.sheetDelayRight).toBe(Math.round(0.1 * 5000));
     expect(motion.exercise.sheetDelayMiss).toBe(Math.round(0.14 * 5000));
     expect(motion.exercise.sheetDuration).toBe(Math.round(0.1 * 5000));

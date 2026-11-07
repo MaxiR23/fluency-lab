@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The exercise look of exercise-choose.html: a segment per state and the bar gap
+// - The exercise bar takes the row's leftover width (flex 1, min width 0) and the step bar does not
 // - The step look keeps the onboarding bar: the values segmentStyle drew before it moved here
 //
 // What is covered:
@@ -43,10 +44,12 @@ describe("segmentedProgressStyle in the exercise look", () => {
     expect(segmentedProgressStyle("pending", "exercise").backgroundColor).toBe(colors.border);
   });
 
-  it("spaces the segments 6 apart", () => {
+  it("spaces the segments 6 apart and takes the header row's leftover width", () => {
     expect(segmentedProgressBar("exercise")).toEqual({
       flexDirection: "row",
       gap: spacing.stack,
+      flex: 1,
+      minWidth: 0,
     });
   });
 });

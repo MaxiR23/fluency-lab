@@ -115,11 +115,7 @@ describe("the motion configs", () => {
       scale: motion.exercise.checkScale,
       settle: motion.exercise.checkSettle,
     });
-    expect(exercise?.slot).toEqual({
-      delay: motion.exercise.slotDelay,
-      duration: motion.exercise.slotDuration,
-      offset: motion.exercise.slotOffset,
-    });
+    expect(exercise).not.toHaveProperty("slot");
     expect(exercise?.sheet).toEqual({
       delayRight: motion.exercise.sheetDelayRight,
       delayMiss: motion.exercise.sheetDelayMiss,
