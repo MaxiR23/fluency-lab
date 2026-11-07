@@ -122,7 +122,7 @@ caller's profile when it is missing instead of answering 404. `GET
 first, in that zone) that have a session or a finished practice run, and among them the perfect days (a finished run with no missed item); 400 for an unknown zone. `GET
 /sessions/spend?tz=<IANA zone>` answers the month's spend, which keeps the cost of deleted sessions and adds the cost of
 practice runs (`practice_runs.cost_usd`). `GET
-/profile/stats?tz=<IANA zone>` answers the session count, the day streak and the new words. The day streak counts consecutive days with a session back from today, or from yesterday when today has none yet (it stays alive until today ends), in the device's time zone. `DELETE
+/profile/stats?tz=<IANA zone>` answers the session count, the day streak and the new words. The day streak counts consecutive days with a session or a finished practice run back from today, or from yesterday when today has none yet (it stays alive until today ends), in the device's time zone. `DELETE
 /account` deletes the caller's auth user and, through the cascades, their data; it needs
 `SUPABASE_SECRET_KEY`. `GET
 /sessions/:id/messages` answers the session, its messages and the study notes saved in it. `POST

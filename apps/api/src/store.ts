@@ -106,8 +106,8 @@ export type UserStore = {
     since: string,
   ): Promise<StoreOutcome<{ createdAt: string; costUsd: number }[]>>;
   // INFO: the profile numbers in one read. sessionDays are the distinct local dates
-  // (in the given zone) with a session, newest first. Zeros and no days are the
-  // expected empty: the user has no sessions yet.
+  // (in the given zone) with a chat or a finished practice run, newest first. Zeros and no days are
+  // the expected empty: the user has not practised yet.
   getStats(
     timeZone: string,
   ): Promise<StoreOutcome<{ sessionCount: number; sessionDays: string[]; newWords: number }>>;
