@@ -1,5 +1,14 @@
 import { z } from "zod";
-import { GOALS, LEVELS, MESSAGE_ROLES, PROVIDERS, SESSION_STATUSES } from "./profile-values";
+import { GRAMMAR_TOPIC_IDS } from "./grammar-topics";
+import {
+  GOALS,
+  LEVELS,
+  MESSAGE_ROLES,
+  PRACTICE_FOCUSES,
+  PRACTICE_KINDS,
+  PROVIDERS,
+  SESSION_STATUSES,
+} from "./profile-values";
 import { MODEL_IDS } from "./model-price";
 import { STARTER_IDS } from "./suggestions";
 import { TOPIC_IDS } from "./topics";
@@ -265,6 +274,115 @@ export const wordPageSchema = z.object({
   nextOffset: z.int().min(1).nullable(),
 });
 
+const practiceTargetValue = z.union([z.literal(5), z.literal(10), z.literal(15)]);
+
+export const practiceRunCreateSchema = z.union([
+  z.strictObject({ focus: z.enum(["mistakes", "words"]), target: practiceTargetValue }),
+  z.strictObject({
+    focus: z.literal("topic"),
+    topicId: z.enum(GRAMMAR_TOPIC_IDS),
+    target: practiceTargetValue,
+  }),
+]);
+
+export const practiceItemCreateSchema = z
+  .strictObject({
+    position: z.int().min(0).max(14),
+    kind: z.enum(PRACTICE_KINDS),
+    rule: z.string().trim().min(1).max(80),
+    prompt: z.string().trim().min(1).max(300),
+    options: z.array(z.string().trim().min(1).max(120)).length(3).nullable(),
+    accepted: z.array(z.string().trim().min(1).max(300)).min(1).max(5),
+    explanation: z.string().trim().min(1).max(300),
+    source: z.string().trim().min(1).max(300).nullable(),
+  })
+  .refine((item) => (item.kind === "choose") === (item.options !== null))
+  .refine(
+    (item) =>
+      item.kind !== "choose" ||
+      (item.options !== null &&
+        item.accepted.length === 1 &&
+        item.options.includes(item.accepted[0] ?? "")),
+  );
+
+export const practiceItemsCreateSchema = z.strictObject({
+  items: z
+    .array(practiceItemCreateSchema)
+    .min(1)
+    .max(5)
+    .refine((items) => isUnique(items.map((item) => item.position))),
+});
+
+export const practiceAnswerSchema = z.strictObject({
+  userAnswer: z.string().trim().min(1).max(300),
+  correct: z.boolean(),
+});
+
+// INFO: a run only grows: 5 becomes 10 and 10 becomes 15.
+export const practiceTargetSchema = z.strictObject({
+  target: z.union([z.literal(10), z.literal(15)]),
+});
+
+export const practiceRunIdParamSchema = z.object({ id: z.uuid() });
+
+export const practiceItemIdParamSchema = z.object({ id: z.uuid() });
+
+export const practiceRunSchema = z.object({
+  id: z.string(),
+  focus: z.enum(PRACTICE_FOCUSES),
+  topicId: z.enum(GRAMMAR_TOPIC_IDS).nullable(),
+  target: practiceTargetValue,
+  costUsd: z.number(),
+  createdAt: z.string(),
+  finishedAt: z.string().nullable(),
+});
+
+export const practiceItemSchema = z.object({
+  id: z.string(),
+  runId: z.string(),
+  position: z.int().min(0).max(14),
+  kind: z.enum(PRACTICE_KINDS),
+  rule: z.string(),
+  prompt: z.string(),
+  options: z.array(z.string()).nullable(),
+  accepted: z.array(z.string()),
+  explanation: z.string(),
+  source: z.string().nullable(),
+  userAnswer: z.string().nullable(),
+  correct: z.boolean().nullable(),
+  answeredAt: z.string().nullable(),
+});
+
+// INFO: a run with no items is the expected empty (its first round failed).
+export const practiceRunWithItemsSchema = z.object({
+  run: practiceRunSchema,
+  items: z.array(practiceItemSchema),
+});
+
+// INFO: run null is the expected empty: no practice started today.
+export const practiceTodaySchema = z.object({ run: practiceRunWithItemsSchema.nullable() });
+
+export const practiceItemsResponseSchema = z.object({ items: z.array(practiceItemSchema) });
+
+// INFO: the shape of the structured output of a practice round. It is parsed
+// loosely here and normalized by the app before it is saved. options is an
+// empty array and source an empty string when they do not apply.
+export const practiceRoundSchema = z.object({
+  items: z.array(
+    z.object({
+      kind: z.string(),
+      rule: z.string(),
+      prompt: z.string(),
+      options: z.array(z.string()),
+      accepted: z.array(z.string()),
+      explanation: z.string(),
+      source: z.string(),
+    }),
+  ),
+});
+
+export const answerGradeSchema = z.object({ correct: z.boolean(), explanation: z.string() });
+
 export const accountDeletedSchema = z.object({ deleted: z.literal(true) });
 
 export type Profile = z.infer<typeof profileSchema>;
@@ -298,3 +416,11 @@ export type CorrectionThread = z.infer<typeof correctionThreadSchema>;
 export type Withdraw = z.infer<typeof withdrawSchema>;
 export type ThreadReplies = z.infer<typeof threadRepliesSchema>;
 export type ThreadReplyPayload = z.infer<typeof threadReplySchema>;
+export type PracticeRunCreate = z.infer<typeof practiceRunCreateSchema>;
+export type PracticeItemCreate = z.infer<typeof practiceItemCreateSchema>;
+export type PracticeAnswer = z.infer<typeof practiceAnswerSchema>;
+export type PracticeRun = z.infer<typeof practiceRunSchema>;
+export type PracticeItem = z.infer<typeof practiceItemSchema>;
+export type PracticeRunWithItems = z.infer<typeof practiceRunWithItemsSchema>;
+export type PracticeRoundPayload = z.infer<typeof practiceRoundSchema>;
+export type AnswerGradePayload = z.infer<typeof answerGradeSchema>;

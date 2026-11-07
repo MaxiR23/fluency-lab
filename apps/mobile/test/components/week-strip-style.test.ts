@@ -16,7 +16,7 @@
 import { describe, expect, it } from "@jest/globals";
 
 import { dayCircleStyle, dayLetterVariant } from "@/components/week-strip-style";
-import { borderWidth, colors, radius, size } from "@/constants/theme";
+import { borderWidth, colors, radius, shadow, size } from "@/constants/theme";
 import type { DayCell } from "@/utils/week-strip";
 
 function cell(overrides: Partial<DayCell>): DayCell {
@@ -75,5 +75,11 @@ describe("dayLetterVariant", () => {
     expect(dayLetterVariant(cell({ isToday: true }))).toBe("dayToday");
     expect(dayLetterVariant(cell({}))).toBe("day");
     expect(dayLetterVariant(cell({ isFuture: true }))).toBe("day");
+  });
+
+  it("adds the day glow to today's practiced circle only", () => {
+    expect(dayCircleStyle(cell({ practiced: true, isToday: true }))).toMatchObject(shadow.dayGlow);
+    expect(dayCircleStyle(cell({ practiced: true }))).not.toHaveProperty("shadowRadius");
+    expect(dayCircleStyle(cell({ isToday: true }))).not.toHaveProperty("shadowRadius");
   });
 });

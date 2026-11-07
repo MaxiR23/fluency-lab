@@ -132,4 +132,10 @@ describe("ChatHeader", () => {
       `"stroke":{"type":0,"payload":${String(processColor(color))}}`;
     expect(drawn).toContain(stroke(colors.textMuted));
   });
+
+  it("draws only the title when there is no subtitle", async () => {
+    await render(<ChatHeader title="Practice" onBack={jest.fn()} />);
+    expect(screen.getByRole("header", { name: "Practice" })).toBeTruthy();
+    expect(screen.getAllByText(/.+/)).toHaveLength(1);
+  });
 });

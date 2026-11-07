@@ -5,6 +5,7 @@
 // Tested:
 // - Loading, the list for the profile's level and the error state
 // - Back goes to Home and a suggestion opens Chat
+// - Start a free chat opens a free chat, in every state
 //
 // What is covered:
 // - Normal case, error case. The empty view is covered by suggestion-list.test.ts,
@@ -87,13 +88,19 @@ describe("Suggestions", () => {
   });
 
   it("draws the failure and reads again on Try again", async () => {
-    fakeData.getProfile.mockResolvedValue({ ok: false, failure: "network" });
+    // INFO: the sign-in guard and Home read first; the third read is this screen's.
+    fakeData.getProfile
+      .mockResolvedValueOnce({ ok: true, value: beginner })
+      .mockResolvedValueOnce({ ok: true, value: beginner })
+      .mockResolvedValueOnce({ ok: false, failure: "network" });
     await renderAppAt("/suggestions", fakeSession());
     expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
     fakeData.getProfile.mockResolvedValue({ ok: true, value: beginner });
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
     expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
-    expect(screen.getByText("Suggested for you")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: allSuggestions(beginner)[0]?.title ?? "" }),
+    ).toBeTruthy();
   });
 
   it("goes back to Home from Back", async () => {
@@ -108,5 +115,22 @@ describe("Suggestions", () => {
     await fireEvent.press(screen.getByRole("button", { name: first?.title ?? "" }));
     expect(screen).toHavePathname("/chat");
     expect(screen).toHaveSearchParams({ starter: first?.id ?? "" });
+  });
+
+  it("opens a free chat from Start a free chat", async () => {
+    await renderAppAt("/suggestions", fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Start a free chat" }));
+    expect(screen).toHavePathname("/chat");
+    expect(screen).toHaveSearchParams({});
+  });
+
+  it("draws Start a free chat while loading and when the read failed", async () => {
+    fakeData.getProfile
+      .mockResolvedValueOnce({ ok: true, value: beginner })
+      .mockResolvedValueOnce({ ok: true, value: beginner })
+      .mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt("/suggestions", fakeSession());
+    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Start a free chat" })).toBeTruthy();
   });
 });

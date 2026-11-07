@@ -8,7 +8,7 @@
 // deleteAccount with success, so a signed in user lands on Home, and getSessionSummary with an
 // empty ended session (Summary reads it). Progress reads all four of getMonthProgress, listHistory,
 // listMistakes and listWords: zeros and empty pages. Thread reads openThread: a thread with no
-// messages on a learner message with two corrections.
+// messages on a learner message with two corrections. Home also reads getTodayPractice: no run today.
 
 import { jest } from "@jest/globals";
 import type {
@@ -18,6 +18,9 @@ import type {
   Message,
   MistakeGroup,
   NewWordItem,
+  PracticeItem,
+  PracticeRun,
+  PracticeRunWithItems,
   Profile,
   Session,
   SessionSummary,
@@ -49,6 +52,14 @@ export const fakeData = {
   listHistory: jest.fn<DataPort["listHistory"]>(),
   listMistakes: jest.fn<DataPort["listMistakes"]>(),
   listWords: jest.fn<DataPort["listWords"]>(),
+  getTodayPractice: jest.fn<DataPort["getTodayPractice"]>(),
+  createPracticeRun: jest.fn<DataPort["createPracticeRun"]>(),
+  openPracticeRun: jest.fn<DataPort["openPracticeRun"]>(),
+  addPracticeItems: jest.fn<DataPort["addPracticeItems"]>(),
+  answerPracticeItem: jest.fn<DataPort["answerPracticeItem"]>(),
+  addPracticeUsage: jest.fn<DataPort["addPracticeUsage"]>(),
+  setPracticeTarget: jest.fn<DataPort["setPracticeTarget"]>(),
+  finishPracticeRun: jest.fn<DataPort["finishPracticeRun"]>(),
   deleteAccount: jest.fn<DataPort["deleteAccount"]>(),
 } satisfies DataPort;
 
@@ -217,6 +228,46 @@ export function threadMessageWith(overrides: Partial<ThreadMessage> = {}): Threa
   };
 }
 
+export function practiceRunWith(overrides: Partial<PracticeRun> = {}): PracticeRun {
+  return {
+    id: "run-1",
+    focus: "mistakes",
+    topicId: null,
+    target: 5,
+    costUsd: 0,
+    createdAt: "2026-11-05T09:00:00Z",
+    finishedAt: null,
+    ...overrides,
+  };
+}
+
+export function practiceItemWith(overrides: Partial<PracticeItem> = {}): PracticeItem {
+  return {
+    id: "item-1",
+    runId: "run-1",
+    position: 0,
+    kind: "choose",
+    rule: "Present perfect",
+    prompt: "I ___ to Japan twice.",
+    options: ["have been", "was", "am"],
+    accepted: ["have been"],
+    explanation: "Use the present perfect for an experience.",
+    source: null,
+    userAnswer: null,
+    correct: null,
+    answeredAt: null,
+    ...overrides,
+  };
+}
+
+// INFO: a run with its items; the run defaults to a mistakes run of 5 with no items.
+export function practiceTodayWith(
+  items: PracticeItem[] = [],
+  run: Partial<PracticeRun> = {},
+): PracticeRunWithItems {
+  return { run: practiceRunWith(run), items };
+}
+
 export function weekWith(days: string[], overrides: Partial<SessionWeek> = {}): SessionWeek {
   return { weekStart: "2026-11-02", today: "2026-11-05", days, ...overrides };
 }
@@ -247,4 +298,5 @@ export function resetFakeData(): void {
   fakeData.deleteAccount.mockResolvedValue({ ok: true, value: null });
   fakeData.getSessionSummary.mockResolvedValue({ ok: true, value: summaryWith() });
   fakeData.openThread.mockResolvedValue({ ok: true, value: threadWith() });
+  fakeData.getTodayPractice.mockResolvedValue({ ok: true, value: null });
 }

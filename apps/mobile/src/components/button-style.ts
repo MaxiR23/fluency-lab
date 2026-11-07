@@ -10,7 +10,7 @@ import {
   spacing,
 } from "@/constants/theme";
 
-export type ButtonVariant = "primary" | "secondary" | "deep" | "strong";
+export type ButtonVariant = "primary" | "secondary" | "deep" | "strong" | "miss";
 
 type ButtonState = { pressed?: boolean; disabled?: boolean };
 
@@ -52,6 +52,13 @@ function palette(variant: ButtonVariant, state: ButtonState): Palette {
       label: colors.accentDeep,
     };
   }
+  if (variant === "miss" && !state.disabled) {
+    return {
+      background: colors.surface,
+      border: state.pressed ? colors.accentPressed : colors.missLine,
+      label: colors.text,
+    };
+  }
   if (state.disabled) {
     return {
       background: colors.background,
@@ -78,10 +85,15 @@ function minHeight(options: { compact?: boolean; small?: boolean }): number {
   return options.compact === true ? size.controlCompact : size.control;
 }
 
+function labelSize(options: { small?: boolean; large?: boolean }): number {
+  if (options.small === true) return fontSize.caption;
+  return options.large === true ? fontSize.buttonLarge : fontSize.body;
+}
+
 export function buttonStyle(
   variant: ButtonVariant = "primary",
   state: ButtonState = {},
-  options: { compact?: boolean; small?: boolean } = {},
+  options: { compact?: boolean; small?: boolean; large?: boolean } = {},
 ): { container: ViewStyle; label: TextStyle } {
   const { background, border, label } = palette(variant, state);
   return {
@@ -89,7 +101,7 @@ export function buttonStyle(
       backgroundColor: background,
       borderColor: border,
       borderWidth: borderWidth.thin,
-      borderRadius: variant === "strong" ? radius.pill : radius.control,
+      borderRadius: variant === "strong" || options.large === true ? radius.pill : radius.control,
       minHeight: minHeight(options),
       paddingHorizontal: options.small === true ? spacing.md : spacing.lg,
       alignItems: "center",
@@ -98,7 +110,7 @@ export function buttonStyle(
     label: {
       color: label,
       fontFamily: fontFamily.semibold,
-      fontSize: options.small === true ? fontSize.caption : fontSize.body,
+      fontSize: labelSize(options),
     },
   };
 }

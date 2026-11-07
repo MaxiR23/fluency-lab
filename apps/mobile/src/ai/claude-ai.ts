@@ -1,7 +1,11 @@
 // The key goes only in the x-api-key header of ENDPOINT. No outcome, cause or
 // log carries it.
 import {
+  PRACTICE_KINDS,
+  PRACTICE_ROUND_SIZE,
   TUTOR_MODEL,
+  answerGradeSchema,
+  practiceRoundSchema,
   threadReplySchema,
   tutorReplySchema,
   type ModelId,
@@ -12,6 +16,8 @@ import type { AiFailure, AiPort, TutorRequest } from "@/ai/ai-port";
 import type { FailureCause } from "@/auth/auth-port";
 import type { KeyReadOutcome } from "@/keys/key-port";
 import { DEADLINE, withinDeadline } from "@/utils/deadline";
+import { toAnswerGrade } from "@/utils/practice-grade";
+import { toPracticeRound } from "@/utils/practice-round";
 import { providerMessages } from "@/utils/provider-messages";
 import { toThreadReply } from "@/utils/thread-reply";
 import { toTutorReply } from "@/utils/tutor-reply";
@@ -20,6 +26,9 @@ const ENDPOINT = "https://api.anthropic.com/v1/messages";
 const API_VERSION = "2026-10-21";
 const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_TOKENS = 1024;
+// INFO: a round of five exercises needs more room than a chat turn; a grading answer needs less.
+const ROUND_MAX_TOKENS = 2048;
+const GRADE_MAX_TOKENS = 512;
 
 // INFO: no minLength, maxLength, minimum, maximum or minItems: the provider does not
 // support them in structured outputs. Limits (the 80 characters of rule included) are applied by toTutorReply.
@@ -56,6 +65,44 @@ export const THREAD_REPLY_JSON_SCHEMA = {
     reply: { type: "string" },
     newWords: { type: "array", items: { type: "string" } },
     withdrawn: { type: "array", items: { type: "integer" } },
+  },
+} as const;
+
+// INFO: the same limits as above, and enum is supported on string properties. Every exercise carries
+// options and source: an empty array and an empty string when they do not apply, which toPracticeRound
+// turns into null. The limits and the rules of each kind are applied by toPracticeRound.
+export const PRACTICE_ROUND_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["items"],
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["kind", "rule", "prompt", "options", "accepted", "explanation", "source"],
+        properties: {
+          kind: { type: "string", enum: [...PRACTICE_KINDS] },
+          rule: { type: "string" },
+          prompt: { type: "string" },
+          options: { type: "array", items: { type: "string" } },
+          accepted: { type: "array", items: { type: "string" } },
+          explanation: { type: "string" },
+          source: { type: "string" },
+        },
+      },
+    },
+  },
+} as const;
+
+export const ANSWER_GRADE_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["correct", "explanation"],
+  properties: {
+    correct: { type: "boolean" },
+    explanation: { type: "string" },
   },
 } as const;
 
@@ -181,6 +228,7 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
   async function ask<P extends object>(
     request: TutorRequest,
     schema: object,
+    maxTokens: number,
     parse: (value: unknown) => P | null,
   ): Promise<Asked<P>> {
     const key = await config.readKey();
@@ -191,7 +239,7 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
     if (messages.length === 0) return badResponse();
     const body = JSON.stringify({
       model: TUTOR_MODEL,
-      max_tokens: MAX_TOKENS,
+      max_tokens: maxTokens,
       system: request.system,
       messages,
       thinking: { type: "disabled" },
@@ -229,14 +277,28 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
 
   return {
     reply: (request) =>
-      ask(request, TUTOR_REPLY_JSON_SCHEMA, (value) => {
+      ask(request, TUTOR_REPLY_JSON_SCHEMA, MAX_TOKENS, (value) => {
         const payload = tutorReplySchema.safeParse(value);
         return payload.success ? toTutorReply(payload.data) : null;
       }),
     replyInThread: (request) =>
-      ask(request, THREAD_REPLY_JSON_SCHEMA, (value) => {
+      ask(request, THREAD_REPLY_JSON_SCHEMA, MAX_TOKENS, (value) => {
         const payload = threadReplySchema.safeParse(value);
         return payload.success ? toThreadReply(payload.data) : null;
+      }),
+    async practiceRound(request) {
+      const asked = await ask(request, PRACTICE_ROUND_JSON_SCHEMA, ROUND_MAX_TOKENS, (value) => {
+        const payload = practiceRoundSchema.safeParse(value);
+        if (!payload.success) return null;
+        const items = toPracticeRound(payload.data, PRACTICE_ROUND_SIZE);
+        return items === null ? null : { items };
+      });
+      return asked;
+    },
+    gradeAnswer: (request) =>
+      ask(request, ANSWER_GRADE_JSON_SCHEMA, GRADE_MAX_TOKENS, (value) => {
+        const payload = answerGradeSchema.safeParse(value);
+        return payload.success ? toAnswerGrade(payload.data) : null;
       }),
   };
 }

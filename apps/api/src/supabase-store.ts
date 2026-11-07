@@ -6,6 +6,9 @@ import {
   toMistakeRow,
   toMonthProgressRow,
   toOpenSession,
+  toPracticeItem,
+  toPracticeRun,
+  toPracticeRunWithItems,
   toProfile,
   toProfilePatch,
   toProfileStatsRow,
@@ -107,7 +110,7 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
       }
 
       async function readCosts(
-        table: "sessions" | "deleted_session_costs",
+        table: "sessions" | "deleted_session_costs" | "practice_runs",
         since: string,
       ): Promise<StoreOutcome<{ createdAt: string; costUsd: number }[]>> {
         const result = await client
@@ -328,6 +331,116 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           );
         },
 
+        async listPracticeRunsSince(since) {
+          const result = await client
+            .from("practice_runs")
+            .select("*, practice_items(*)")
+            .gte("created_at", since)
+            .order("created_at", { ascending: true });
+          return readPage(result, toPracticeRunWithItems);
+        },
+
+        async createPracticeRun(input) {
+          const result = await client
+            .from("practice_runs")
+            .insert({
+              user_id: caller.id,
+              focus: input.focus,
+              topic_id: input.focus === "topic" ? input.topicId : null,
+              target: input.target,
+            })
+            .select("*")
+            .single();
+          const mapped = mapRow(result, toPracticeRun);
+          if (!mapped.ok) return mapped;
+          return mapped.value === null ? unavailable : { ok: true, value: mapped.value };
+        },
+
+        async getPracticeRun(runId) {
+          const result = await client
+            .from("practice_runs")
+            .select("*, practice_items(*)")
+            .eq("id", runId)
+            .maybeSingle();
+          return mapRow(result, toPracticeRunWithItems);
+        },
+
+        async addPracticeItems(runId, items) {
+          const visible = await client
+            .from("practice_runs")
+            .select("id")
+            .eq("id", runId)
+            .maybeSingle();
+          const visibleFailure = failureOf(visible);
+          if (visibleFailure !== null) return visibleFailure;
+          if (visible.data === null) return { ok: true, value: null };
+          // INFO: a position already saved is ignored, so a retry after a lost
+          // response never fails or duplicates. The run's items are read back.
+          const saved = await client.from("practice_items").upsert(
+            items.map((item) => ({
+              run_id: runId,
+              position: item.position,
+              kind: item.kind,
+              rule: item.rule,
+              prompt: item.prompt,
+              options: item.options,
+              accepted: item.accepted,
+              explanation: item.explanation,
+              source: item.source,
+            })),
+            { onConflict: "run_id,position", ignoreDuplicates: true },
+          );
+          const savedFailure = failureOf(saved);
+          if (savedFailure !== null) return savedFailure;
+          const all = await client
+            .from("practice_items")
+            .select("*")
+            .eq("run_id", runId)
+            .order("position", { ascending: true });
+          return readPage(all, toPracticeItem);
+        },
+
+        async answerPracticeItem(itemId, answer, answeredAt) {
+          const result = await client
+            .from("practice_items")
+            .update({
+              user_answer: answer.userAnswer,
+              correct: answer.correct,
+              answered_at: answeredAt,
+            })
+            .eq("id", itemId)
+            .select("*")
+            .maybeSingle();
+          return mapRow(result, toPracticeItem);
+        },
+
+        async addPracticeCost(runId, amountUsd) {
+          const result = await client
+            .rpc("add_practice_cost", { run_id: runId, amount_usd: amountUsd })
+            .maybeSingle();
+          return mapRow(result, toPracticeRun);
+        },
+
+        async setPracticeTarget(runId, target) {
+          const result = await client
+            .from("practice_runs")
+            .update({ target })
+            .eq("id", runId)
+            .select("*")
+            .maybeSingle();
+          return mapRow(result, toPracticeRun);
+        },
+
+        async finishPracticeRun(runId, finishedAt) {
+          const result = await client
+            .from("practice_runs")
+            .update({ finished_at: finishedAt })
+            .eq("id", runId)
+            .select("*")
+            .maybeSingle();
+          return mapRow(result, toPracticeRun);
+        },
+
         async addSessionCost(sessionId, amountUsd) {
           const result = await client
             .rpc("add_session_cost", { session_id: sessionId, amount_usd: amountUsd })
@@ -412,7 +525,11 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           if (!sessions.ok) return sessions;
           const deleted = await readCosts("deleted_session_costs", since);
           if (!deleted.ok) return deleted;
-          return { ok: true, value: [...sessions.value, ...deleted.value] };
+          // INFO: a practice run's cost counts too. Runs cannot be deleted by a
+          // user (no delete grant), so no ledger is needed.
+          const runs = await readCosts("practice_runs", since);
+          if (!runs.ok) return runs;
+          return { ok: true, value: [...sessions.value, ...deleted.value, ...runs.value] };
         },
       };
     },

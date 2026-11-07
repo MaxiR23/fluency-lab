@@ -40,4 +40,26 @@ describe("WeekStrip", () => {
     expect(screen.getByLabelText("Tuesday, not practiced")).toBeTruthy();
     expect(screen.getByLabelText("Sunday, not practiced")).toBeTruthy();
   });
+
+  it("draws today's practiced circle with a pop and without one", async () => {
+    const week = weekWith(["2026-11-05"]);
+    const { rerender } = await render(<WeekStrip week={week} pop={null} />);
+    expect(screen.getAllByTestId("icon-check", { includeHiddenElements: true })).toHaveLength(1);
+    expect(screen.queryByTestId("week-pop", { includeHiddenElements: true })).toBeNull();
+    await rerender(
+      <WeekStrip week={week} pop={{ delay: 980, up: 420, settle: 280, scale: 1.2 }} />,
+    );
+    expect(screen.getByTestId("week-pop", { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.getAllByTestId("icon-check", { includeHiddenElements: true })).toHaveLength(1);
+  });
+
+  it("does not pop a day that is not today", async () => {
+    await render(
+      <WeekStrip
+        week={weekWith(["2026-11-02"])}
+        pop={{ delay: 980, up: 420, settle: 280, scale: 1.2 }}
+      />,
+    );
+    expect(screen.queryByTestId("week-pop", { includeHiddenElements: true })).toBeNull();
+  });
 });

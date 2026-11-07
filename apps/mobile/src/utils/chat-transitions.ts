@@ -9,9 +9,10 @@ export function easing(points: readonly [number, number, number, number]) {
 
 export function enterTransition(enter: EnterMotion | null): FadeInDown | undefined {
   if (enter === null) return undefined;
-  return FadeInDown.duration(enter.duration)
-    .easing(easing(motion.easeOut))
+  const built = FadeInDown.duration(enter.duration)
+    .easing(easing(enter.curve ?? motion.easeOut))
     .withInitialValues({ translateY: enter.offset });
+  return enter.delay === undefined ? built : built.delay(enter.delay);
 }
 
 export function fadeInTransition(fade: FadeMotion | null): FadeIn | undefined {

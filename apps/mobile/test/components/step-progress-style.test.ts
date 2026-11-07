@@ -1,9 +1,9 @@
 // apps/mobile/test/components/step-progress-style.test.ts
 //
-// Tests for progressSegments and segmentStyle.
+// Tests for progressSegments.
 //
 // Tested:
-// - Which progress segments are filled and how one is drawn
+// - Which progress segments are filled (how one is drawn is tested in segmented-progress-style.test.ts)
 //
 // What is covered:
 // - Normal case, edges
@@ -14,8 +14,7 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { progressSegments, segmentStyle } from "@/components/step-progress-style";
-import { colors, size } from "@/constants/theme";
+import { progressSegments } from "@/components/step-progress-style";
 
 describe("progressSegments", () => {
   it("fills as many segments as the step", () => {
@@ -33,16 +32,5 @@ describe("progressSegments", () => {
   it("never fills more than the total", () => {
     expect(progressSegments(9, 4)).toEqual([true, true, true, true]);
     expect(progressSegments(-1, 4)).toEqual([false, false, false, false]);
-  });
-});
-
-describe("segmentStyle", () => {
-  it("draws filled segments in the accent and empty ones in the border color", () => {
-    expect(segmentStyle(true).backgroundColor).toBe(colors.accent);
-    expect(segmentStyle(false).backgroundColor).toBe(colors.border);
-  });
-
-  it("uses the progress bar height", () => {
-    expect(segmentStyle(true)).toMatchObject({ flex: 1, height: size.progressBar });
   });
 });

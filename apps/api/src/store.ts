@@ -3,6 +3,12 @@ import type {
   CorrectionThread,
   Message,
   MessageCreate,
+  PracticeAnswer,
+  PracticeItem,
+  PracticeItemCreate,
+  PracticeRun,
+  PracticeRunCreate,
+  PracticeRunWithItems,
   SessionWithMessages,
   Profile,
   ProfileUpdate,
@@ -45,9 +51,32 @@ export type UserStore = {
   withdrawCorrections(messageId: string, items: number[]): Promise<StoreOutcome<Message | null>>;
   // INFO: the reply count of each message of the session that has a thread; [] is the expected empty.
   listThreadCounts(sessionId: string): Promise<StoreOutcome<ThreadReplies>>;
+  // INFO: the caller's runs created since the given time, each with its items; [] is the expected empty.
+  listPracticeRunsSince(since: string): Promise<StoreOutcome<PracticeRunWithItems[]>>;
+  createPracticeRun(input: PracticeRunCreate): Promise<StoreOutcome<PracticeRun>>;
+  // INFO: null means the run is not visible to the caller (missing or another user's);
+  // a run with no items is the expected empty: items is [].
+  getPracticeRun(runId: string): Promise<StoreOutcome<PracticeRunWithItems | null>>;
+  // INFO: null means the run is not visible to the caller. A position already saved is
+  // ignored, so a retried save repeats safely; the value is every item of the run.
+  addPracticeItems(
+    runId: string,
+    items: PracticeItemCreate[],
+  ): Promise<StoreOutcome<PracticeItem[] | null>>;
+  // INFO: null means the item is not visible to the caller (missing or another user's).
+  answerPracticeItem(
+    itemId: string,
+    answer: PracticeAnswer,
+    answeredAt: string,
+  ): Promise<StoreOutcome<PracticeItem | null>>;
+  // INFO: null means the run is not visible to the caller (missing or another user's).
+  addPracticeCost(runId: string, amountUsd: number): Promise<StoreOutcome<PracticeRun | null>>;
+  setPracticeTarget(runId: string, target: 10 | 15): Promise<StoreOutcome<PracticeRun | null>>;
+  finishPracticeRun(runId: string, finishedAt: string): Promise<StoreOutcome<PracticeRun | null>>;
   addSessionCost(sessionId: string, amountUsd: number): Promise<StoreOutcome<Session | null>>;
   endSession(sessionId: string): Promise<StoreOutcome<Session | null>>;
   listSessionStarts(since: string): Promise<StoreOutcome<string[]>>;
+  // INFO: the cost of each session, deleted session and practice run since the given time.
   listSessionCostsSince(
     since: string,
   ): Promise<StoreOutcome<{ createdAt: string; costUsd: number }[]>>;

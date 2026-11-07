@@ -79,4 +79,16 @@ describe("tagStyle", () => {
   it("draws the count pill as the tint pill with a semibold 12 accent label", () => {
     expect(tagStyle("count")).toEqual({ box: tagStyle("tint").box, label: "tabActive" });
   });
+
+  it("draws the rule tag on accent-tag as a pill, 4 by 10, with the active tab label", () => {
+    expect(tagStyle("rule")).toEqual({
+      box: {
+        backgroundColor: colors.accentTag,
+        borderRadius: radius.pill,
+        paddingHorizontal: spacing.cluster,
+        paddingVertical: spacing.xs,
+      },
+      label: "tabActive",
+    });
+  });
 });

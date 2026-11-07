@@ -27,6 +27,7 @@ export default function Suggestions() {
         <Text variant="heading" accessibilityRole="header">
           Suggested for you
         </Text>
+        <Button variant="strong" label="Start a free chat" onPress={() => router.push("/chat")} />
         {view.kind === "loading" ? (
           <ActivityIndicator color={colors.accent} testID="suggestions-loading" />
         ) : null}

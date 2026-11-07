@@ -12,6 +12,8 @@
 // - getSessionSummary
 // - getProfileStats and deleteAccount
 // - getMonthProgress, listHistory, listMistakes and listWords
+// - The practice calls: getTodayPractice, createPracticeRun, openPracticeRun, addPracticeItems,
+//   answerPracticeItem, addPracticeUsage, setPracticeTarget and finishPracticeRun
 // - openThread, addThreadMessage and withdrawCorrections; openSession carries the thread reply counts
 //
 // What is covered:
@@ -25,6 +27,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 
 import type { MessageCreate, ThreadMessageCreate } from "@fluency-lab/shared";
 
+import type { DataPort } from "@/data/data-port";
 import { createHonoData } from "@/data/hono-data";
 import type { TokenRead } from "@/utils/data-token";
 
@@ -1128,6 +1131,212 @@ describe("withdrawCorrections", () => {
     expect(await data.withdrawCorrections(id, [0])).toEqual({
       ok: false,
       failure: "bad_response",
+    });
+  });
+});
+
+describe("the practice calls", () => {
+  const runId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5eb1";
+  const itemId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5ee1";
+  const run = {
+    id: runId,
+    focus: "mistakes",
+    topicId: null,
+    target: 5,
+    costUsd: 0,
+    createdAt: stamp,
+    finishedAt: null,
+  };
+  const item = {
+    id: itemId,
+    runId,
+    position: 0,
+    kind: "choose",
+    rule: "Present perfect",
+    prompt: "I ___ there.",
+    options: ["have been", "was", "am"],
+    accepted: ["have been"],
+    explanation: "Experience.",
+    source: null,
+    userAnswer: null,
+    correct: null,
+    answeredAt: null,
+  };
+  const created = {
+    position: 0,
+    kind: "choose" as const,
+    rule: "Present perfect",
+    prompt: "I ___ there.",
+    options: ["have been", "was", "am"],
+    accepted: ["have been"],
+    explanation: "Experience.",
+    source: null,
+  };
+  const usage = {
+    model: "claude-haiku-5-5",
+    inputTokens: 1,
+    outputTokens: 1,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+  } as const;
+
+  type Call = {
+    name: string;
+    method: string;
+    url: string;
+    body: unknown;
+    answer: unknown;
+    value: unknown;
+    run: (data: DataPort) => Promise<unknown>;
+  };
+
+  const calls: Call[] = [
+    {
+      name: "getTodayPractice",
+      method: "GET",
+      url: "http://api.test/practice/today?tz=UTC",
+      body: null,
+      answer: { run: { run, items: [item] } },
+      value: { run, items: [item] },
+      run: (data) => data.getTodayPractice("UTC"),
+    },
+    {
+      name: "createPracticeRun",
+      method: "POST",
+      url: "http://api.test/practice/runs",
+      body: { focus: "mistakes", target: 5 },
+      answer: run,
+      value: run,
+      run: (data) => data.createPracticeRun({ focus: "mistakes", target: 5 }),
+    },
+    {
+      name: "openPracticeRun",
+      method: "GET",
+      url: `http://api.test/practice/runs/${runId}`,
+      body: null,
+      answer: { run, items: [item] },
+      value: { run, items: [item] },
+      run: (data) => data.openPracticeRun(runId),
+    },
+    {
+      name: "addPracticeItems",
+      method: "POST",
+      url: `http://api.test/practice/runs/${runId}/items`,
+      body: { items: [created] },
+      answer: { items: [item] },
+      value: [item],
+      run: (data) => data.addPracticeItems(runId, [created]),
+    },
+    {
+      name: "answerPracticeItem",
+      method: "POST",
+      url: `http://api.test/practice/items/${itemId}/answer`,
+      body: { userAnswer: "was", correct: false },
+      answer: { ...item, userAnswer: "was", correct: false },
+      value: { ...item, userAnswer: "was", correct: false },
+      run: (data) => data.answerPracticeItem(itemId, { userAnswer: "was", correct: false }),
+    },
+    {
+      name: "addPracticeUsage",
+      method: "POST",
+      url: `http://api.test/practice/runs/${runId}/usage`,
+      body: usage,
+      answer: { ...run, costUsd: 0.1 },
+      value: { ...run, costUsd: 0.1 },
+      run: (data) => data.addPracticeUsage(runId, usage),
+    },
+    {
+      name: "setPracticeTarget",
+      method: "POST",
+      url: `http://api.test/practice/runs/${runId}/target`,
+      body: { target: 10 },
+      answer: { ...run, target: 10 },
+      value: { ...run, target: 10 },
+      run: (data) => data.setPracticeTarget(runId, 10),
+    },
+    {
+      name: "finishPracticeRun",
+      method: "POST",
+      url: `http://api.test/practice/runs/${runId}/finish`,
+      body: null,
+      answer: { ...run, finishedAt: stamp },
+      value: { ...run, finishedAt: stamp },
+      run: (data) => data.finishPracticeRun(runId),
+    },
+  ];
+
+  for (const entry of calls) {
+    describe(entry.name, () => {
+      it("returns the parsed value", async () => {
+        const { data, seen } = setup(reply(entry.answer));
+        expect(await entry.run(data)).toEqual({ ok: true, value: entry.value });
+        expect(seen[0].method).toBe(entry.method);
+        expect(seen[0].url).toBe(entry.url);
+        expect(JSON.parse(seen[0].body ?? "null")).toEqual(entry.body);
+      });
+
+      it("fails as not_found for another user's run", async () => {
+        const { data } = setup(reply({ error: "not_found" }, 404));
+        expect(await entry.run(data)).toEqual({ ok: false, failure: "not_found" });
+      });
+
+      it("fails as unauthorized on 401", async () => {
+        const { data } = setup(reply({ error: "unauthorized" }, 401));
+        expect(await entry.run(data)).toEqual({ ok: false, failure: "unauthorized" });
+      });
+
+      it("fails as network on a thrown fetch", async () => {
+        const { data } = setup(new TypeError("Network request failed"));
+        expect(await entry.run(data)).toEqual({ ok: false, failure: "network" });
+      });
+
+      it("fails as network on the deadline", async () => {
+        const hang = jest.fn(
+          (_input: RequestInfo | URL, init?: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+              init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+            }),
+        );
+        const data = createHonoData({
+          baseUrl: "http://api.test",
+          fetchFn: hang as unknown as typeof fetch,
+          readToken: async () => ({ ok: true, token: "token-1" }),
+          timeoutMs: 20,
+        });
+        expect(await entry.run(data)).toEqual({ ok: false, failure: "network" });
+      });
+
+      it("fails as bad_response on a wrong shape", async () => {
+        const { data } = setup(reply({ id }));
+        expect(await entry.run(data)).toEqual({ ok: false, failure: "bad_response" });
+      });
+    });
+  }
+
+  it("getTodayPractice returns null with no run today", async () => {
+    const { data } = setup(reply({ run: null }));
+    expect(await data.getTodayPractice("UTC")).toEqual({ ok: true, value: null });
+  });
+
+  it("openPracticeRun returns a run with no items", async () => {
+    const { data } = setup(reply({ run, items: [] }));
+    expect(await data.openPracticeRun(runId)).toEqual({ ok: true, value: { run, items: [] } });
+  });
+
+  it("addPracticeItems returns every item of the run when the save repeats", async () => {
+    const second = { ...item, id: "second", position: 1 };
+    const { data } = setup(reply({ items: [item, second] }));
+    expect(await data.addPracticeItems(runId, [created])).toEqual({
+      ok: true,
+      value: [item, second],
+    });
+  });
+
+  it("the writes answer the saved row; a write has no expected empty", async () => {
+    const { data } = setup(reply({ ...run, finishedAt: stamp }));
+    expect(await data.finishPracticeRun(runId)).toMatchObject({
+      ok: true,
+      value: { finishedAt: stamp },
     });
   });
 });

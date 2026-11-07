@@ -76,4 +76,34 @@ describe("segmentedStyle", () => {
     expect(style.groupRole).toBe("tablist");
     expect(style.segmentRole).toBe("tab");
   });
+
+  it("draws the count look of practice-focus.html: a 22 radius group without gap, 40 high segments", () => {
+    const style = segmentedStyle("count");
+    expect(style.group).toEqual({
+      flexDirection: "row",
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderWidth: borderWidth.thin,
+      borderRadius: radius.picker,
+      padding: spacing.xs,
+      gap: 0,
+    });
+    expect(style.segment).toEqual({
+      flex: 1,
+      minHeight: size.pill,
+      borderWidth: borderWidth.thin,
+      borderColor: colors.surface,
+      borderRadius: radius.control,
+      alignItems: "center",
+      justifyContent: "center",
+    });
+    expect(style.selected).toEqual({
+      backgroundColor: colors.accentLine,
+      borderColor: colors.accentPressed,
+    });
+    expect(style.label(true)).toBe("actionStrong");
+    expect(style.label(false)).toBe("actionMuted");
+    expect(style.groupRole).toBe("radiogroup");
+    expect(style.segmentRole).toBe("radio");
+  });
 });

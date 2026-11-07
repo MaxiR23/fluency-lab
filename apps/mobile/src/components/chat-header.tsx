@@ -14,7 +14,7 @@ export function ChatHeader({
   backLabel,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   onBack: () => void;
   onEnd?: () => void;
   endDisabled?: boolean;
@@ -28,7 +28,7 @@ export function ChatHeader({
         <Text variant="chatTitle" accessibilityRole="header">
           {title}
         </Text>
-        <Text variant="why">{subtitle}</Text>
+        {subtitle === undefined ? null : <Text variant="why">{subtitle}</Text>}
       </View>
       {onEnd === undefined ? null : (
         <Pressable

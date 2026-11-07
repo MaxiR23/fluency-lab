@@ -10,6 +10,7 @@
 // - The Summary tokens: the done badge, its check and glow, and the word chip
 // - The reply tokens of chat-reply.html and chat-reply-sent.html
 // - The medium face and the withdrawn badge height of the correction thread
+// - The practice tokens of the five design files: the muted orange, the rings, the prompt type and the motion timings
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -21,6 +22,7 @@
 import { describe, expect, it } from "@jest/globals";
 
 import {
+  borderWidth,
   colors,
   fontFamily,
   fontSize,
@@ -80,7 +82,7 @@ describe("theme", () => {
   });
 
   it("holds the badge radius beside the control radius", () => {
-    expect(radius).toEqual({
+    expect(radius).toMatchObject({
       control: 18,
       badge: 12,
       hero: 22,
@@ -96,7 +98,7 @@ describe("theme", () => {
   });
 
   it("holds the design's control, badge, icon and progress bar sizes", () => {
-    expect(size).toEqual({
+    expect(size).toMatchObject({
       control: 52,
       badge: 40,
       icon: 22,
@@ -138,11 +140,11 @@ describe("theme", () => {
       wordChip: 34,
       tagSmall: 22,
     });
-    expect(strokeWidth).toEqual({ icon: 1.8, action: 2, check: 2.4, send: 1.9, done: 2.2 });
+    expect(strokeWidth).toMatchObject({ icon: 1.8, action: 2, check: 2.4, send: 1.9, done: 2.2 });
   });
 
   it("holds the design's font sizes", () => {
-    expect(fontSize).toEqual({
+    expect(fontSize).toMatchObject({
       micro: 11,
       xsmall: 12,
       caption: 13,
@@ -162,7 +164,7 @@ describe("theme", () => {
   });
 
   it("holds the design's line heights and letter spacings in pixels", () => {
-    expect(lineHeight).toEqual({
+    expect(lineHeight).toMatchObject({
       body: 22.5,
       title: 33.6,
       heading: 31.2,
@@ -172,7 +174,7 @@ describe("theme", () => {
       explanation: 18.2,
       quote: 19.5,
     });
-    expect(letterSpacing).toEqual({
+    expect(letterSpacing).toMatchObject({
       brand: -0.17,
       title: -0.56,
       heading: -0.52,
@@ -283,7 +285,7 @@ describe("theme", () => {
   });
 
   it("holds the motion: the chat's enter, fade, press and dot loop, and the tab pill spring", () => {
-    expect(motion).toEqual({
+    expect(motion).toMatchObject({
       enterDuration: 240,
       enterOffset: 12,
       fadeDuration: 200,
@@ -410,5 +412,158 @@ describe("theme", () => {
     expect(motion.previewOffset).toBe(8);
     expect(motion.replyHintScale).toBe(0.6);
     expect(motion.swipeSlop).toBe(10);
+  });
+
+  it("holds the practice tokens of the five design files", () => {
+    expect({
+      miss: colors.miss,
+      missSurface: colors.missSurface,
+      missLine: colors.missLine,
+    }).toEqual({
+      miss: "#C77D44",
+      missSurface: "#1F1408",
+      missLine: "#6B4423",
+    });
+    expect({
+      ringSmall: size.ringSmall,
+      ringSmallRadius: size.ringSmallRadius,
+      ringLarge: size.ringLarge,
+      ringLargeRadius: size.ringLargeRadius,
+      segment: size.segment,
+      option: size.option,
+      checkBadge: size.checkBadge,
+      radio: size.radio,
+      sheetBadge: size.sheetBadge,
+      rowBadge: size.rowBadge,
+      gapSlot: size.gapSlot,
+      iconTiny: size.iconTiny,
+      sparkLarge: size.sparkLarge,
+      sparkMedium: size.sparkMedium,
+      sparkSmall: size.sparkSmall,
+    }).toEqual({
+      ringSmall: 64,
+      ringSmallRadius: 28,
+      ringLarge: 128,
+      ringLargeRadius: 56,
+      segment: 6,
+      option: 56,
+      checkBadge: 26,
+      radio: 24,
+      sheetBadge: 28,
+      rowBadge: 24,
+      gapSlot: 120,
+      iconTiny: 12,
+      sparkLarge: 6,
+      sparkMedium: 5,
+      sparkSmall: 4,
+    });
+    expect({
+      sparkSide: spacing.sparkSide,
+      sparkTop: spacing.sparkTop,
+      sparkEdge: spacing.sparkEdge,
+      sparkTopMid: spacing.sparkTopMid,
+      sparkInset: spacing.sparkInset,
+    }).toEqual({ sparkSide: 6, sparkTop: 20, sparkEdge: 4, sparkTopMid: 34, sparkInset: 26 });
+    expect(strokeWidth.ringSmall).toBe(6);
+    expect(strokeWidth.ringLarge).toBe(10);
+    expect(strokeWidth.badge).toBe(3);
+    expect(borderWidth.slot).toBe(2);
+    expect({ segment: radius.segment, sheet: radius.sheet, picker: radius.picker }).toEqual({
+      segment: 3,
+      sheet: 28,
+      picker: 22,
+    });
+  });
+
+  it("holds the practice type scale", () => {
+    expect({
+      option: fontSize.option,
+      buttonLarge: fontSize.buttonLarge,
+      prompt: fontSize.prompt,
+      score: fontSize.score,
+      resultTitle: fontSize.resultTitle,
+      sheetTitle: fontSize.sheetTitle,
+    }).toEqual({
+      option: 16,
+      buttonLarge: 16,
+      prompt: 22,
+      score: 32,
+      resultTitle: 24,
+      sheetTitle: 17,
+    });
+    expect({
+      tileText: lineHeight.tileText,
+      hint: lineHeight.hint,
+      prompt: lineHeight.prompt,
+      source: lineHeight.source,
+      answer: lineHeight.answer,
+    }).toEqual({ tileText: 16.8, hint: 18.85, prompt: 33, source: 27, answer: 24 });
+    expect({
+      eyebrow: letterSpacing.eyebrow,
+      prompt: letterSpacing.prompt,
+      score: letterSpacing.score,
+      resultTitle: letterSpacing.resultTitle,
+    }).toEqual({ eyebrow: 0.96, prompt: -0.22, score: -0.64, resultTitle: -0.48 });
+  });
+
+  it("holds the practice glows as accent shadows with an iOS only radius", () => {
+    expect(shadow.cardGlow).toEqual({
+      shadowColor: colors.accentGlow,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 11,
+    });
+    expect(shadow.dayGlow).toEqual({
+      shadowColor: colors.accentBubbleLine,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 6,
+    });
+    expect(shadow.halo).toEqual({
+      shadowColor: colors.accentRing,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 20,
+    });
+  });
+
+  it("holds the practice motion converted from the cycles of the design files", () => {
+    expect(motion.rise).toEqual([0.2, 0.7, 0.2, 1]);
+    expect(motion.ring).toEqual([0.3, 0.7, 0.2, 1]);
+    expect(motion.sheet).toEqual([0.2, 0.8, 0.2, 1]);
+    // home.html: 7 s cycle
+    expect(motion.home.riseDuration).toBe(Math.round(0.12 * 7000));
+    expect(motion.home.riseStagger).toBe(120);
+    expect(motion.home.ringDelay).toBe(Math.round(0.08 * 7000));
+    expect(motion.home.ringDuration).toBe(Math.round((0.3 - 0.08) * 7000));
+    expect(motion.home.popDelay).toBe(Math.round(0.14 * 7000));
+    expect(motion.home.popUp).toBe(Math.round((0.2 - 0.14) * 7000));
+    expect(motion.home.popSettle).toBe(Math.round((0.24 - 0.2) * 7000));
+    expect(motion.home.popScale).toBe(1.2);
+    expect(motion.home.glowCycle).toBe(3200);
+    expect(motion.home.nudgeCycle).toBe(1600);
+    // practice-focus.html: 6 s cycle
+    expect(motion.focus.riseDuration).toBe(Math.round(0.14 * 6000));
+    expect(motion.focus.riseStagger).toBe(100);
+    // exercise-choose.html and exercise-not-quite.html: 5 s cycle
+    expect(motion.exercise.fillDuration).toBe(Math.round(0.2 * 5000));
+    expect(motion.exercise.pickDuration).toBe(Math.round(0.06 * 5000));
+    expect(motion.exercise.checkDelay).toBe(Math.round(0.04 * 5000));
+    expect(motion.exercise.slotDuration).toBe(Math.round(0.08 * 5000));
+    expect(motion.exercise.sheetDelayRight).toBe(Math.round(0.1 * 5000));
+    expect(motion.exercise.sheetDelayMiss).toBe(Math.round(0.14 * 5000));
+    expect(motion.exercise.sheetDuration).toBe(Math.round(0.1 * 5000));
+    expect(motion.exercise.shakeStep).toBe(Math.round(0.04 * 5000));
+    expect(motion.exercise.shake).toEqual([-8, 7, -5, 3, 0]);
+    expect(motion.exercise.wrongDuration).toBe(Math.round(0.04 * 5000));
+    // practice-result.html: 6 s cycle
+    expect(motion.result.ringDelay).toBe(Math.round(0.06 * 6000));
+    expect(motion.result.ringDuration).toBe(Math.round(0.28 * 6000));
+    expect(motion.result.riseDelay).toBe(Math.round(0.3 * 6000));
+    expect(motion.result.riseDuration).toBe(Math.round(0.12 * 6000));
+    expect(motion.result.haloCycle).toBe(3000);
+    expect(motion.result.sparkIn).toBe(Math.round(0.15 * 6000));
+    expect(motion.result.sparkOut).toBe(Math.round(0.25 * 6000));
+    expect(motion.result.sparkStagger).toEqual([0, 200, 350]);
   });
 });

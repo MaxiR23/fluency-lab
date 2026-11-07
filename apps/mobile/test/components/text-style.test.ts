@@ -472,4 +472,89 @@ describe("textStyle", () => {
       color: colors.text,
     });
   });
+
+  it("draws the practice variants from the practice tokens", () => {
+    expect(textStyle("eyebrow")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.xsmall,
+      color: colors.accent,
+      letterSpacing: letterSpacing.eyebrow,
+      textTransform: "uppercase",
+    });
+    expect(textStyle("ringCount")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.body,
+      color: colors.text,
+    });
+    expect(textStyle("tileText")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.xsmall,
+      color: colors.textMuted,
+      lineHeight: lineHeight.tileText,
+    });
+    expect(textStyle("hint")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.caption,
+      color: colors.textMuted,
+      lineHeight: lineHeight.hint,
+    });
+    expect(textStyle("actionStrong")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.small,
+      color: colors.text,
+    });
+    expect(textStyle("row")).toEqual({
+      fontFamily: fontFamily.regular,
+      fontSize: fontSize.small,
+      color: colors.text,
+    });
+  });
+
+  it("draws the prompt and its gap slot in the same type, the slot in accent", () => {
+    const prompt = {
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.prompt,
+      color: colors.text,
+      lineHeight: lineHeight.prompt,
+      letterSpacing: letterSpacing.prompt,
+    };
+    expect(textStyle("prompt")).toEqual(prompt);
+    expect(textStyle("promptSlot")).toEqual({ ...prompt, color: colors.accent });
+  });
+
+  it("draws the option, the source card, the sheet title, the score and the result title", () => {
+    expect(textStyle("option")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.option,
+      color: colors.text,
+    });
+    expect(textStyle("sourceLabel")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.xsmall,
+      color: colors.textMuted,
+    });
+    expect(textStyle("source")).toEqual({
+      fontFamily: fontFamily.semibold,
+      fontSize: fontSize.cardHeading,
+      color: colors.text,
+      lineHeight: lineHeight.source,
+    });
+    expect(textStyle("sheetTitle")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.sheetTitle,
+      color: colors.text,
+    });
+    expect(textStyle("score")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.score,
+      color: colors.text,
+      letterSpacing: letterSpacing.score,
+    });
+    expect(textStyle("resultTitle")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.resultTitle,
+      color: colors.text,
+      letterSpacing: letterSpacing.resultTitle,
+    });
+  });
 });

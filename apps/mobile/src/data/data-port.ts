@@ -7,6 +7,12 @@ import type {
   MistakePage,
   MonthProgress,
   MonthSpend,
+  PracticeAnswer,
+  PracticeItem,
+  PracticeItemCreate,
+  PracticeRun,
+  PracticeRunCreate,
+  PracticeRunWithItems,
   Profile,
   ProfileStats,
   ProfileUpdate,
@@ -63,6 +69,20 @@ export type DataPort = {
   listMistakes(offset: number): Promise<DataOutcome<MistakePage>>;
   // INFO: an empty page is the expected empty. Newest first; nextOffset is null on the last page.
   listWords(timeZone: string, offset: number): Promise<DataOutcome<WordPage>>;
+  // INFO: null is the expected empty: no practice was started today.
+  getTodayPractice(timeZone: string): Promise<DataOutcome<PracticeRunWithItems | null>>;
+  createPracticeRun(input: PracticeRunCreate): Promise<DataOutcome<PracticeRun>>;
+  // INFO: a run with no items is the expected empty: its first round has not been saved.
+  openPracticeRun(runId: string): Promise<DataOutcome<PracticeRunWithItems>>;
+  // INFO: saving a position twice is safe; the answer is every item of the run.
+  addPracticeItems(
+    runId: string,
+    items: PracticeItemCreate[],
+  ): Promise<DataOutcome<PracticeItem[]>>;
+  answerPracticeItem(itemId: string, answer: PracticeAnswer): Promise<DataOutcome<PracticeItem>>;
+  addPracticeUsage(runId: string, usage: SessionUsage): Promise<DataOutcome<PracticeRun>>;
+  setPracticeTarget(runId: string, target: 10 | 15): Promise<DataOutcome<PracticeRun>>;
+  finishPracticeRun(runId: string): Promise<DataOutcome<PracticeRun>>;
   // INFO: deletes the signed in user's account and data on the server; nothing is returned.
   deleteAccount(): Promise<DataOutcome<null>>;
 };

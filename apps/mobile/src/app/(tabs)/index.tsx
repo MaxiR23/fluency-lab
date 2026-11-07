@@ -1,29 +1,28 @@
-import { suggestTopics } from "@fluency-lab/shared";
 import { router } from "expo-router";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import Animated from "react-native-reanimated";
 
 import { ActionCard } from "@/components/action-card";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import { FailureMessage } from "@/components/failure-message";
-import { HeroCard } from "@/components/hero-card";
+import { IconCard } from "@/components/icon-card";
 import { Screen } from "@/components/screen";
 import { SectionHeader } from "@/components/section-header";
-import { SuggestionCard } from "@/components/suggestion-card";
+import { TodayPracticeCard } from "@/components/today-practice-card";
 import { Text } from "@/components/text";
 import { WeekStrip } from "@/components/week-strip";
 import { colors, spacing } from "@/constants/theme";
 import { useHome } from "@/hooks/use-home";
+import { usePracticeMotion } from "@/hooks/use-practice-motion";
 import { useTabScreenPadding } from "@/hooks/use-tab-screen-padding";
 import { dataFailureMessage } from "@/utils/data-message";
+import { enterTransition } from "@/utils/chat-transitions";
 import { avatarInitial, continueCard, greeting, seeAllLabel } from "@/utils/home";
+import { riseMotion } from "@/utils/practice-motion";
 
-function openChat(params?: { starter: string } | { session: string }) {
-  router.push(params === undefined ? "/chat" : { pathname: "/chat", params });
-}
-
-function openAll() {
-  router.push("/suggestions");
+function openChat(params: { session: string }) {
+  router.push({ pathname: "/chat", params });
 }
 
 function openChats() {
@@ -33,6 +32,7 @@ function openChats() {
 export default function Home() {
   const { state, retry } = useHome();
   const padding = useTabScreenPadding();
+  const { home } = usePracticeMotion();
 
   if (state.kind === "loading") {
     return (
@@ -58,10 +58,18 @@ export default function Home() {
   const { activeSession } = state;
   const card = activeSession === null ? null : continueCard(activeSession, state.loadedAt);
   const seeAll = seeAllLabel(state.openCount);
+  const rise = (index: number) => (home === null ? null : riseMotion(home.rise, index));
+  const openToday = () => {
+    if (state.today.open.kind === "run") {
+      router.push({ pathname: "/practice-run", params: { run: state.today.open.runId } });
+    } else {
+      router.push("/practice");
+    }
+  };
   return (
     <Screen edges={["left", "right"]}>
       <ScrollView testID="home-content" contentContainerStyle={[styles.content, padding]}>
-        <View style={styles.header}>
+        <Animated.View entering={enterTransition(rise(0))} style={styles.header}>
           <View style={styles.headerTexts}>
             <Text variant="footer">{greeting(profile.displayName, new Date(state.loadedAt))}</Text>
             <Text variant="heading" accessibilityRole="header">
@@ -75,11 +83,35 @@ export default function Home() {
           >
             <Avatar initial={avatarInitial(profile.displayName)} />
           </Pressable>
-        </View>
-        <WeekStrip week={state.week} />
-        <HeroCard onPress={() => openChat()} />
+        </Animated.View>
+        <Animated.View entering={enterTransition(rise(1))}>
+          <TodayPracticeCard card={state.today} onPress={openToday} motion={home} />
+        </Animated.View>
+        <Animated.View entering={enterTransition(rise(2))}>
+          <WeekStrip week={state.week} pop={home === null ? null : home.pop} />
+        </Animated.View>
+        <Animated.View entering={enterTransition(rise(3))} style={styles.tiles}>
+          <IconCard
+            icon="ask"
+            title="Free chat"
+            text="Talk about anything"
+            textVariant="tileText"
+            accessibilityLabel="Free chat"
+            onPress={() => router.push("/suggestions")}
+            style={styles.tile}
+          />
+          <IconCard
+            icon="pen"
+            title="Pick a topic"
+            text="Going to vs will, tenses…"
+            textVariant="tileText"
+            accessibilityLabel="Pick a topic"
+            onPress={() => router.push("/practice")}
+            style={styles.tile}
+          />
+        </Animated.View>
         {card === null || activeSession === null ? null : (
-          <View style={styles.section}>
+          <Animated.View entering={enterTransition(rise(4))} style={styles.section}>
             <SectionHeader
               title="Continue"
               actionLabel={seeAll ?? undefined}
@@ -92,27 +124,8 @@ export default function Home() {
               action="Resume"
               onPress={() => openChat({ session: activeSession.session.id })}
             />
-          </View>
+          </Animated.View>
         )}
-        <View style={styles.suggested}>
-          <View style={styles.sidePadding}>
-            <SectionHeader title="Suggested for you" actionLabel="See all" onAction={openAll} />
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.carousel}
-          >
-            {suggestTopics(profile).map((suggestion) => (
-              <SuggestionCard
-                key={suggestion.id}
-                suggestion={suggestion}
-                layout="carousel"
-                onPress={() => openChat({ starter: suggestion.id })}
-              />
-            ))}
-          </ScrollView>
-        </View>
       </ScrollView>
     </Screen>
   );
@@ -123,7 +136,7 @@ const styles = StyleSheet.create({
   failure: { padding: spacing.screenSide, gap: spacing.lg },
   content: {
     paddingTop: spacing.screenTopShort,
-    gap: spacing.section,
+    gap: spacing.hero,
   },
   header: {
     flexDirection: "row",
@@ -133,8 +146,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenSide,
   },
   headerTexts: { flexShrink: 1, gap: spacing.xs },
+  tiles: { flexDirection: "row", gap: spacing.group, paddingHorizontal: spacing.screenSide },
+  tile: { flex: 1 },
   section: { gap: spacing.cluster, paddingHorizontal: spacing.screenSide },
-  suggested: { gap: spacing.cluster },
-  sidePadding: { paddingHorizontal: spacing.screenSide },
-  carousel: { gap: spacing.group, paddingHorizontal: spacing.screenSide },
 });

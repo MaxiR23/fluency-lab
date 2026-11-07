@@ -13,6 +13,8 @@ export function ListRow({
   tone = "default",
   last = false,
   busy = false,
+  leading,
+  dense = false,
   onPress,
 }: {
   title: string;
@@ -22,11 +24,17 @@ export function ListRow({
   tone?: "default" | "danger";
   last?: boolean;
   busy?: boolean;
+  leading?: ReactNode;
+  dense?: boolean;
   onPress?: () => void;
 }) {
   const content = (
     <>
-      <Text variant={tone === "danger" ? "bodyDanger" : "body"} style={styles.title}>
+      {leading}
+      <Text
+        variant={tone === "danger" ? "bodyDanger" : dense ? "row" : "body"}
+        style={styles.title}
+      >
         {title}
       </Text>
       {value === undefined ? null : <Text variant="footer">{value}</Text>}
@@ -41,7 +49,7 @@ export function ListRow({
       {trailing}
     </>
   );
-  const style = [styles.row, last ? null : styles.divider];
+  const style = [dense ? styles.dense : styles.row, last ? null : styles.divider];
   if (onPress === undefined) {
     return (
       <View testID="list-row" style={style}>
@@ -70,6 +78,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.cluster,
     minHeight: size.listRow,
+    paddingHorizontal: spacing.md,
+  },
+  dense: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.group,
+    paddingVertical: spacing.group,
     paddingHorizontal: spacing.md,
   },
   divider: { borderBottomWidth: borderWidth.thin, borderBottomColor: colors.border },

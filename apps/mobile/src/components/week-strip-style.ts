@@ -1,7 +1,7 @@
 import type { ViewStyle } from "react-native";
 
 import type { TextVariant } from "@/components/text-style";
-import { borderWidth, colors, radius, size } from "@/constants/theme";
+import { borderWidth, colors, radius, shadow, size } from "@/constants/theme";
 import type { DayCell } from "@/utils/week-strip";
 
 export function dayCircleStyle(cell: DayCell): ViewStyle {
@@ -14,7 +14,13 @@ export function dayCircleStyle(cell: DayCell): ViewStyle {
     justifyContent: "center",
   };
   if (cell.practiced) {
-    return { ...base, backgroundColor: colors.accentLine, borderColor: colors.accentPressed };
+    const practiced = {
+      ...base,
+      backgroundColor: colors.accentLine,
+      borderColor: colors.accentPressed,
+    };
+    // INFO: today's practiced day glows (home.html); iOS only, like the other glows.
+    return cell.isToday ? { ...practiced, ...shadow.dayGlow } : practiced;
   }
   if (cell.isFuture) {
     return {
