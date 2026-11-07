@@ -4,8 +4,8 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-na
 
 import {
   composerInputStyle,
-  composerLines,
   composerRowStyle,
+  composerSize,
   sendButtonStyle,
 } from "@/components/chat-composer-style";
 import { Icon } from "@/components/icon";
@@ -41,8 +41,9 @@ export function ChatComposer({
   // INFO: the quick-ask chips of a thread sit above the composer, which tightens its top padding.
   belowChips?: boolean;
 }) {
-  const [lines, setLines] = useState(1);
-  const input = composerInputStyle({ locked, lines });
+  const [measuredHeight, setMeasuredHeight] = useState(0);
+  const { height, lines } = composerSize(value, measuredHeight);
+  const input = composerInputStyle({ locked, lines, height });
   const enabled = canSend(value, locked, busy);
   return (
     <View style={composerRowStyle(replying === true, belowChips === true)}>
@@ -57,9 +58,8 @@ export function ChatComposer({
         accessibilityLabel={label}
         multiline
         submitBehavior="newline"
-        // INFO: the height is the layout's and the count a pure function; the input grows by
-        // itself up to its max height and scrolls inside after it.
-        onLayout={(event) => setLines(composerLines(event.nativeEvent.layout.height))}
+        // INFO: the layout's height feeds composerSize; the input grows by itself up to its max height and scrolls inside after it, and an empty value takes the control height.
+        onLayout={(event) => setMeasuredHeight(event.nativeEvent.layout.height)}
       />
       <SendButton enabled={enabled} onSend={onSend} press={press} />
     </View>

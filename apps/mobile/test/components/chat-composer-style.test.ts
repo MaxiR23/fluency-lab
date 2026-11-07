@@ -8,9 +8,10 @@
 // - The row's top padding is 4 when told so (below the chips)
 // - The send button: enabled, pressed, disabled
 // - The line count from the input height, the five-line cap and the radius at one line or more
+// - The composer size: one line and the control height when empty, the measured lines otherwise
 //
 // What is covered:
-// - Normal case, edges
+// - Normal case, empty case, edges
 //
 // Run with: pnpm exec jest apps/mobile/test/components/chat-composer-style.test.ts
 //
@@ -24,6 +25,7 @@ import {
   composerLines,
   composerMaxHeight,
   composerRowStyle,
+  composerSize,
   sendButtonStyle,
 } from "@/components/chat-composer-style";
 import {
@@ -38,7 +40,53 @@ import {
   spacing,
 } from "@/constants/theme";
 
+describe("composerSize", () => {
+  it("counts the measured lines and leaves the height to the input for a typed value", () => {
+    expect(composerSize("Hello", size.control + lineHeight.body)).toEqual({
+      height: null,
+      lines: 2,
+    });
+  });
+
+  it("takes one line at the control height for an empty value, however tall it was measured", () => {
+    expect(composerSize("", composerMaxHeight)).toEqual({ height: size.control, lines: 1 });
+  });
+
+  it("takes one line at the control height for an empty value before the input is laid out", () => {
+    expect(composerSize("", 0)).toEqual({ height: size.control, lines: 1 });
+  });
+
+  it("leaves the height to the input for a value of only new lines", () => {
+    expect(composerSize("\n\n", size.control + 2 * lineHeight.body)).toEqual({
+      height: null,
+      lines: 3,
+    });
+  });
+
+  it("leaves the height to the input for a single space", () => {
+    expect(composerSize(" ", size.control)).toEqual({ height: null, lines: 1 });
+  });
+
+  it("stops at five lines at and past the max height for a typed value", () => {
+    expect(composerSize("x", composerMaxHeight).lines).toBe(MAX_COMPOSER_LINES);
+    expect(composerSize("x", composerMaxHeight + lineHeight.body).lines).toBe(MAX_COMPOSER_LINES);
+  });
+});
+
 describe("composerInputStyle", () => {
+  it("sets the height when it is given one", () => {
+    expect(composerInputStyle({ locked: false, lines: 1, height: size.control }).input.height).toBe(
+      size.control,
+    );
+  });
+
+  it("leaves the height to the input when it has none", () => {
+    expect(composerInputStyle({ locked: false, lines: 1, height: null }).input).not.toHaveProperty(
+      "height",
+    );
+    expect(composerInputStyle({ locked: false, lines: 1 }).input).not.toHaveProperty("height");
+  });
+
   it("draws the open input raised with the floating shadow", () => {
     expect(composerInputStyle({ locked: false, lines: 1 }).input).toEqual({
       flex: 1,

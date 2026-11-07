@@ -6,6 +6,7 @@
 // - Loading while the key is read; the failed state with Try again; no key
 // - Empty: the header, the pinned sentence, corrections and rule, the three chips and the composer
 // - With messages: the rows in order, a new word row after the learner's question
+// - Send clears the composer back to one line and the pill after a long question
 // - A chip sends its text, the typing dots show while pending, and the reply is drawn
 // - A tutor withdrawal draws Withdrawn on the pinned card
 // - Leaving and reopening shows the earlier messages in order
@@ -22,7 +23,10 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, fireEvent, screen, within } from "@testing-library/react-native";
 import { router } from "expo-router";
+import { StyleSheet } from "react-native";
 
+import { composerMaxHeight } from "@/components/chat-composer-style";
+import { radius, size } from "@/constants/theme";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { fakeAi, resetFakeAi, threadReplyWith } from "../helpers/fake-ai";
 import {
@@ -201,6 +205,26 @@ describe("Thread", () => {
       role: "user",
       text: "Can I say it another way?",
     });
+  });
+
+  it("takes the composer back to one line and the pill after a long question is sent", async () => {
+    withKey();
+    await renderAppAt(open, fakeSession());
+    const lines = "First line\nSecond line\nThird line\nFourth line\nFifth line\nSixth line";
+    await fireEvent.changeText(screen.getByPlaceholderText("Ask about this correction…"), lines);
+    await fireEvent(screen.getByLabelText("Ask about this correction"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: composerMaxHeight } },
+    });
+    expect(
+      StyleSheet.flatten(screen.getByLabelText("Ask about this correction").props.style)
+        .borderRadius,
+    ).toBe(radius.control);
+    await fireEvent.press(screen.getByRole("button", { name: "Send", disabled: false }));
+    const cleared = StyleSheet.flatten(
+      screen.getByLabelText("Ask about this correction").props.style,
+    );
+    expect(cleared.height).toBe(size.control);
+    expect(cleared.borderRadius).toBe(radius.pill);
   });
 
   it("a tutor withdrawal draws Withdrawn on that correction in the pinned card", async () => {
