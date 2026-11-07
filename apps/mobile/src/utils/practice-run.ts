@@ -17,7 +17,7 @@ import type { AnswerGrade, PracticeRound, StudyNoteReply, TutorRequest } from "@
 import { round8, sendState, usageWrite, withContext } from "@/utils/chat-conversation";
 import type { ContextEvent } from "@/utils/chat-conversation";
 import type { ChatFailure } from "@/utils/chat-failure";
-import { gradeChoice, localGrade } from "@/utils/practice-grade";
+import { gradeChoice, gradedCorrect, localGrade } from "@/utils/practice-grade";
 import { keepGoingTarget, missedRules, practiceNext, roundSize } from "@/utils/practice-escalation";
 import type { PracticeOrigin } from "@/utils/practice-focus";
 import {
@@ -26,7 +26,7 @@ import {
   studyNoteRequest,
   type FocusData,
 } from "@/utils/practice-prompt";
-import { splitGap } from "@/utils/practice-round";
+import { gapSentenceFill, splitGap } from "@/utils/practice-round";
 
 export type PracticeWrite =
   | { kind: "create"; input: PracticeRunCreate }
@@ -101,7 +101,7 @@ export type PracticeEvent =
 export type PracticeStep =
   | { kind: "none" }
   | { kind: "write"; write: PracticeWrite }
-  | { kind: "round"; request: TutorRequest }
+  | { kind: "round"; request: TutorRequest; count: number }
   | { kind: "grade"; request: TutorRequest }
   | { kind: "note"; request: TutorRequest };
 
@@ -295,7 +295,8 @@ export function practiceReducer(s: PracticeRunState, event: PracticeEvent): Prac
         return s;
       }
       if (sendState(s).locked) return s;
-      const grade = localGrade(item, text);
+      // INFO: a gap typed as the whole sentence with the right fill is right with no tutor call.
+      const grade = gapSentenceFill(item, text) === null ? localGrade(item, text) : "right";
       if (grade === "ask") return { ...s, phase: "grading", failure: null };
       return answerItem(
         s,
@@ -333,7 +334,7 @@ export function practiceReducer(s: PracticeRunState, event: PracticeEvent): Prac
       const answered = answerItem(
         s,
         item,
-        { correct: grade.correct, userAnswer: text, explanation },
+        { correct: gradedCorrect(grade), userAnswer: text, explanation },
         [{ kind: "usage", usage: usageWrite(grade.model, grade.usage) }],
       );
       return { ...withCost(answered, grade.model, grade.usage), draft: "" };
@@ -439,14 +440,16 @@ export function practiceStep(s: PracticeRunState): PracticeStep {
   if (write !== undefined) return { kind: "write", write };
   if (s.failure !== null || sendState(s).locked || s.run === null) return { kind: "none" };
   if (s.phase === "asking") {
+    const count = roundSize(s.items, s.run.target);
     return {
       kind: "round",
       request: roundRequest({
         focus: s.focus,
-        count: roundSize(s.items, s.run.target),
+        count,
         missedRules: missedRules(s.items),
         language: s.language,
       }),
+      count,
     };
   }
   if (s.noteRequest?.status === "asking") {
@@ -528,7 +531,9 @@ export function gapFill(s: PracticeRunState): string | null {
   const item = currentItem(s);
   if (item === null || s.feedback === null) return null;
   if (item.kind === "choose") return s.picked;
-  if (item.kind === "gap" && s.feedback.tone === "right") return item.userAnswer;
+  if (item.kind === "gap" && s.feedback.tone === "right") {
+    return gapSentenceFill(item, item.userAnswer ?? "") ?? item.userAnswer;
+  }
   return null;
 }
 

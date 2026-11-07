@@ -78,7 +78,7 @@ export function providerRoundSuccess(): Response {
 
 // INFO: the provider's answer to the grading of a typed answer.
 export function providerGradeSuccess(): Response {
-  return providerBody({ correct: false, explanation: "Use have." });
+  return providerBody({ flawed: false, correct: false, explanation: "Use have." });
 }
 
 // INFO: the provider's answer to a study note request: a summary with two points.

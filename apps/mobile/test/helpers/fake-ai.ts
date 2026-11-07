@@ -122,6 +122,7 @@ export function studyNoteReplyWith(overrides: Partial<StudyNoteReply> = {}): Stu
 
 export function answerGradeWith(overrides: Partial<AnswerGrade> = {}): AnswerGrade {
   return {
+    flawed: false,
     correct: false,
     explanation: "Use the present perfect for an experience.",
     model: TUTOR_MODEL,

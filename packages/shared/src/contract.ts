@@ -475,7 +475,11 @@ export const practiceRoundSchema = z.object({
   ),
 });
 
-export const answerGradeSchema = z.object({ correct: z.boolean(), explanation: z.string() });
+export const answerGradeSchema = z.object({
+  flawed: z.boolean(),
+  correct: z.boolean(),
+  explanation: z.string(),
+});
 
 export const accountDeletedSchema = z.object({ deleted: z.literal(true) });
 

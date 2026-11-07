@@ -3,7 +3,6 @@
 import {
   NOTE_KINDS,
   PRACTICE_KINDS,
-  PRACTICE_ROUND_SIZE,
   TUTOR_MODEL,
   answerGradeSchema,
   practiceRoundSchema,
@@ -121,11 +120,14 @@ export const PRACTICE_ROUND_JSON_SCHEMA = {
   },
 } as const;
 
+// INFO: every property is required so the output keeps this order: the tutor decides
+// whether the exercise is flawed before it gives the verdict.
 export const ANSWER_GRADE_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["correct", "explanation"],
+  required: ["flawed", "correct", "explanation"],
   properties: {
+    flawed: { type: "boolean" },
     correct: { type: "boolean" },
     explanation: { type: "string" },
   },
@@ -316,11 +318,11 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
         const payload = threadReplySchema.safeParse(value);
         return payload.success ? toThreadReply(payload.data) : null;
       }),
-    async practiceRound(request) {
+    async practiceRound(request, count) {
       const asked = await ask(request, PRACTICE_ROUND_JSON_SCHEMA, ROUND_MAX_TOKENS, (value) => {
         const payload = practiceRoundSchema.safeParse(value);
         if (!payload.success) return null;
-        const items = toPracticeRound(payload.data, PRACTICE_ROUND_SIZE);
+        const items = toPracticeRound(payload.data, count);
         return items === null ? null : { items };
       });
       return asked;

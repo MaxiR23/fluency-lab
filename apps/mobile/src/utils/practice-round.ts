@@ -1,7 +1,8 @@
-import type { PracticeRoundPayload } from "@fluency-lab/shared";
+import type { PracticeKind, PracticeRoundPayload } from "@fluency-lab/shared";
 import { PRACTICE_KINDS } from "@fluency-lab/shared";
 
 import type { PracticeExercise } from "@/ai/ai-port";
+import { normalizeAnswer } from "@/utils/practice-grade";
 
 export const GAP = "___";
 
@@ -21,6 +22,44 @@ export function splitGap(prompt: string): { before: string; after: string } | nu
   if (parts.length !== 2) return null;
   const [before, after] = parts;
   return { before: before ?? "", after: after ?? "" };
+}
+
+const NEGATIVE_WORDS = ["not", "never", "no", "nobody", "nothing", "nowhere", "none", "cannot"];
+
+// INFO: a whole word of the list or a word ending in n't. cannot is in the list
+// because "can not" and "cannot" must read the same.
+export function isNegative(text: string): boolean {
+  const tokens = normalizeAnswer(text).match(/[a-z']+/g) ?? [];
+  return tokens.some((token) => NEGATIVE_WORDS.includes(token) || token.endsWith("n't"));
+}
+
+// INFO: a fix that already is one of its accepted answers teaches nothing, and an
+// accepted answer with another polarity than the prompt changes what the learner meant.
+function fixKeepsPrompt(prompt: string, accepted: readonly string[]): boolean {
+  const normalized = normalizeAnswer(prompt);
+  if (accepted.some((answer) => normalizeAnswer(answer) === normalized)) return false;
+  return accepted.every((answer) => isNegative(answer) === isNegative(prompt));
+}
+
+const CUE = /^\s*\([^)]*\)/;
+
+// INFO: the accepted answer that fills the gap when the learner typed the whole
+// sentence, with or without the cue in parentheses; null otherwise, so the fill
+// alone is left to matchesAccepted.
+export function gapSentenceFill(
+  item: { kind: PracticeKind; prompt: string; accepted: readonly string[] },
+  answer: string,
+): string | null {
+  if (item.kind !== "gap") return null;
+  const parts = splitGap(item.prompt);
+  const typed = normalizeAnswer(answer);
+  if (parts === null || typed === "") return null;
+  for (const entry of item.accepted) {
+    const keepsCue = normalizeAnswer(parts.before + entry + parts.after);
+    const dropsCue = normalizeAnswer(parts.before + entry + parts.after.replace(CUE, ""));
+    if (typed === keepsCue || typed === dropsCue) return entry;
+  }
+  return null;
 }
 
 function within(text: string, max: number): boolean {
@@ -43,6 +82,7 @@ function toExercise(raw: PracticeRoundPayload["items"][number]): PracticeExercis
   const needsGap = kind === "choose" || kind === "gap";
   if (needsGap ? gaps !== 1 : gaps !== 0) return null;
   if (kind !== "choose") {
+    if (kind === "fix" && !fixKeepsPrompt(prompt, accepted)) return null;
     const source = raw.source.trim();
     return {
       kind,
@@ -65,15 +105,15 @@ function toExercise(raw: PracticeRoundPayload["items"][number]): PracticeExercis
 }
 
 // INFO: an exercise that breaks a rule of its kind or a limit is dropped; null
-// when none is left, which the caller reads as a bad response.
+// when fewer than count are left, which the caller reads as a bad response.
 export function toPracticeRound(
   payload: PracticeRoundPayload,
-  asked: number,
+  count: number,
 ): PracticeExercise[] | null {
   const items: PracticeExercise[] = [];
   for (const raw of payload.items) {
     const exercise = toExercise(raw);
     if (exercise !== null) items.push(exercise);
   }
-  return items.length === 0 ? null : items.slice(0, asked);
+  return items.length < count ? null : items.slice(0, count);
 }

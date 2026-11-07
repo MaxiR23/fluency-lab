@@ -44,7 +44,9 @@ export type PracticeRound = {
 export type StudyNoteReply = { note: StudyNoteDraft; model: ModelId; usage: TokenUsage };
 
 // INFO: explanation is null when the tutor gave none.
+// INFO: flawed is true when the tutor found the exercise itself wrong.
 export type AnswerGrade = {
+  flawed: boolean;
   correct: boolean;
   explanation: string | null;
   model: ModelId;
@@ -83,8 +85,8 @@ export type AiPort = {
   reply(request: TutorRequest): Promise<AiOutcome>;
   // INFO: a thread reply with no new words and no withdrawals is the expected empty, a success.
   replyInThread(request: TutorRequest): Promise<ThreadAiOutcome>;
-  // INFO: no expected empty for a round: a round with no usable exercise is a bad_response.
-  practiceRound(request: TutorRequest): Promise<AiResult<PracticeRound>>;
+  // INFO: no expected empty for a round: a round with fewer usable exercises than count is a bad_response.
+  practiceRound(request: TutorRequest, count: number): Promise<AiResult<PracticeRound>>;
   // INFO: an answer with no explanation is the expected empty: explanation is null.
   gradeAnswer(request: TutorRequest): Promise<AiResult<AnswerGrade>>;
   // INFO: no expected empty: a note that cannot be used is a bad_response.

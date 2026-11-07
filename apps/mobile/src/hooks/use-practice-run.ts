@@ -132,7 +132,7 @@ async function drive(
       if (step.kind === "write") {
         if (!(await save(state, step.write, dispatch))) return;
       } else if (step.kind === "round") {
-        const answer = await ai.practiceRound(step.request);
+        const answer = await ai.practiceRound(step.request, step.count);
         if (!answer.ok) {
           dispatch({
             type: "round_failed",

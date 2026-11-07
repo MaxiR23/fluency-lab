@@ -31,9 +31,20 @@ export function localGrade(
 }
 
 export function toAnswerGrade(payload: AnswerGradePayload): {
+  flawed: boolean;
   correct: boolean;
   explanation: string | null;
 } {
   const explanation = payload.explanation.trim().slice(0, MAX_EXPLANATION).trim();
-  return { correct: payload.correct, explanation: explanation === "" ? null : explanation };
+  return {
+    flawed: payload.flawed,
+    correct: payload.correct,
+    explanation: explanation === "" ? null : explanation,
+  };
+}
+
+// INFO: a flawed exercise is the exercise's fault, so it is saved as correct and
+// never counts as a miss nor escalates.
+export function gradedCorrect(grade: { correct: boolean; flawed: boolean }): boolean {
+  return grade.correct || grade.flawed;
 }
