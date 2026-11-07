@@ -5,16 +5,20 @@ import { runAppleSignIn } from "@/auth/apple-sign-in";
 import type {
   AppleSignInOutcome,
   AuthOutcome,
+  AuthSession,
   PasswordResetOutcome,
   ProfileName,
 } from "@/auth/auth-port";
+import { withinDeadline } from "@/utils/deadline";
 import {
   canEnterApp,
   initialSessionState,
   keepsAppleHold,
   keepsResetHold,
+  RESTORE_TIMEOUT_MS,
   sessionReducer,
   type SessionState,
+  toRestoreOutcome,
 } from "@/utils/session-state";
 
 type ConfirmInput = { email: string; code: string; newPassword: string };
@@ -27,9 +31,14 @@ type SessionValue = {
   signInWithApple: () => Promise<AppleSignInOutcome>;
   retryAppleName: (name: ProfileName) => Promise<AuthOutcome<null>>;
   releaseApple: () => void;
+  retryRestore: () => Promise<void>;
 };
 
 const SessionContext = createContext<SessionValue | null>(null);
+
+async function restoreSession(): Promise<AuthOutcome<AuthSession | null>> {
+  return toRestoreOutcome(await withinDeadline(RESTORE_TIMEOUT_MS, () => auth.currentSession()));
+}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(sessionReducer, initialSessionState);
@@ -39,6 +48,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     () => auth.onSessionChange((session) => dispatch({ type: "session_changed", session })),
     [],
   );
+
+  // INFO: the session at launch is read once and bounded; a late result is dropped by the reducer.
+  useEffect(() => {
+    dispatch({ type: "restore_started" });
+    void restoreSession().then((outcome) => dispatch({ type: "restore_finished", outcome }));
+  }, []);
+
+  async function retryRestore(): Promise<void> {
+    dispatch({ type: "restore_started" });
+    dispatch({ type: "restore_finished", outcome: await restoreSession() });
+  }
 
   async function confirmPasswordReset(input: ConfirmInput): Promise<PasswordResetOutcome> {
     dispatch({ type: "reset_started" });
@@ -72,6 +92,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     signInWithApple,
     retryAppleName,
     releaseApple: () => dispatch({ type: "apple_finished" }),
+    retryRestore,
   };
 
   return <SessionContext value={value}>{children}</SessionContext>;

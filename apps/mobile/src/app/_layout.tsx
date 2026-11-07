@@ -7,17 +7,22 @@ import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
+import { StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
+import { Button } from "@/components/button";
+import { FailureMessage } from "@/components/failure-message";
+import { Screen } from "@/components/screen";
 import { HapticsProvider } from "@/hooks/use-haptics";
 import { OnboardingProvider, useOnboarding } from "@/hooks/use-onboarding";
 import { SessionProvider, useSession } from "@/hooks/use-session";
+import { authFailureMessage } from "@/utils/auth-message";
 import { appEntry } from "@/utils/onboarding-gate";
 import { isFontLoadSettled } from "@/utils/font-load";
 import { darkNavigationTheme } from "@/utils/navigation-theme";
-import { isAppReady } from "@/utils/session-state";
-import { colors, fontFamily } from "@/constants/theme";
+import { launchView } from "@/utils/session-state";
+import { colors, fontFamily, spacing } from "@/constants/theme";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -27,20 +32,41 @@ SystemUI.setBackgroundColorAsync(colors.background);
 
 const navigationTheme = darkNavigationTheme(DarkTheme);
 
+const styles = StyleSheet.create({
+  content: { padding: spacing.screenSide, gap: spacing.md },
+});
+
 function RootNavigator({ fontsSettled }: { fontsSettled: boolean }) {
-  const { state } = useSession();
+  const { state, retryRestore } = useSession();
   const { gate, userId } = useOnboarding();
-  const ready = isAppReady(fontsSettled, state);
+  const launch = launchView(fontsSettled, state);
+  const shown = launch.kind !== "waiting";
   const entry = appEntry(userId, gate);
 
   useEffect(() => {
-    if (ready) {
+    if (shown) {
       SplashScreen.hide();
     }
-  }, [ready]);
+  }, [shown]);
 
-  if (!ready) {
+  if (launch.kind === "waiting") {
     return null;
+  }
+
+  if (launch.kind === "failed") {
+    return (
+      <Screen>
+        <View style={styles.content}>
+          <FailureMessage message={authFailureMessage(launch.failure)} cause={launch.cause} />
+          <Button
+            variant="deep"
+            label="Try again"
+            loading={launch.retrying}
+            onPress={() => void retryRestore()}
+          />
+        </View>
+      </Screen>
+    );
   }
 
   // INFO: a user denied a screen lands on the first available one. So onboarding

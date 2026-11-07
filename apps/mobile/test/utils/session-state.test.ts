@@ -4,7 +4,8 @@
 //
 // Tested:
 // - The reducer over session and reset events
-// - When the app is ready and when a user may enter it
+// - The launch restore: started, finished with a session, with none, failed; a later event wins
+// - The launch view, and when a user may enter the app
 // - Which reset and Apple outcomes keep the guard on hold
 //
 // What is covered:
@@ -16,15 +17,18 @@
 
 import { describe, expect, it } from "@jest/globals";
 
+import { DEADLINE } from "@/utils/deadline";
 import type { AppleSignInOutcome, AuthSession } from "@/auth/auth-port";
 import {
   canEnterApp,
   initialSessionState,
-  isAppReady,
+  launchView,
   keepsAppleHold,
   keepsResetHold,
+  RESTORE_TIMEOUT_MS,
   sessionReducer,
   type SessionState,
+  toRestoreOutcome,
 } from "@/utils/session-state";
 import { generatedSecret } from "../helpers/generated-secret";
 
@@ -39,12 +43,14 @@ function state(overrides: Partial<SessionState>): SessionState {
 }
 
 describe("sessionReducer", () => {
-  it("starts loading with no session and no reset", () => {
+  it("starts loading with no session, no reset and no restore", () => {
     expect(initialSessionState).toEqual({
       loaded: false,
       session: null,
       resetRunning: false,
       appleRunning: false,
+      restoreRunning: false,
+      restoreFailure: null,
     });
   });
 
@@ -55,6 +61,8 @@ describe("sessionReducer", () => {
         session: null,
         resetRunning: false,
         appleRunning: false,
+        restoreRunning: false,
+        restoreFailure: null,
       },
     );
   });
@@ -65,6 +73,8 @@ describe("sessionReducer", () => {
       session,
       resetRunning: false,
       appleRunning: false,
+      restoreRunning: false,
+      restoreFailure: null,
     });
   });
 
@@ -82,6 +92,8 @@ describe("sessionReducer", () => {
       session,
       resetRunning: true,
       appleRunning: false,
+      restoreRunning: false,
+      restoreFailure: null,
     });
   });
 
@@ -90,7 +102,14 @@ describe("sessionReducer", () => {
       type: "session_changed",
       session,
     });
-    expect(next).toEqual({ loaded: true, session, resetRunning: true, appleRunning: false });
+    expect(next).toEqual({
+      loaded: true,
+      session,
+      resetRunning: true,
+      appleRunning: false,
+      restoreRunning: false,
+      restoreFailure: null,
+    });
   });
 
   it("ends the reset without touching the session", () => {
@@ -98,7 +117,14 @@ describe("sessionReducer", () => {
       sessionReducer(state({ loaded: true, session, resetRunning: true }), {
         type: "reset_finished",
       }),
-    ).toEqual({ loaded: true, session, resetRunning: false, appleRunning: false });
+    ).toEqual({
+      loaded: true,
+      session,
+      resetRunning: false,
+      appleRunning: false,
+      restoreRunning: false,
+      restoreFailure: null,
+    });
   });
 
   it("ignores a finish with no reset running", () => {
@@ -114,23 +140,51 @@ describe("sessionReducer, Apple events", () => {
       session,
       resetRunning: false,
       appleRunning: true,
+      restoreRunning: false,
+      restoreFailure: null,
     });
   });
 
   it("records a session that arrives during an Apple sign-in", () => {
-    const next = sessionReducer(state({ loaded: true, appleRunning: true }), {
-      type: "session_changed",
+    const next = sessionReducer(
+      state({ loaded: true, appleRunning: true, restoreRunning: false, restoreFailure: null }),
+      {
+        type: "session_changed",
+        session,
+      },
+    );
+    expect(next).toEqual({
+      loaded: true,
       session,
+      resetRunning: false,
+      appleRunning: true,
+      restoreRunning: false,
+      restoreFailure: null,
     });
-    expect(next).toEqual({ loaded: true, session, resetRunning: false, appleRunning: true });
   });
 
   it("ends the Apple hold without touching the session", () => {
     expect(
-      sessionReducer(state({ loaded: true, session, appleRunning: true }), {
-        type: "apple_finished",
-      }),
-    ).toEqual({ loaded: true, session, resetRunning: false, appleRunning: false });
+      sessionReducer(
+        state({
+          loaded: true,
+          session,
+          appleRunning: true,
+          restoreRunning: false,
+          restoreFailure: null,
+        }),
+        {
+          type: "apple_finished",
+        },
+      ),
+    ).toEqual({
+      loaded: true,
+      session,
+      resetRunning: false,
+      appleRunning: false,
+      restoreRunning: false,
+      restoreFailure: null,
+    });
   });
 
   it("ignores an Apple finish with nothing running", () => {
@@ -139,18 +193,147 @@ describe("sessionReducer, Apple events", () => {
   });
 });
 
-describe("isAppReady", () => {
-  it("is false while fonts are unsettled", () => {
-    expect(isAppReady(false, state({ loaded: true }))).toBe(false);
+describe("sessionReducer, launch restore", () => {
+  const failure = { ok: false, failure: "network", cause: { name: "X", detail: null } } as const;
+
+  it("marks the restore running when it starts", () => {
+    expect(sessionReducer(initialSessionState, { type: "restore_started" }).restoreRunning).toBe(
+      true,
+    );
   });
 
-  it("is false while the session loads", () => {
-    expect(isAppReady(true, initialSessionState)).toBe(false);
+  it("keeps the failure while a retry runs", () => {
+    const failed = sessionReducer(initialSessionState, {
+      type: "restore_finished",
+      outcome: failure,
+    });
+    const next = sessionReducer(failed, { type: "restore_started" });
+    expect(next.restoreRunning).toBe(true);
+    expect(next.restoreFailure).toEqual({ failure: "network", cause: failure.cause });
   });
 
-  it("is true when both settled, with or without a session", () => {
-    expect(isAppReady(true, state({ loaded: true }))).toBe(true);
-    expect(isAppReady(true, state({ loaded: true, session }))).toBe(true);
+  it("loads with the session when the restore finds one", () => {
+    const next = sessionReducer(initialSessionState, {
+      type: "restore_finished",
+      outcome: { ok: true, value: session },
+    });
+    expect(next).toMatchObject({ loaded: true, session, restoreRunning: false });
+  });
+
+  it("loads signed out when the restore finds no session", () => {
+    const next = sessionReducer(state({ restoreRunning: true }), {
+      type: "restore_finished",
+      outcome: { ok: true, value: null },
+    });
+    expect(next).toMatchObject({
+      loaded: true,
+      session: null,
+      restoreRunning: false,
+      restoreFailure: null,
+    });
+  });
+
+  it("records the failure and its cause when the restore fails", () => {
+    const next = sessionReducer(state({ restoreRunning: true }), {
+      type: "restore_finished",
+      outcome: failure,
+    });
+    expect(next).toMatchObject({
+      loaded: false,
+      restoreRunning: false,
+      restoreFailure: { failure: "network", cause: failure.cause },
+    });
+  });
+
+  it("records a failure without a cause", () => {
+    const next = sessionReducer(initialSessionState, {
+      type: "restore_finished",
+      outcome: { ok: false, failure: "network" },
+    });
+    expect(next.restoreFailure).toEqual({ failure: "network" });
+  });
+
+  it("ignores a restore start or finish after the session loaded", () => {
+    const before = state({ loaded: true, session });
+    expect(sessionReducer(before, { type: "restore_started" })).toEqual(before);
+    expect(
+      sessionReducer(before, { type: "restore_finished", outcome: { ok: true, value: null } }),
+    ).toEqual(before);
+    expect(sessionReducer(before, { type: "restore_finished", outcome: failure })).toEqual(before);
+  });
+
+  it("clears the failure when a session event arrives", () => {
+    const failed = sessionReducer(initialSessionState, {
+      type: "restore_finished",
+      outcome: failure,
+    });
+    const next = sessionReducer(failed, { type: "session_changed", session });
+    expect(next).toMatchObject({
+      loaded: true,
+      session,
+      restoreRunning: false,
+      restoreFailure: null,
+    });
+  });
+});
+
+describe("toRestoreOutcome", () => {
+  it("turns the deadline into network", () => {
+    expect(toRestoreOutcome(DEADLINE)).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns a session outcome as it is", () => {
+    const outcome = { ok: true, value: session } as const;
+    expect(toRestoreOutcome(outcome)).toBe(outcome);
+  });
+
+  it("returns a null session as it is", () => {
+    const outcome = { ok: true, value: null } as const;
+    expect(toRestoreOutcome(outcome)).toBe(outcome);
+  });
+
+  it("returns a failure as it is", () => {
+    const outcome = { ok: false, failure: "unknown" } as const;
+    expect(toRestoreOutcome(outcome)).toBe(outcome);
+  });
+
+  it("has a deadline longer than one Supabase request", () => {
+    expect(RESTORE_TIMEOUT_MS).toBe(15000);
+  });
+});
+
+describe("launchView", () => {
+  const failed = state({ restoreFailure: { failure: "network" } });
+
+  it("waits while the fonts load, even with a failure", () => {
+    expect(launchView(false, failed)).toEqual({ kind: "waiting" });
+    expect(launchView(false, state({ loaded: true }))).toEqual({ kind: "waiting" });
+  });
+
+  it("waits while the restore runs", () => {
+    expect(launchView(true, state({ restoreRunning: true }))).toEqual({ kind: "waiting" });
+    expect(launchView(true, initialSessionState)).toEqual({ kind: "waiting" });
+  });
+
+  it("is ready once the session loaded, with or without a session", () => {
+    expect(launchView(true, state({ loaded: true }))).toEqual({ kind: "ready" });
+    expect(launchView(true, state({ loaded: true, session }))).toEqual({ kind: "ready" });
+  });
+
+  it("is failed with the failure and not retrying", () => {
+    expect(launchView(true, failed)).toEqual({
+      kind: "failed",
+      failure: "network",
+      cause: undefined,
+      retrying: false,
+    });
+  });
+
+  it("is failed and retrying while a retry runs", () => {
+    expect(launchView(true, { ...failed, restoreRunning: true })).toMatchObject({
+      kind: "failed",
+      retrying: true,
+    });
   });
 });
 
@@ -174,7 +357,17 @@ describe("canEnterApp", () => {
 
 describe("canEnterApp, Apple", () => {
   it("is false with a session while an Apple sign-in runs", () => {
-    expect(canEnterApp(state({ loaded: true, session, appleRunning: true }))).toBe(false);
+    expect(
+      canEnterApp(
+        state({
+          loaded: true,
+          session,
+          appleRunning: true,
+          restoreRunning: false,
+          restoreFailure: null,
+        }),
+      ),
+    ).toBe(false);
   });
 });
 

@@ -7,6 +7,8 @@
 //   branches on, and transport failure
 // - The reset by code, step by step
 // - The client options and the auto refresh binding
+// - The request deadline of the client's fetch
+// - The initial session event is not passed to the listener
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -15,7 +17,7 @@
 //
 // SEE: apps/mobile/src/auth/supabase-auth.ts
 
-import { describe, expect, it, jest } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 
 import type { AuthPort } from "@/auth/auth-port";
 import {
@@ -23,6 +25,7 @@ import {
   createSupabaseAuth,
   supabaseAuthOptions,
   type SupabaseAuthClient,
+  withRequestDeadline,
 } from "@/auth/supabase-auth";
 
 import { generatedSecret } from "../helpers/generated-secret";
@@ -597,6 +600,18 @@ describe("onSessionChange", () => {
     expect(listener).toHaveBeenCalledWith(null);
   });
 
+  it("does not call the listener for the initial session event", () => {
+    const { auth, client } = fakeClient();
+    const listener = jest.fn();
+    auth.onSessionChange(listener);
+    const [callback] = client.onAuthStateChange.mock.calls[0] ?? [];
+
+    callback?.("INITIAL_SESSION", libSession);
+    callback?.("INITIAL_SESSION", null);
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it("stops calling the listener's subscription when unsubscribed", () => {
     const { auth, unsubscribe } = fakeClient();
 
@@ -708,5 +723,65 @@ describe("bindAutoRefresh", () => {
     emit("inactive");
 
     expect(auth.stopAutoRefresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("withRequestDeadline", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("returns the response of a request that answers in time", async () => {
+    const response = new Response("ok");
+    const inner = jest
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValue(response);
+
+    const result = await withRequestDeadline(inner, 1000)("http://host/x", { method: "POST" });
+
+    expect(result).toBe(response);
+    expect(inner).toHaveBeenCalledWith(
+      "http://host/x",
+      expect.objectContaining({ method: "POST", signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("rejects when the request does not answer before the deadline, and aborts it", async () => {
+    jest.useFakeTimers();
+    let seen: AbortSignal | null | undefined;
+    const inner = jest
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockImplementation((_input, init) => {
+        seen = init?.signal;
+        return new Promise<Response>(() => {});
+      });
+
+    const pending = withRequestDeadline(inner, 1000)("http://host/x");
+    const assertion = expect(pending).rejects.toThrow("Request timed out");
+    await jest.advanceTimersByTimeAsync(1000);
+
+    await assertion;
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it("rejects with the error of a request that fails", async () => {
+    const inner = jest
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockRejectedValue(new TypeError("Network request failed"));
+
+    await expect(withRequestDeadline(inner, 1000)("http://host/x")).rejects.toThrow(
+      "Network request failed",
+    );
+  });
+
+  it("clears its timer when the request answers", async () => {
+    jest.useFakeTimers();
+    const inner = jest
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValue(new Response("ok"));
+
+    await withRequestDeadline(inner, 1000)("http://host/x");
+
+    expect(jest.getTimerCount()).toBe(0);
   });
 });
