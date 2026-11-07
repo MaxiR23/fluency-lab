@@ -5,6 +5,7 @@
 // Tested:
 // - focusDataFrom picks the focus data a round sends
 // - roundRequest sends the focus data, the count, the missed rules and the language, and nothing else
+// - roundRequest states the generation rules and asks for two spare exercises
 // - focusDataFrom and roundRequest carry a note as the focus of a note round
 // - studyNoteRequest asks for one study note on the missed item's rule and sends nothing personal
 // - gradeRequest sends the exercise, the accepted answers and the learner's answer only
@@ -19,6 +20,11 @@
 import { describe, expect, it } from "@jest/globals";
 
 import {
+  ROUND_SPARE,
+  RULE_PRACTICE_ANSWERABLE,
+  RULE_PRACTICE_CHOOSE,
+  RULE_PRACTICE_FIX,
+  RULE_PRACTICE_GAP,
   RULE_PRACTICE_GRADE,
   RULE_PRACTICE_NOTE,
   RULE_STUDY_NOTE,
@@ -111,11 +117,60 @@ describe("roundRequest", () => {
 
   it("sends the focus data and the count in one user turn", () => {
     const request = roundRequest(base);
-    expect(userTurn(request)).toEqual({ focus: base.focus, count: 5 });
+    expect(userTurn(request)).toEqual({ focus: base.focus, count: 5 + ROUND_SPARE });
   });
 
-  it("asks for the given count", () => {
-    expect(userTurn(roundRequest({ ...base, count: 3 })).count).toBe(3);
+  it("asks for two more than the round needs", () => {
+    expect(ROUND_SPARE).toBe(2);
+    expect(userTurn(roundRequest({ ...base, count: 3 })).count).toBe(5);
+  });
+
+  it("states the generation rules in every round", () => {
+    const requests = [
+      roundRequest(base),
+      roundRequest({ ...base, focus: { kind: "mistakes", corrections: [] } }),
+      roundRequest({
+        ...base,
+        focus: {
+          kind: "note",
+          note: {
+            kind: "table",
+            title: "Future forms",
+            topic: "Going to, will",
+            content: {
+              columns: ["Form", "When", "Example"],
+              rows: [["going to", "plans", "I'm going to study."]],
+              remember: "Plans use going to.",
+            },
+          },
+        },
+      }),
+      roundRequest({ ...base, language: "es-AR" }),
+    ];
+    for (const { system } of requests) {
+      expect(system).toContain(RULE_PRACTICE_ANSWERABLE);
+      expect(system).toContain(RULE_PRACTICE_FIX);
+      expect(system).toContain(RULE_PRACTICE_GAP);
+      expect(system).toContain(RULE_PRACTICE_CHOOSE);
+    }
+  });
+
+  it("asks a gap to carry the base verb and not in parentheses", () => {
+    expect(RULE_PRACTICE_GAP).toContain("(not / can)");
+    expect(RULE_PRACTICE_GAP).toContain('"not"');
+    expect(RULE_PRACTICE_ANSWERABLE).toContain("polarity");
+    expect(RULE_PRACTICE_ANSWERABLE).toContain("exactly one answer");
+  });
+
+  it("asks a fix to hold one real mistake and keep the learner's meaning", () => {
+    expect(RULE_PRACTICE_FIX).toContain("never already correct");
+    expect(RULE_PRACTICE_FIX).toContain("negation");
+  });
+
+  it("asks the grader to judge the visible prompt and to flag a flawed exercise", () => {
+    expect(RULE_PRACTICE_GRADE).toContain("flawed");
+    expect(RULE_PRACTICE_GRADE).toContain("examples");
+    expect(RULE_PRACTICE_GRADE).toContain("___");
   });
 
   it("sends no name, goals, interests or chat text", () => {
@@ -254,7 +309,7 @@ describe("study notes", () => {
           content: draft.content,
         },
       },
-      count: 5,
+      count: 5 + ROUND_SPARE,
     });
   });
 

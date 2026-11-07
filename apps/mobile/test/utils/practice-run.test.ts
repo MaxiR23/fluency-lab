@@ -5,6 +5,7 @@
 // Tested:
 // - startPractice: a new run starts by creating the run; a resumed run settles on its items
 // - practiceReducer and practiceStep: the order of the outside calls of a round and of an answer
+// - A gap answered with the whole sentence is right locally; a flawed grade is saved correct and never escalates
 // - A right pick and a typed match are answered without a tutor call; a typed miss asks the tutor
 // - The cost of every billed call, also of an unusable reply, is added and saved
 // - The offer of five more, keep going, the end of the run and the spend lock
@@ -25,6 +26,7 @@ import { TUTOR_MODEL, usageCostUsd, type PracticeRunWithItems } from "@fluency-l
 
 import type { PracticeRound } from "@/ai/ai-port";
 import { sendState } from "@/utils/chat-conversation";
+import { missedRules } from "@/utils/practice-escalation";
 import {
   currentItem,
   exerciseView,
@@ -150,7 +152,23 @@ describe("startPractice", () => {
     expect(practiceStep(state)).toEqual({
       kind: "round",
       request: roundRequest({ focus, count: 5, missedRules: [], language: null }),
+      count: 5,
     });
+  });
+
+  it("asks the round step for the count the round needs", () => {
+    const state = resumed(
+      practiceTodayWith([item(0, true), item(1, true), item(2, true)], { target: 5 }),
+    );
+    const step = practiceStep(state);
+    expect(step).toEqual({
+      kind: "round",
+      request: roundRequest({ focus, count: 2, missedRules: [], language: null }),
+      count: 2,
+    });
+    expect(
+      JSON.parse(step.kind === "round" ? (step.request.turns[0]?.text ?? "{}") : "{}").count,
+    ).toBe(4);
   });
 
   it("settles a resumed run on its first unanswered item", () => {
@@ -248,6 +266,7 @@ describe("a round", () => {
     expect(practiceStep(state)).toEqual({
       kind: "round",
       request: roundRequest({ focus, count: 4, missedRules: ["Articles"], language: null }),
+      count: 4,
     });
   });
 
@@ -264,6 +283,7 @@ describe("a round", () => {
     expect(practiceStep(next)).toEqual({
       kind: "round",
       request: roundRequest({ focus, count: 5, missedRules: [], language: "es-AR" }),
+      count: 5,
     });
   });
 
@@ -399,6 +419,41 @@ describe("answering", () => {
     });
   });
 
+  describe("a gap answered with the whole sentence", () => {
+    const sentenceGaps = () =>
+      answering(
+        [0, 1, 2, 3, 4].map((p) =>
+          item(p, null, {
+            kind: "gap",
+            options: null,
+            prompt: "I ___ (not / can) remember who made the shot!",
+            accepted: ["can't"],
+          }),
+        ),
+      );
+
+    it("is right without a tutor call when the fill is right", () => {
+      const state = apply(
+        sentenceGaps(),
+        { type: "draft_changed", text: "I can't remember who made the shot." },
+        { type: "check_started" },
+      );
+      expect(state.phase).toBe("saving");
+      expect(state.feedback?.tone).toBe("right");
+      expect(state.writes.map((w) => w.kind)).toEqual(["answer"]);
+      expect(state.items[0]?.correct).toBe(true);
+    });
+
+    it("asks the tutor with a wrong fill", () => {
+      const state = apply(
+        sentenceGaps(),
+        { type: "draft_changed", text: "I can remember who made the shot." },
+        { type: "check_started" },
+      );
+      expect(state.phase).toBe("grading");
+    });
+  });
+
   it("does nothing on Check with an empty answer", () => {
     const start = answering([typedItem(0), typedItem(1), typedItem(2), typedItem(3), typedItem(4)]);
     expect(apply(start, { type: "check_started" })).toBe(start);
@@ -440,6 +495,54 @@ describe("answering", () => {
       explanation: "Use the present perfect for an experience.",
     });
     expect(state.items[0]?.correct).toBe(true);
+  });
+
+  it("saves a flawed exercise as correct with the tutor's explanation", () => {
+    const grading = apply(
+      answering([typedItem(0), typedItem(1), typedItem(2), typedItem(3), typedItem(4)]),
+      { type: "draft_changed", text: "I have never visited Japan." },
+      { type: "check_started" },
+    );
+    const grade = answerGradeWith({
+      correct: false,
+      flawed: true,
+      explanation: "Two answers fit this gap.",
+    });
+    const state = apply(grading, { type: "grade_received", grade });
+    expect(state.items[0]?.correct).toBe(true);
+    expect(state.writes[0]).toEqual({
+      kind: "answer",
+      itemId: "item-0",
+      answer: { correct: true, userAnswer: "I have never visited Japan." },
+    });
+    expect(state.feedback).toMatchObject({
+      tone: "right",
+      title: "Nice one!",
+      answer: null,
+      explanation: "Two answers fit this gap.",
+    });
+    expect(state.writes.map((w) => w.kind)).toEqual(["answer", "usage"]);
+    expect(state.spentUsd).toBeCloseTo(usageCostUsd(grade.model, grade.usage), 8);
+  });
+
+  it("shows the tutor's explanation when the tutor graded right", () => {
+    const grading = apply(
+      answering([typedItem(0), typedItem(1), typedItem(2), typedItem(3), typedItem(4)]),
+      { type: "draft_changed", text: "I have never visited Japan." },
+      { type: "check_started" },
+    );
+    const state = apply(grading, {
+      type: "grade_received",
+      grade: answerGradeWith({
+        correct: true,
+        flawed: false,
+        explanation: "Visited also works here.",
+      }),
+    });
+    expect(state.feedback).toMatchObject({
+      tone: "right",
+      explanation: "Visited also works here.",
+    });
   });
 
   it("saves the grading cost even when its reply is unusable", () => {
@@ -513,6 +616,29 @@ describe("the end of a round", () => {
     expect(practiceStep(state)).toEqual({ kind: "none" });
   });
 
+  it("a flawed exercise leaves the missed rules and the escalation unchanged", () => {
+    const start = answering([0, 1, 2, 3].map((p) => item(p, true)).concat(typedItem(4)));
+    const grading = apply(
+      start,
+      { type: "draft_changed", text: "I have never visited Japan." },
+      { type: "check_started" },
+    );
+    const state = apply(
+      grading,
+      {
+        type: "grade_received",
+        grade: answerGradeWith({ correct: false, flawed: true, explanation: "Flawed." }),
+      },
+      { type: "write_done" },
+      { type: "write_done" },
+      { type: "continue" },
+    );
+    expect(state.phase).toBe("finishing");
+    expect(runOutcome(state)).toBe("finished");
+    expect(missedRules(state.items)).toEqual([]);
+    expect(practiceStep(state)).toEqual({ kind: "write", write: { kind: "finish" } });
+  });
+
   it("finishes the run with no offer when nothing was missed", () => {
     const state = apply(
       lastOfFive(false),
@@ -551,6 +677,7 @@ describe("the end of a round", () => {
     expect(practiceStep(saved)).toEqual({
       kind: "round",
       request: roundRequest({ focus, count: 5, missedRules: ["Present perfect"], language: null }),
+      count: 5,
     });
   });
 
@@ -756,6 +883,23 @@ describe("gapFill", () => {
       { type: "check_started" },
     );
     expect(gapFill(right)).toBe("Lives");
+  });
+
+  it("fills the gap with the matched fill after a whole-sentence answer", () => {
+    const gapItems = [0, 1, 2, 3, 4].map((p) =>
+      item(p, null, {
+        kind: "gap",
+        options: null,
+        prompt: "I ___ (not / can) remember who made the shot!",
+        accepted: ["can't"],
+      }),
+    );
+    const right = apply(
+      answering(gapItems),
+      { type: "draft_changed", text: "I can't remember who made the shot." },
+      { type: "check_started" },
+    );
+    expect(gapFill(right)).toBe("can't");
   });
 });
 

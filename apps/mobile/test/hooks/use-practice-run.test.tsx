@@ -156,8 +156,9 @@ describe("usePracticeRun", () => {
           { original: "I have went", corrected: "I have gone", rule: "Present perfect" },
         ],
       },
-      count: 5,
+      count: 7,
     });
+    expect(fakeAi.practiceRound.mock.calls[0]?.[1]).toBe(5);
     expect(request.system).not.toContain("Ada");
   });
 
@@ -277,6 +278,62 @@ describe("usePracticeRun", () => {
     await waitFor(() => expect(ready(result).phase).toBe("feedback"));
     expect(fakeAi.gradeAnswer).not.toHaveBeenCalled();
     expect(ready(result).feedback?.tone).toBe("right");
+  });
+
+  it("answers a gap typed as the whole sentence with no tutor call", async () => {
+    withKey();
+    fakeAi.practiceRound.mockResolvedValue({
+      ok: true,
+      value: practiceRoundWith({
+        items: Array.from({ length: 5 }, () =>
+          exerciseWith({
+            kind: "gap",
+            prompt: "I ___ (not / can) remember who made the shot!",
+            options: null,
+            accepted: ["can't"],
+            source: null,
+          }),
+        ),
+      }),
+    });
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(ready(result).phase).toBe("answering"));
+    await act(async () => result.current.setDraft("I can't remember who made the shot."));
+    await act(async () => result.current.check());
+    await waitFor(() => expect(ready(result).phase).toBe("feedback"));
+    expect(fakeAi.gradeAnswer).not.toHaveBeenCalled();
+    expect(ready(result).feedback?.tone).toBe("right");
+  });
+
+  it("saves a flawed exercise as correct", async () => {
+    withKey();
+    fakeAi.practiceRound.mockResolvedValue({
+      ok: true,
+      value: practiceRoundWith({
+        items: Array.from({ length: 5 }, () =>
+          exerciseWith({
+            kind: "fix",
+            prompt: "I never been.",
+            options: null,
+            accepted: ["I've never been."],
+            source: null,
+          }),
+        ),
+      }),
+    });
+    fakeAi.gradeAnswer.mockResolvedValue({
+      ok: true,
+      value: answerGradeWith({ correct: false, flawed: true, explanation: "Two answers fit." }),
+    });
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(ready(result).phase).toBe("answering"));
+    await act(async () => result.current.setDraft("I never was."));
+    await act(async () => result.current.check());
+    await waitFor(() => expect(ready(result).phase).toBe("feedback"));
+    expect(fakeData.answerPracticeItem).toHaveBeenCalledWith(
+      "item-0",
+      expect.objectContaining({ correct: true }),
+    );
   });
 
   it("asks the tutor for a typed miss and saves the answer and its usage", async () => {

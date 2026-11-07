@@ -850,8 +850,8 @@ describe("practiceRound", () => {
   const round = {
     items: [exercise, { ...exercise, prompt: "He ___ twice.", accepted: ["has been"] }],
   };
-  const ask = (ai: ReturnType<typeof setup>["ai"]) =>
-    ai.practiceRound({ system: roundRequest.system, turns: [...roundRequest.turns] });
+  const ask = (ai: ReturnType<typeof setup>["ai"], count = 2) =>
+    ai.practiceRound({ system: roundRequest.system, turns: [...roundRequest.turns] }, count);
 
   it("returns the parsed round with its usage", async () => {
     const { ai } = setup(success(round));
@@ -889,6 +889,37 @@ describe("practiceRound", () => {
   it("a round with no usable exercise is bad_response with its usage", async () => {
     const { ai } = setup(success({ items: [{ ...exercise, kind: "riddle" }] }));
     expect(await ask(ai)).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: { inputTokens: 700, outputTokens: 150 },
+    });
+  });
+
+  it("a round with fewer valid exercises than the count is bad_response with its usage", async () => {
+    const { ai } = setup(success(round));
+    expect(await ask(ai, 3)).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: { inputTokens: 700, outputTokens: 150 },
+    });
+  });
+
+  it("keeps only the count from a round with spares", async () => {
+    const spare = { ...exercise, prompt: "They ___ there." };
+    const { ai } = setup(success({ items: [...round.items, spare, spare] }));
+    const outcome = await ask(ai, 2);
+    expect(outcome.ok && outcome.value.items).toHaveLength(2);
+  });
+
+  it("drops a fix that is already correct before counting", async () => {
+    const already = {
+      ...exercise,
+      kind: "fix",
+      prompt: "I can't go.",
+      accepted: ["I can't go."],
+    };
+    const { ai } = setup(success({ items: [exercise, already] }));
+    expect(await ask(ai, 2)).toMatchObject({
       ok: false,
       failure: "bad_response",
       usage: { inputTokens: 700, outputTokens: 150 },
@@ -965,20 +996,33 @@ describe("gradeAnswer", () => {
     ai.gradeAnswer({ system: gradeRequest.system, turns: [...gradeRequest.turns] });
 
   it("returns the verdict and explanation", async () => {
-    const { ai } = setup(success({ correct: true, explanation: " Fine. " }));
+    const { ai } = setup(success({ flawed: false, correct: true, explanation: " Fine. " }));
     expect(await ask(ai)).toMatchObject({
       ok: true,
-      value: { correct: true, explanation: "Fine.", model: TUTOR_MODEL },
+      value: { flawed: false, correct: true, explanation: "Fine.", model: TUTOR_MODEL },
+    });
+  });
+
+  it("returns a flawed verdict", async () => {
+    const { ai } = setup(
+      success({ flawed: true, correct: false, explanation: "Two answers fit." }),
+    );
+    expect(await ask(ai)).toMatchObject({
+      ok: true,
+      value: { flawed: true, correct: false, explanation: "Two answers fit." },
     });
   });
 
   it("returns a verdict with no explanation", async () => {
-    const { ai } = setup(success({ correct: false, explanation: "" }));
-    expect(await ask(ai)).toMatchObject({ ok: true, value: { correct: false, explanation: null } });
+    const { ai } = setup(success({ flawed: false, correct: false, explanation: "" }));
+    expect(await ask(ai)).toMatchObject({
+      ok: true,
+      value: { flawed: false, correct: false, explanation: null },
+    });
   });
 
   it("sends the grade schema and 512 max tokens", async () => {
-    const { ai, seen } = setup(success({ correct: true, explanation: "" }));
+    const { ai, seen } = setup(success({ flawed: false, correct: true, explanation: "" }));
     await ask(ai);
     const body = JSON.parse(seen[0].body);
     expect(body.max_tokens).toBe(512);
@@ -998,6 +1042,14 @@ describe("gradeAnswer", () => {
       failure: "network",
     });
     expect(await ask(setup(success({ correct: "yes" })).ai)).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: { inputTokens: 700 },
+    });
+  });
+
+  it("a verdict without flawed is bad_response with its usage", async () => {
+    expect(await ask(setup(success({ correct: true, explanation: "" })).ai)).toMatchObject({
       ok: false,
       failure: "bad_response",
       usage: { inputTokens: 700 },
@@ -1044,6 +1096,8 @@ describe("PRACTICE_ROUND_JSON_SCHEMA and ANSWER_GRADE_JSON_SCHEMA", () => {
       enum: ["choose", "fix", "gap", "translate"],
     });
     expect(ANSWER_GRADE_JSON_SCHEMA.properties.correct).toEqual({ type: "boolean" });
+    expect(ANSWER_GRADE_JSON_SCHEMA.properties.flawed).toEqual({ type: "boolean" });
+    expect(ANSWER_GRADE_JSON_SCHEMA.required).toEqual(["flawed", "correct", "explanation"]);
   });
 });
 

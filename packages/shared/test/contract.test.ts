@@ -984,10 +984,15 @@ describe("practice schemas", () => {
     };
     expect(practiceRoundSchema.parse(round)).toEqual(round);
     expect(practiceRoundSchema.safeParse({ items: [{ kind: "gap" }] }).success).toBe(false);
-    expect(answerGradeSchema.parse({ correct: false, explanation: "" })).toEqual({
+    expect(answerGradeSchema.parse({ flawed: false, correct: false, explanation: "" })).toEqual({
+      flawed: false,
       correct: false,
       explanation: "",
     });
+    expect(answerGradeSchema.safeParse({ correct: false, explanation: "" }).success).toBe(false);
+    expect(
+      answerGradeSchema.safeParse({ flawed: "no", correct: false, explanation: "" }).success,
+    ).toBe(false);
   });
 });
 

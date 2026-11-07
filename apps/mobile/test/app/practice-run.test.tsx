@@ -438,6 +438,26 @@ describe("Practice run", () => {
     expect(fakeHaptics.play).toHaveBeenCalledWith("miss");
   });
 
+  it("shows the tutor's explanation on a flawed exercise and no answer line", async () => {
+    withKey();
+    withTypedRound();
+    fakeAi.gradeAnswer.mockResolvedValue({
+      ok: true,
+      value: answerGradeWith({
+        correct: false,
+        flawed: true,
+        explanation: "Two answers fit here.",
+      }),
+    });
+    await renderAppAt(start, fakeSession());
+    await fireEvent.changeText(screen.getByLabelText("Your answer"), "I never was to Japan.");
+    await fireEvent.press(screen.getByRole("button", { name: "Check" }));
+    expect(screen.getByText("Nice one!")).toBeTruthy();
+    expect(screen.getByText("Two answers fit here.")).toBeTruthy();
+    expect(screen.queryByText(/Answer:/)).toBeNull();
+    expect(fakeHaptics.play).toHaveBeenCalledWith("right");
+  });
+
   it("shows Check loading while the tutor grades", async () => {
     withKey();
     withTypedRound();

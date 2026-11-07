@@ -193,6 +193,7 @@ describe("practiceRunView", () => {
         missedRules: [],
         language: null,
       }),
+      count: 5,
     });
   });
 

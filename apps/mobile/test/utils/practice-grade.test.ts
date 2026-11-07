@@ -6,6 +6,7 @@
 // - normalizeAnswer and matchesAccepted compare answers ignoring case, spacing, quotes and final marks
 // - gradeChoice and localGrade decide when no tutor call is needed
 // - toAnswerGrade shapes the tutor's verdict
+// - gradedCorrect saves a flawed exercise as correct
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -22,6 +23,7 @@ import {
   matchesAccepted,
   normalizeAnswer,
   toAnswerGrade,
+  gradedCorrect,
 } from "@/utils/practice-grade";
 
 describe("normalizeAnswer", () => {
@@ -112,14 +114,22 @@ describe("localGrade", () => {
 
 describe("toAnswerGrade", () => {
   it("keeps the verdict and the explanation", () => {
-    expect(toAnswerGrade({ correct: true, explanation: " Fine. " })).toEqual({
+    expect(toAnswerGrade({ flawed: false, correct: true, explanation: " Fine. " })).toEqual({
+      flawed: false,
       correct: true,
       explanation: "Fine.",
     });
   });
 
+  it("keeps the flawed flag and the explanation", () => {
+    expect(
+      toAnswerGrade({ flawed: true, correct: false, explanation: " Two answers fit. " }),
+    ).toEqual({ flawed: true, correct: false, explanation: "Two answers fit." });
+  });
+
   it("turns an empty explanation into null", () => {
-    expect(toAnswerGrade({ correct: false, explanation: "  " })).toEqual({
+    expect(toAnswerGrade({ flawed: false, correct: false, explanation: "  " })).toEqual({
+      flawed: false,
       correct: false,
       explanation: null,
     });
@@ -127,7 +137,25 @@ describe("toAnswerGrade", () => {
 
   it("cuts the explanation at 300", () => {
     expect(
-      toAnswerGrade({ correct: false, explanation: "e".repeat(400) }).explanation,
+      toAnswerGrade({ flawed: false, correct: false, explanation: "e".repeat(400) }).explanation,
     ).toHaveLength(300);
+  });
+});
+
+describe("gradedCorrect", () => {
+  it("saves a right verdict as correct", () => {
+    expect(gradedCorrect({ correct: true, flawed: false })).toBe(true);
+  });
+
+  it("saves a miss as wrong", () => {
+    expect(gradedCorrect({ correct: false, flawed: false })).toBe(false);
+  });
+
+  it("saves a flawed exercise as correct even when the verdict is a miss", () => {
+    expect(gradedCorrect({ correct: false, flawed: true })).toBe(true);
+  });
+
+  it("saves a flawed exercise graded right as correct", () => {
+    expect(gradedCorrect({ correct: true, flawed: true })).toBe(true);
   });
 });

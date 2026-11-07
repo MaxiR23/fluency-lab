@@ -4,6 +4,9 @@
 //
 // Tested:
 // - toPracticeRound trims, drops the exercises that break a rule of their kind or a limit, and caps the count
+// - isNegative finds the polarity of a sentence
+// - toPracticeRound drops a fix that is already correct or changes polarity, and needs the full count
+// - gapSentenceFill matches a gap answered with the whole sentence
 // - splitGap splits a prompt around its one gap
 //
 // What is covered:
@@ -15,7 +18,13 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { GAP, splitGap, toPracticeRound } from "@/utils/practice-round";
+import {
+  GAP,
+  gapSentenceFill,
+  isNegative,
+  splitGap,
+  toPracticeRound,
+} from "@/utils/practice-round";
 
 type Raw = {
   kind: string;
@@ -89,7 +98,7 @@ describe("toPracticeRound", () => {
         options: [" have been ", "was", "am"],
         accepted: [" have been "],
       }),
-      5,
+      1,
     );
     expect(result?.[0]).toMatchObject({
       rule: "Present perfect",
@@ -99,7 +108,7 @@ describe("toPracticeRound", () => {
   });
 
   it("turns empty options and source into null", () => {
-    const result = toPracticeRound(round(gap, translate), 5);
+    const result = toPracticeRound(round(gap, translate), 2);
     expect(result?.map((item) => [item.options, item.source])).toEqual([
       [null, null],
       [null, null],
@@ -120,7 +129,7 @@ describe("toPracticeRound", () => {
       toPracticeRound(round({ ...choose, options: ["have been", "was", "was"] }), 5),
     ).toBeNull();
     expect(
-      toPracticeRound(round({ ...choose, options: ["have been", "Was", "was"] }), 5),
+      toPracticeRound(round({ ...choose, options: ["have been", "Was", "was"] }), 1),
     ).not.toBeNull();
     expect(toPracticeRound(round({ ...choose, accepted: ["were"] }), 5)).toBeNull();
     expect(toPracticeRound(round({ ...choose, accepted: ["have been", "was"] }), 5)).toBeNull();
@@ -141,7 +150,7 @@ describe("toPracticeRound", () => {
   });
 
   it("drops an unknown kind", () => {
-    expect(toPracticeRound(round({ ...gap, kind: "match" }, fix), 5)).toHaveLength(1);
+    expect(toPracticeRound(round({ ...gap, kind: "match" }, fix), 1)).toHaveLength(1);
   });
 
   it("drops an item with no accepted answer", () => {
@@ -154,7 +163,7 @@ describe("toPracticeRound", () => {
   });
 
   it("cuts nothing at 80 characters of rule and drops 81", () => {
-    expect(toPracticeRound(round({ ...gap, rule: "r".repeat(80) }), 5)).toHaveLength(1);
+    expect(toPracticeRound(round({ ...gap, rule: "r".repeat(80) }), 1)).toHaveLength(1);
     expect(toPracticeRound(round({ ...gap, rule: "r".repeat(81) }), 5)).toBeNull();
   });
 
@@ -166,8 +175,204 @@ describe("toPracticeRound", () => {
   });
 
   it("keeps the source only for fix items", () => {
-    const result = toPracticeRound(round({ ...gap, source: "from chat" }, fix), 5);
+    const result = toPracticeRound(round({ ...gap, source: "from chat" }, fix), 2);
     expect(result?.map((item) => item.source)).toEqual([null, "I never been to Japan."]);
+  });
+});
+
+describe("toPracticeRound with spares and fix checks", () => {
+  const cant: Raw = {
+    ...fix,
+    prompt: "I can remember who made the shot.",
+    accepted: ["I can't remember who made the shot."],
+    source: "",
+  };
+
+  it("returns null when fewer items than the count are valid", () => {
+    expect(toPracticeRound(round(gap, fix, { ...gap, kind: "riddle" }), 3)).toBeNull();
+  });
+
+  it("keeps the first valid items up to the count from a round with spares", () => {
+    const items = [
+      { ...gap, prompt: "One ___." },
+      { ...gap, kind: "riddle" },
+      { ...gap, prompt: "Three ___." },
+      { ...gap, kind: "riddle" },
+      { ...gap, prompt: "Five ___." },
+      { ...gap, prompt: "Six ___." },
+      { ...gap, prompt: "Seven ___." },
+    ];
+    const result = toPracticeRound(round(...items), 5);
+    expect(result?.map((item) => item.prompt)).toEqual([
+      "One ___.",
+      "Three ___.",
+      "Five ___.",
+      "Six ___.",
+      "Seven ___.",
+    ]);
+  });
+
+  it("keeps exactly the count when exactly the count are valid", () => {
+    expect(toPracticeRound(round(gap, gap, gap, gap, gap), 5)).toHaveLength(5);
+  });
+
+  it("drops a fix whose prompt is already one of its accepted answers", () => {
+    const already: Raw = {
+      ...fix,
+      prompt: "I can't remember who made the shot.",
+      accepted: ["I can't remember who made the shot."],
+      source: "",
+    };
+    expect(toPracticeRound(round(already), 1)).toBeNull();
+  });
+
+  it("drops a fix equal to an accepted answer after normalizing", () => {
+    const already: Raw = {
+      ...fix,
+      prompt: "i can’t remember who made the shot",
+      accepted: ["I can't remember who made the shot.", "I can't recall who made the shot."],
+    };
+    expect(toPracticeRound(round(already), 1)).toBeNull();
+  });
+
+  it("drops a fix whose accepted answer turns the prompt negative", () => {
+    expect(toPracticeRound(round(cant), 1)).toBeNull();
+  });
+
+  it("drops a fix when any accepted answer differs in polarity", () => {
+    const mixed: Raw = {
+      ...fix,
+      prompt: "I never been to Japan.",
+      accepted: ["I've never been to Japan.", "I've been to Japan."],
+    };
+    expect(toPracticeRound(round(mixed), 1)).toBeNull();
+  });
+
+  it("keeps a negative fix whose accepted answers stay negative", () => {
+    expect(toPracticeRound(round(fix), 1)).toHaveLength(1);
+  });
+
+  it("does not check polarity for gap, choose and translate", () => {
+    const negativeGap: Raw = {
+      ...gap,
+      prompt: "I ___ (not / can) remember who made the shot.",
+      accepted: ["can't"],
+    };
+    const negativeChoose: Raw = {
+      ...choose,
+      prompt: "I ___ to Japan.",
+      options: ["have never been", "was", "am"],
+      accepted: ["have never been"],
+    };
+    const negativeTranslate: Raw = {
+      ...translate,
+      prompt: "No he estado en Japón.",
+      accepted: ["I haven't been to Japan."],
+    };
+    expect(toPracticeRound(round(negativeGap), 1)).toHaveLength(1);
+    expect(toPracticeRound(round(negativeChoose), 1)).toHaveLength(1);
+    expect(toPracticeRound(round(negativeTranslate), 1)).toHaveLength(1);
+  });
+});
+
+describe("isNegative", () => {
+  it.each([
+    "I do not know.",
+    "I never go.",
+    "There is no time.",
+    "Nobody came.",
+    "I saw nothing.",
+    "It is nowhere.",
+    "None of them.",
+    "I cannot go.",
+  ])("finds a negative word in %s", (text) => {
+    expect(isNegative(text)).toBe(true);
+  });
+
+  it("finds n't at the end of a word, with a straight or a curly apostrophe", () => {
+    expect(isNegative("I can't")).toBe(true);
+    expect(isNegative("She doesn’t")).toBe(true);
+    expect(isNegative("We won't")).toBe(true);
+  });
+
+  it("is false for an affirmative sentence", () => {
+    expect(isNegative("I can remember who made the shot.")).toBe(false);
+  });
+
+  it("is false for an empty text", () => {
+    expect(isNegative("")).toBe(false);
+    expect(isNegative("  ")).toBe(false);
+  });
+
+  it("does not match a negative word inside another word", () => {
+    expect(isNegative("I know the notes.")).toBe(false);
+    expect(isNegative("Nobel")).toBe(false);
+    expect(isNegative("nothingness")).toBe(false);
+    expect(isNegative("Not now.")).toBe(true);
+    expect(isNegative("Never!")).toBe(true);
+  });
+
+  it("ignores case", () => {
+    expect(isNegative("NEVER again")).toBe(true);
+  });
+});
+
+describe("gapSentenceFill", () => {
+  const cued = {
+    kind: "gap" as const,
+    prompt: "I ___ (not / can) remember who made the shot!",
+    accepted: ["can't"],
+  };
+
+  it("returns the fill when the answer is the whole sentence with the gap filled", () => {
+    const item = {
+      kind: "gap" as const,
+      prompt: "She ___ here since May.",
+      accepted: ["has lived"],
+    };
+    expect(gapSentenceFill(item, "She has lived here since May.")).toBe("has lived");
+  });
+
+  it("matches the whole sentence without the cue in parentheses", () => {
+    expect(gapSentenceFill(cued, "I can't remember who made the shot")).toBe("can't");
+  });
+
+  it("matches the whole sentence that keeps the cue", () => {
+    expect(gapSentenceFill(cued, "I can't (not / can) remember who made the shot!")).toBe("can't");
+  });
+
+  it("matches after case, spacing, curly quotes and the final mark", () => {
+    expect(gapSentenceFill(cued, "  i can’t   remember who made the shot.")).toBe("can't");
+  });
+
+  it("returns the second accepted answer when it is the one used", () => {
+    const item = { ...cued, accepted: ["can't", "cannot"] };
+    expect(gapSentenceFill(item, "I cannot remember who made the shot")).toBe("cannot");
+  });
+
+  it("returns null for a sentence with a wrong fill", () => {
+    expect(gapSentenceFill(cued, "I can remember who made the shot!")).toBeNull();
+  });
+
+  it("returns null for the fill alone", () => {
+    expect(gapSentenceFill(cued, "can't")).toBeNull();
+  });
+
+  it("returns null for an empty answer", () => {
+    expect(gapSentenceFill(cued, "")).toBeNull();
+  });
+
+  it("returns null for a choose, a fix or a translate item", () => {
+    for (const kind of ["choose", "fix", "translate"] as const) {
+      expect(gapSentenceFill({ ...cued, kind }, "I can't remember who made the shot")).toBeNull();
+    }
+  });
+
+  it("returns null for a prompt with no gap or two gaps", () => {
+    expect(gapSentenceFill({ ...cued, prompt: "I can remember." }, "I can't remember")).toBeNull();
+    expect(
+      gapSentenceFill({ ...cued, prompt: "I ___ ___ remember." }, "I can't can't remember"),
+    ).toBeNull();
   });
 });
 
