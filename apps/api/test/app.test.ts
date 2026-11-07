@@ -28,7 +28,7 @@
 
 import { sign } from "hono/jwt";
 import { testClient } from "hono/testing";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   STARTERS,
   TUTOR_MODEL,
@@ -685,13 +685,22 @@ describe("GET /sessions/week", () => {
     return app.request(`/sessions/week${query}`, { headers: await authed() });
   }
 
+  beforeEach(() => {
+    fake.user.listFinishedRunsSince.mockResolvedValue({ ok: true, value: [] });
+  });
+
   it("responds 200 with the week and no days when there are no sessions", async () => {
     fake.user.listSessionStarts.mockResolvedValue({ ok: true, value: [] });
 
     const res = await week("?tz=UTC");
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ weekStart: "2026-11-02", today: "2026-11-05", days: [] });
+    expect(await res.json()).toEqual({
+      weekStart: "2026-11-02",
+      today: "2026-11-05",
+      days: [],
+      perfectDays: [],
+    });
   });
 
   it("responds 200 with the days that have a session", async () => {
@@ -710,6 +719,7 @@ describe("GET /sessions/week", () => {
       weekStart: "2026-11-02",
       today: "2026-11-05",
       days: ["2026-11-02", "2026-11-04"],
+      perfectDays: [],
     });
   });
 
@@ -733,7 +743,67 @@ describe("GET /sessions/week", () => {
       weekStart: "2026-11-02",
       today: "2026-11-05",
       days: ["2026-11-04"],
+      perfectDays: [],
     });
+  });
+
+  it("counts a day with a finished run and no session", async () => {
+    fake.user.listSessionStarts.mockResolvedValue({ ok: true, value: [] });
+    fake.user.listFinishedRunsSince.mockResolvedValue({
+      ok: true,
+      value: [{ finishedAt: "2026-11-03T10:00:00+00:00", missed: true }],
+    });
+
+    const res = await week("?tz=UTC");
+
+    expect(await res.json()).toEqual({
+      weekStart: "2026-11-02",
+      today: "2026-11-05",
+      days: ["2026-11-03"],
+      perfectDays: [],
+    });
+  });
+
+  it("answers the perfect days of runs with no miss", async () => {
+    fake.user.listSessionStarts.mockResolvedValue({ ok: true, value: [] });
+    fake.user.listFinishedRunsSince.mockResolvedValue({
+      ok: true,
+      value: [
+        { finishedAt: "2026-11-03T10:00:00+00:00", missed: false },
+        { finishedAt: "2026-11-04T10:00:00+00:00", missed: true },
+      ],
+    });
+
+    const res = await week("?tz=UTC");
+
+    expect(await res.json()).toEqual({
+      weekStart: "2026-11-02",
+      today: "2026-11-05",
+      days: ["2026-11-03", "2026-11-04"],
+      perfectDays: ["2026-11-03"],
+    });
+  });
+
+  it("reads the finished runs since eight days before now", async () => {
+    fake.user.listSessionStarts.mockResolvedValue({ ok: true, value: [] });
+
+    await week("?tz=UTC");
+
+    expect(fake.user.listFinishedRunsSince).toHaveBeenCalledWith("2026-10-28T12:00:00.000Z");
+  });
+
+  it("responds 401 when the runs read reports unauthorized", async () => {
+    fake.user.listSessionStarts.mockResolvedValue({ ok: true, value: [] });
+    fake.user.listFinishedRunsSince.mockResolvedValue({ ok: false, failure: "unauthorized" });
+
+    expect((await week("?tz=UTC")).status).toBe(401);
+  });
+
+  it("responds 503 when the runs read is unavailable", async () => {
+    fake.user.listSessionStarts.mockResolvedValue({ ok: true, value: [] });
+    fake.user.listFinishedRunsSince.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    expect((await week("?tz=UTC")).status).toBe(503);
   });
 
   it("responds 400 for an unknown time zone", async () => {
@@ -1594,6 +1664,7 @@ describe("typed client (data routes)", () => {
     const activeRes = await client.sessions.active.$get();
 
     fake.user.listSessionStarts.mockResolvedValue({ ok: true, value: [] });
+    fake.user.listFinishedRunsSince.mockResolvedValue({ ok: true, value: [] });
     const weekRes = await client.sessions.week.$get({ query: { tz: "UTC" } });
 
     expect(profileRes.status).toBe(200);

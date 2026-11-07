@@ -35,7 +35,7 @@ import { PRACTICE_LOOKBACK_MS, todayRun } from "./practice";
 import { PAGE_SIZE, historyItem, mistakeGroup, noteItem, pageOf, wordItem } from "./progress";
 import { dayStreak } from "./streak";
 import { sessionSummary } from "./summary";
-import { WEEK_LOOKBACK_MS, currentWeek, isTimeZone, sessionDays } from "./week";
+import { WEEK_LOOKBACK_MS, currentWeek, isTimeZone, weekDays } from "./week";
 
 // INFO: no zod issue text leaves the API.
 const invalidInput = (
@@ -340,7 +340,15 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
           const { status, body } = failureResponse(outcome.failure);
           return c.json(body, status);
         }
-        return c.json({ weekStart, today, days: sessionDays(outcome.value, tz, weekStart) }, 200);
+        const runs = await config.store.forUser(c.get("caller")).listFinishedRunsSince(since);
+        if (!runs.ok) {
+          const { status, body } = failureResponse(runs.failure);
+          return c.json(body, status);
+        }
+        return c.json(
+          { weekStart, today, ...weekDays(outcome.value, runs.value, tz, weekStart) },
+          200,
+        );
       },
     )
     .get(

@@ -25,6 +25,7 @@ function cell(overrides: Partial<DayCell>): DayCell {
     letter: "T",
     label: "Tuesday, not practiced",
     practiced: false,
+    perfect: false,
     isToday: false,
     isFuture: false,
     ...overrides,

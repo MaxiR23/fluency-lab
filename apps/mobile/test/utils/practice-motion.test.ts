@@ -6,7 +6,7 @@
 // - ringGeometry gives the circumference and the dash offset of a score ring
 // - riseMotion staggers the entrance rises by index
 // - homeMotion, focusMotion, exerciseMotion and resultMotion give the token timings, or null with reduce motion
-// - shakeSteps and popSteps give the keyframe sequences
+// - shakeSteps, popSteps and flickSteps give the keyframe sequences
 //
 // What is covered:
 // - Normal case, reduce motion, edges
@@ -20,6 +20,7 @@ import { describe, expect, it } from "@jest/globals";
 import { motion, size } from "@/constants/theme";
 import {
   exerciseMotion,
+  flickSteps,
   focusMotion,
   homeMotion,
   popSteps,
@@ -170,5 +171,44 @@ describe("shakeSteps and popSteps", () => {
       { to: 1.2, duration: 420 },
       { to: 1, duration: 280 },
     ]);
+  });
+});
+
+describe("the flame flick", () => {
+  it("gives Home the flame flick of the tokens, and none with reduce motion", () => {
+    expect(homeMotion(false)?.flame).toEqual({
+      cycle: motion.flame.cycle,
+      scaleX: motion.flame.scaleX,
+      scaleY: motion.flame.scaleY,
+      skewX: motion.flame.skewX,
+    });
+    expect(homeMotion(true)).toBeNull();
+  });
+
+  it("splits the flick into four steps of a quarter cycle that end at rest", () => {
+    const home = homeMotion(false);
+    if (home === null) throw new Error("home motion is on without reduce motion");
+    const steps = flickSteps(home.flame);
+    expect(steps.scaleX).toEqual([
+      { to: 0.94, duration: 300 },
+      { to: 1.04, duration: 300 },
+      { to: 0.97, duration: 300 },
+      { to: 1, duration: 300 },
+    ]);
+    expect(steps.scaleY).toEqual([
+      { to: 1.07, duration: 300 },
+      { to: 0.95, duration: 300 },
+      { to: 1.05, duration: 300 },
+      { to: 1, duration: 300 },
+    ]);
+    expect(steps.skewX).toEqual([
+      { to: -3, duration: 300 },
+      { to: 2, duration: 300 },
+      { to: -1.5, duration: 300 },
+      { to: 0, duration: 300 },
+    ]);
+    expect(steps.scaleX[3].to).toBe(1);
+    expect(steps.scaleY[3].to).toBe(1);
+    expect(steps.skewX[3].to).toBe(0);
   });
 });

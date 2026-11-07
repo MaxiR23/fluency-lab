@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The card: title, count, seven days, a check on each practiced day, labels
+// - A perfect day draws the flame instead of the circle, pops with it today, and stands on the same baseline
 //
 // What is covered:
 // - Normal case, empty case
@@ -13,7 +14,8 @@
 // SEE: apps/mobile/src/components/week-strip.tsx
 
 import { describe, expect, it } from "@jest/globals";
-import { render, screen } from "@testing-library/react-native";
+import { render, screen, within } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 
 import { WeekStrip } from "@/components/week-strip";
 import { weekWith } from "../helpers/fake-data";
@@ -61,5 +63,49 @@ describe("WeekStrip", () => {
       />,
     );
     expect(screen.queryByTestId("week-pop", { includeHiddenElements: true })).toBeNull();
+  });
+
+  it("draws the flame instead of the circle and check on a perfect day", async () => {
+    await render(
+      <WeekStrip week={weekWith(["2026-11-02", "2026-11-03"], { perfectDays: ["2026-11-03"] })} />,
+    );
+    expect(screen.getAllByTestId("flame", { includeHiddenElements: true })).toHaveLength(1);
+    expect(screen.getAllByTestId("icon-check", { includeHiddenElements: true })).toHaveLength(1);
+    expect(screen.getByText("2 of 7 days · 1 perfect")).toBeTruthy();
+    expect(screen.getByLabelText("Tuesday, perfect practice")).toBeTruthy();
+    expect(screen.getByLabelText("Monday, practiced")).toBeTruthy();
+  });
+
+  it("draws the normal check for a practiced day that is not perfect", async () => {
+    await render(<WeekStrip week={weekWith(["2026-11-02"])} />);
+    expect(screen.queryByTestId("flame", { includeHiddenElements: true })).toBeNull();
+    expect(screen.getAllByTestId("icon-check", { includeHiddenElements: true })).toHaveLength(1);
+  });
+
+  it("pops today's perfect day with its flame inside", async () => {
+    await render(
+      <WeekStrip
+        week={weekWith(["2026-11-05"], { perfectDays: ["2026-11-05"] })}
+        pop={{ delay: 980, up: 420, settle: 280, scale: 1.2 }}
+      />,
+    );
+    const pop = screen.getByTestId("week-pop", { includeHiddenElements: true });
+    expect(within(pop).getByTestId("flame", { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it("keeps every flame still with no flame motion", async () => {
+    await render(
+      <WeekStrip week={weekWith(["2026-11-03"], { perfectDays: ["2026-11-03"] })} flame={null} />,
+    );
+    const style = StyleSheet.flatten(
+      screen.getByTestId("flame", { includeHiddenElements: true }).props.style,
+    );
+    expect(style.transform).toEqual([{ scaleX: 1 }, { scaleY: 1 }, { skewX: "0deg" }]);
+  });
+
+  it("stands the days on the same baseline", async () => {
+    await render(<WeekStrip week={weekWith([])} />);
+    const style = StyleSheet.flatten(screen.getByTestId("week-row").props.style);
+    expect(style.alignItems).toBe("flex-end");
   });
 });

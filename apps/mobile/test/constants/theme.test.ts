@@ -10,6 +10,7 @@
 // - The Summary tokens: the done badge, its check and glow, and the word chip
 // - The reply tokens of chat-reply.html and chat-reply-sent.html
 // - The medium face and the withdrawn badge height of the correction thread
+// - The perfect day tokens of home-perfect-day.html: the flame colors, gradients, size, glow and flick
 // - The practice tokens of the five design files: the muted orange, the rings, the prompt type and the motion timings
 //
 // What is covered:
@@ -26,6 +27,7 @@ import {
   colors,
   fontFamily,
   fontSize,
+  gradient,
   letterSpacing,
   lineHeight,
   motion,
@@ -578,5 +580,44 @@ describe("theme", () => {
     expect(motion.note.savedDelay).toBe(Math.round((0.3 - 0.1) * 5000));
     expect(motion.note.savedDuration).toBe(Math.round((0.38 - 0.3) * 5000));
     expect(motion.note.savedScale).toBe(0.8);
+  });
+
+  it("holds the perfect day tokens of home-perfect-day.html", () => {
+    expect(colors.flameLight).toBe("#9CC4D6");
+    expect(colors.flameMid).toBe("#2E8C93");
+    expect(colors.flameCore).toBe("#F2FBFD");
+    expect(colors.flameHighlight).toBe("#FFFFFF");
+    expect(colors.flameShade).toBe("rgba(0,0,0,0.25)");
+    expect(colors.accentFlame).toBe("rgba(109,165,192,0.6)");
+    expect(size.flameWidth).toBe(44);
+    expect(size.flameHeight).toBe(40);
+    expect(shadow.flameGlow).toEqual({
+      shadowColor: colors.accentFlame,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 5,
+    });
+    expect(gradient).toEqual({
+      flameBody: [
+        { offset: 0, color: colors.flameLight },
+        { offset: 0.5, color: colors.flameMid },
+        { offset: 1, color: colors.accentLine },
+      ],
+      flameCore: [
+        { offset: 0, color: colors.flameCore },
+        { offset: 1, color: colors.accent },
+      ],
+      flameHighlight: [
+        { offset: 0, color: colors.flameHighlight, opacity: 0.5 },
+        { offset: 1, color: colors.flameHighlight, opacity: 0 },
+      ],
+    });
+    expect(motion.flame).toEqual({
+      cycle: 1200,
+      scaleX: [0.94, 1.04, 0.97, 1],
+      scaleY: [1.07, 0.95, 1.05, 1],
+      skewX: [-3, 2, -1.5, 0],
+      origin: "50% 95%",
+    });
   });
 });

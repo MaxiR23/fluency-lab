@@ -13,12 +13,20 @@ export type RingMotion = { delay: number; duration: number; curve: Curve };
 export type PopMotion = { delay: number; up: number; settle: number; scale: number };
 export type Step = { to: number; duration: number };
 
+export type FlameMotion = {
+  cycle: number;
+  scaleX: readonly number[];
+  scaleY: readonly number[];
+  skewX: readonly number[];
+};
+
 export type HomeMotion = {
   rise: RiseGroup;
   ring: RingMotion;
   pop: PopMotion;
   glowCycle: number;
   nudge: { cycle: number; offset: number };
+  flame: FlameMotion;
 };
 export type FocusMotion = { rise: RiseGroup };
 export type ExerciseMotion = {
@@ -74,6 +82,14 @@ export function popSteps(pop: PopMotion): Step[] {
   ];
 }
 
+// INFO: each keyframe of the flick is a quarter of the cycle; the last target is the rest
+// pose, so a repeated sequence loops without a jump.
+export function flickSteps(flame: FlameMotion): { scaleX: Step[]; scaleY: Step[]; skewX: Step[] } {
+  const steps = (targets: readonly number[]): Step[] =>
+    targets.map((to) => ({ to, duration: flame.cycle / targets.length }));
+  return { scaleX: steps(flame.scaleX), scaleY: steps(flame.scaleY), skewX: steps(flame.skewX) };
+}
+
 // INFO: each config is built once at module level, so an effect keyed on it does not restart.
 const HOME: HomeMotion = {
   rise: motion.home,
@@ -86,6 +102,12 @@ const HOME: HomeMotion = {
   },
   glowCycle: motion.home.glowCycle,
   nudge: { cycle: motion.home.nudgeCycle, offset: motion.home.nudgeOffset },
+  flame: {
+    cycle: motion.flame.cycle,
+    scaleX: motion.flame.scaleX,
+    scaleY: motion.flame.scaleY,
+    skewX: motion.flame.skewX,
+  },
 };
 
 const FOCUS: FocusMotion = { rise: motion.focus };

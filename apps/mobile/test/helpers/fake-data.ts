@@ -302,7 +302,7 @@ export function noteWith(overrides: Partial<StudyNote> = {}): StudyNote {
 }
 
 export function weekWith(days: string[], overrides: Partial<SessionWeek> = {}): SessionWeek {
-  return { weekStart: "2026-11-02", today: "2026-11-05", days, ...overrides };
+  return { weekStart: "2026-11-02", today: "2026-11-05", days, perfectDays: [], ...overrides };
 }
 
 export function resetFakeData(): void {

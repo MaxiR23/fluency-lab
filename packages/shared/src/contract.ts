@@ -259,11 +259,14 @@ export const openSessionsResponseSchema = z.object({
   sessions: z.array(activeSessionSchema),
 });
 
-export const sessionWeekSchema = z.object({
-  weekStart: z.iso.date(),
-  today: z.iso.date(),
-  days: z.array(z.iso.date()),
-});
+export const sessionWeekSchema = z
+  .object({
+    weekStart: z.iso.date(),
+    today: z.iso.date(),
+    days: z.array(z.iso.date()),
+    perfectDays: z.array(z.iso.date()),
+  })
+  .refine((week) => week.perfectDays.every((day) => week.days.includes(day)));
 
 export const weekQuerySchema = z.object({ tz: z.string().min(1).max(100) });
 

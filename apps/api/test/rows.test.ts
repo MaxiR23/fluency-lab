@@ -6,6 +6,7 @@
 // - toProfile, toSession and toMessage rename snake_case rows and reject bad rows
 // - toOpenSession reads a session row with its newest embedded message
 // - toSessionStart reads the start time of a session row
+// - toFinishedRun reads the finish time of a run and whether an item was missed
 // - toProfileStatsRow reads the session count, the session days and the new words count
 // - toSessionCost reads the start time and the cost of a session row
 // - toMonthProgressRow, toHistoryRow, toMistakeRow and toWordRow read the Progress rows
@@ -24,6 +25,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  toFinishedRun,
   toHistoryRow,
   toMessage,
   toMistakeRow,
@@ -307,6 +309,37 @@ describe("toProfilePatch", () => {
 
   it("keeps a null display name as null", () => {
     expect(toProfilePatch({ displayName: null }, now)).toEqual({ display_name: null });
+  });
+});
+
+describe("toFinishedRun", () => {
+  it("reads the finish time of a run and no miss when every item is correct", () => {
+    const row = { finished_at: stamp, practice_items: [{ correct: true }, { correct: true }] };
+    expect(toFinishedRun(row)).toEqual({ finishedAt: stamp, missed: false });
+  });
+
+  it("reads a miss when one item is correct = false", () => {
+    const row = { finished_at: stamp, practice_items: [{ correct: true }, { correct: false }] };
+    expect(toFinishedRun(row)).toEqual({ finishedAt: stamp, missed: true });
+  });
+
+  it("does not count an unanswered item (correct null) or a flawed item saved correct as a miss", () => {
+    const row = { finished_at: stamp, practice_items: [{ correct: null }, { correct: true }] };
+    expect(toFinishedRun(row)).toEqual({ finishedAt: stamp, missed: false });
+  });
+
+  it("reads a run with no items as no miss", () => {
+    expect(toFinishedRun({ finished_at: stamp, practice_items: [] })).toEqual({
+      finishedAt: stamp,
+      missed: false,
+    });
+  });
+
+  it("rejects a row without finished_at, with a malformed time or with items that are not a list", () => {
+    expect(toFinishedRun({ practice_items: [] })).toBeNull();
+    expect(toFinishedRun({ finished_at: null, practice_items: [] })).toBeNull();
+    expect(toFinishedRun({ finished_at: "yesterday", practice_items: [] })).toBeNull();
+    expect(toFinishedRun({ finished_at: stamp, practice_items: {} })).toBeNull();
   });
 });
 

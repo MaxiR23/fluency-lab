@@ -761,7 +761,12 @@ describe("getMonthSpend", () => {
 });
 
 describe("getSessionWeek", () => {
-  const week = { weekStart: "2026-11-02", today: "2026-11-05", days: ["2026-11-02"] };
+  const week = {
+    weekStart: "2026-11-02",
+    today: "2026-11-05",
+    days: ["2026-11-02"],
+    perfectDays: [],
+  };
 
   it("sends the time zone and returns the parsed week", async () => {
     const { data, seen } = setup(reply(week));
@@ -772,6 +777,12 @@ describe("getSessionWeek", () => {
     });
     expect(seen[0].url).toBe("http://api.test/sessions/week?tz=America%2FArgentina%2FBuenos_Aires");
     expect(seen[0].method).toBe("GET");
+  });
+
+  it("returns the perfect days of the week", async () => {
+    const perfect = { ...week, perfectDays: ["2026-11-02"] };
+    const { data } = setup(reply(perfect));
+    expect(await data.getSessionWeek("UTC")).toEqual({ ok: true, value: perfect });
   });
 
   it("returns a week with no days as a success", async () => {

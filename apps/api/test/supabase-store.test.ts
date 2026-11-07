@@ -7,7 +7,7 @@
 // - Every request carries the caller's token and the publishable key
 // - listOpenSessions reads active sessions newest first with their newest message in one request; deleteSession deletes by id
 // - listSessionCostsSince reads the sessions, deleted_session_costs and practice_runs and returns all three
-// - The practice methods read and write practice_runs and practice_items and call add_practice_cost with the caller's token
+// - The practice methods read and write practice_runs and practice_items (listFinishedRunsSince reads the finished runs with their item verdicts) and call add_practice_cost with the caller's token
 // - getStats calls profile_stats with the caller's token; deleteAccount deletes the caller through the admin API with the secret key and never the caller's token
 // - getMonthProgress, listEndedSessions, listMistakeGroups and listNewWords call their progress_* function with the caller's token
 // - getThread, addThreadMessage, withdrawCorrections and listThreadCounts read and write the thread table and its functions with the caller's token, and getSessionWithMessages never reads thread rows
@@ -992,6 +992,59 @@ describe("listSessionStarts", () => {
   it("returns unavailable for a bad row", async () => {
     const { user } = setup([ok([{ id }])]);
     expect(await user.listSessionStarts(since)).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
+describe("listFinishedRunsSince", () => {
+  const since = "2026-10-28T12:00:00.000Z";
+
+  it("reads the finished runs with their item verdicts since the given time", async () => {
+    const { user, requests } = setup([
+      ok([
+        {
+          finished_at: "2026-11-02T10:00:00+00:00",
+          practice_items: [{ correct: true }, { correct: null }],
+        },
+        {
+          finished_at: "2026-11-04T10:00:00+00:00",
+          practice_items: [{ correct: true }, { correct: false }],
+        },
+      ]),
+    ]);
+
+    const outcome = await user.listFinishedRunsSince(since);
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: [
+        { finishedAt: "2026-11-02T10:00:00+00:00", missed: false },
+        { finishedAt: "2026-11-04T10:00:00+00:00", missed: true },
+      ],
+    });
+    expect(requests[0].url.pathname).toBe("/rest/v1/practice_runs");
+    expect(requests[0].url.searchParams.get("select")).toBe("finished_at,practice_items(correct)");
+    expect(requests[0].url.searchParams.get("finished_at")).toBe(`gte.${since}`);
+    expect(requests[0].url.searchParams.get("order")).toBe("finished_at.asc");
+  });
+
+  it("returns an empty list when no run finished", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.listFinishedRunsSince(since)).toEqual({ ok: true, value: [] });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.listFinishedRunsSince(since)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.listFinishedRunsSince(since)).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("returns unavailable for a bad row", async () => {
+    const { user } = setup([ok([{ id }])]);
+    expect(await user.listFinishedRunsSince(since)).toEqual({ ok: false, failure: "unavailable" });
   });
 });
 

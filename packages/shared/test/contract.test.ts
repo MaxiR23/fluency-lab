@@ -330,17 +330,48 @@ describe("response schemas", () => {
   });
 
   it("parses a session week with no days", () => {
-    const body = { weekStart: "2026-11-02", today: "2026-11-05", days: [] };
+    const body = { weekStart: "2026-11-02", today: "2026-11-05", days: [], perfectDays: [] };
     expect(sessionWeekSchema.parse(body)).toEqual(body);
   });
 
   it("parses a session week with days", () => {
-    const body = { weekStart: "2026-11-02", today: "2026-11-05", days: ["2026-11-02"] };
+    const body = {
+      weekStart: "2026-11-02",
+      today: "2026-11-05",
+      days: ["2026-11-02"],
+      perfectDays: [],
+    };
     expect(sessionWeekSchema.parse(body)).toEqual(body);
   });
 
+  it("parses a session week with perfect days among its days", () => {
+    const body = {
+      weekStart: "2026-11-02",
+      today: "2026-11-05",
+      days: ["2026-11-02", "2026-11-03"],
+      perfectDays: ["2026-11-03"],
+    };
+    expect(sessionWeekSchema.parse(body)).toEqual(body);
+  });
+
+  it("rejects a session week whose perfect day is not one of its days", () => {
+    const body = {
+      weekStart: "2026-11-02",
+      today: "2026-11-05",
+      days: ["2026-11-02"],
+      perfectDays: ["2026-11-03"],
+    };
+    expect(sessionWeekSchema.safeParse(body).success).toBe(false);
+  });
+
+  it("rejects a session week without perfectDays or with a malformed perfect day", () => {
+    const ok = { weekStart: "2026-11-02", today: "2026-11-05", days: ["2026-11-02"] };
+    expect(sessionWeekSchema.safeParse(ok).success).toBe(false);
+    expect(sessionWeekSchema.safeParse({ ...ok, perfectDays: ["2026-11-2"] }).success).toBe(false);
+  });
+
   it("rejects a session week with a malformed date, a missing today or days that are not a list", () => {
-    const ok = { weekStart: "2026-11-02", today: "2026-11-05", days: [] };
+    const ok = { weekStart: "2026-11-02", today: "2026-11-05", days: [], perfectDays: [] };
     expect(sessionWeekSchema.safeParse({ ...ok, weekStart: "2026-11-2" }).success).toBe(false);
     expect(sessionWeekSchema.safeParse({ weekStart: ok.weekStart, days: [] }).success).toBe(false);
     expect(sessionWeekSchema.safeParse({ ...ok, days: "2026-11-02" }).success).toBe(false);
