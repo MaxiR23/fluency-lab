@@ -1,4 +1,4 @@
-import type { StudyNote } from "@fluency-lab/shared";
+import { PRACTICE_AVOID_DAYS, PRACTICE_AVOID_LIMIT, type StudyNote } from "@fluency-lab/shared";
 import { router, useIsFocused } from "expo-router";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
@@ -35,13 +35,15 @@ async function readRun(origin: PracticeOrigin | null): Promise<PracticeScreenVie
     mistakes: null,
     words: null,
     note: null,
+    recent: null,
     language,
   };
   if (!key.ok || !key.value || !profile.ok || origin === null) return practiceRunView(first);
   const timeZone = deviceTimeZone();
-  const [spend, opened] = await Promise.all([
+  const [spend, opened, recent] = await Promise.all([
     data.getMonthSpend(timeZone),
     origin.kind === "resume" ? data.openPracticeRun(origin.runId) : Promise.resolve(null),
+    data.listRecentPrompts(PRACTICE_AVOID_DAYS, PRACTICE_AVOID_LIMIT),
   ]);
   const focus =
     origin.kind === "new"
@@ -67,7 +69,7 @@ async function readRun(origin: PracticeOrigin | null): Promise<PracticeScreenVie
         ? Promise.resolve<DataOutcome<StudyNote>>({ ok: false, failure: "not_found" })
         : data.getNote(noteId),
   ]);
-  return practiceRunView({ ...first, spend, opened, mistakes, words, note });
+  return practiceRunView({ ...first, spend, opened, mistakes, words, note, recent });
 }
 
 type Dispatch = (event: PracticeEvent) => void;
@@ -132,7 +134,7 @@ async function drive(
       if (step.kind === "write") {
         if (!(await save(state, step.write, dispatch))) return;
       } else if (step.kind === "round") {
-        const answer = await ai.practiceRound(step.request, step.count);
+        const answer = await ai.practiceRound(step.request, step.count, step.avoid);
         if (!answer.ok) {
           dispatch({
             type: "round_failed",

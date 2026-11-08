@@ -9,6 +9,7 @@
 // - A billed AI failure saves its usage; an AI failure resends and a write failure resumes
 // - A note run reads its note and sends it in the round call; a missed exercise makes a study note, saves it with no session, adds its usage to the run and opens it
 // - Keep going, finish and stop; update key
+// - Reads the recent prompts and sends them as avoid
 // - Regaining focus re-reads the context
 //
 // What is covered:
@@ -157,9 +158,39 @@ describe("usePracticeRun", () => {
         ],
       },
       count: 7,
+      avoid: [],
     });
     expect(fakeAi.practiceRound.mock.calls[0]?.[1]).toBe(5);
+    expect(fakeAi.practiceRound.mock.calls[0]?.[2]).toEqual([]);
     expect(request.system).not.toContain("Ada");
+  });
+
+  it("reads the recent prompts of the last seven days, forty at most", async () => {
+    withKey();
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(ready(result).phase).toBe("answering"));
+    expect(fakeData.listRecentPrompts).toHaveBeenCalledWith(7, 40);
+  });
+
+  it("sends the recent prompts as avoid and to the round's validation", async () => {
+    withKey();
+    fakeData.listRecentPrompts.mockResolvedValue({
+      ok: true,
+      value: [{ runId: "old-run", prompt: "I ___ (be) there.", rule: "Present perfect" }],
+    });
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(ready(result).phase).toBe("answering"));
+    const [request, , avoid] = fakeAi.practiceRound.mock.calls[0];
+    expect(JSON.parse(request.turns[0].text).avoid).toEqual(["I ___ (be) there."]);
+    expect(avoid).toEqual(["I ___ (be) there."]);
+  });
+
+  it("shows the failure when the recent prompts cannot be read", async () => {
+    withKey();
+    fakeData.listRecentPrompts.mockResolvedValue({ ok: false, failure: "network" });
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(result.current.view.kind).toBe("failed"));
+    expect(fakeAi.practiceRound).not.toHaveBeenCalled();
   });
 
   it("reads the spend in the device's time zone", async () => {

@@ -318,11 +318,11 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
         const payload = threadReplySchema.safeParse(value);
         return payload.success ? toThreadReply(payload.data) : null;
       }),
-    async practiceRound(request, count) {
+    async practiceRound(request, count, avoid) {
       const asked = await ask(request, PRACTICE_ROUND_JSON_SCHEMA, ROUND_MAX_TOKENS, (value) => {
         const payload = practiceRoundSchema.safeParse(value);
         if (!payload.success) return null;
-        const items = toPracticeRound(payload.data, count);
+        const items = toPracticeRound(payload.data, count, avoid);
         return items === null ? null : { items };
       });
       return asked;

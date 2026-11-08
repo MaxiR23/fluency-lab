@@ -9,6 +9,7 @@ import {
   type PracticeRunWithItems,
   type Profile,
   type Provider,
+  type RecentPrompt,
   type SessionUsage,
   type StudyNoteCreate,
 } from "@fluency-lab/shared";
@@ -21,6 +22,7 @@ import { gradeChoice, gradedCorrect, localGrade } from "@/utils/practice-grade";
 import { keepGoingTarget, missedRules, practiceNext, roundSize } from "@/utils/practice-escalation";
 import type { PracticeOrigin } from "@/utils/practice-focus";
 import {
+  avoidPrompts,
   gradeRequest,
   roundRequest,
   studyNoteRequest,
@@ -59,6 +61,8 @@ export type PracticeRunState = {
   items: PracticeItem[];
   focus: FocusData;
   language: string | null;
+  // INFO: the caller's recent items from the last days, newest first, read once when the run opens.
+  recent: RecentPrompt[];
   displayName: string | null;
   draft: string;
   picked: string | null;
@@ -101,7 +105,7 @@ export type PracticeEvent =
 export type PracticeStep =
   | { kind: "none" }
   | { kind: "write"; write: PracticeWrite }
-  | { kind: "round"; request: TutorRequest; count: number }
+  | { kind: "round"; request: TutorRequest; count: number; avoid: string[] }
   | { kind: "grade"; request: TutorRequest }
   | { kind: "note"; request: TutorRequest };
 
@@ -135,6 +139,7 @@ export function startPractice(input: {
   spentUsd: number;
   focus: FocusData;
   language: string | null;
+  recent: RecentPrompt[];
 }): PracticeRunState {
   const { origin, opened, profile } = input;
   const base: PracticeRunState = {
@@ -143,6 +148,7 @@ export function startPractice(input: {
     items: opened?.items ?? [],
     focus: input.focus,
     language: input.language,
+    recent: input.recent,
     displayName: profile.displayName,
     draft: "",
     picked: null,
@@ -441,6 +447,7 @@ export function practiceStep(s: PracticeRunState): PracticeStep {
   if (s.failure !== null || sendState(s).locked || s.run === null) return { kind: "none" };
   if (s.phase === "asking") {
     const count = roundSize(s.items, s.run.target);
+    const avoid = avoidPrompts(s.items, s.recent, s.run.id);
     return {
       kind: "round",
       request: roundRequest({
@@ -448,8 +455,10 @@ export function practiceStep(s: PracticeRunState): PracticeStep {
         count,
         missedRules: missedRules(s.items),
         language: s.language,
+        avoid,
       }),
       count,
+      avoid,
     };
   }
   if (s.noteRequest?.status === "asking") {

@@ -14,6 +14,7 @@
 // - The progress responses and their page queries
 // - The practice schemas: the run to create, the items, the answer, the new target, the reads and the tutor payloads
 // - The study note schemas: both shapes, their limits, the create body, the stored note, the page and the loose payload
+// - The recent prompts query and response
 // - The thread schemas: the stored correction with its withdrawn flag, the thread rows, the withdraw body, the reply counts and the thread reply payload
 //
 // What is covered:
@@ -53,6 +54,8 @@ import {
   practiceRunWithItemsSchema,
   practiceTargetSchema,
   practiceTodaySchema,
+  recentPromptsQuerySchema,
+  recentPromptsSchema,
   newWordsSchema,
   profileSchema,
   profileStatsSchema,
@@ -75,6 +78,7 @@ import {
   wordPageSchema,
 } from "../src/contract";
 import { TUTOR_MODEL } from "../src/model-price";
+import { PRACTICE_AVOID_DAYS, PRACTICE_AVOID_LIMIT } from "../src/profile-values";
 import { STARTERS } from "../src/suggestions";
 import { sessionTitle } from "../src/session-title";
 import { TOPIC_IDS } from "../src/topics";
@@ -1161,5 +1165,58 @@ describe("study notes", () => {
   it("reads a message and a practice run with a null note id", () => {
     expect(messageSchema.parse(message).noteId).toBeNull();
     expect(messageSchema.parse({ ...message, noteId: uuid }).noteId).toBe(uuid);
+  });
+});
+
+describe("recentPromptsQuerySchema and recentPromptsSchema", () => {
+  it("reads days and limit as numbers", () => {
+    expect(recentPromptsQuerySchema.parse({ days: "7", limit: "40" })).toEqual({
+      days: 7,
+      limit: 40,
+    });
+  });
+
+  it("accepts days 1 and 7 and limit 1 and 40", () => {
+    expect(recentPromptsQuerySchema.parse({ days: "1", limit: "1" })).toEqual({
+      days: 1,
+      limit: 1,
+    });
+    expect(recentPromptsQuerySchema.parse({ days: "7", limit: "40" }).limit).toBe(40);
+  });
+
+  it("accepts the shared constants", () => {
+    expect(
+      recentPromptsQuerySchema.safeParse({
+        days: String(PRACTICE_AVOID_DAYS),
+        limit: String(PRACTICE_AVOID_LIMIT),
+      }).success,
+    ).toBe(true);
+    expect(
+      recentPromptsQuerySchema.safeParse({
+        days: String(PRACTICE_AVOID_DAYS + 1),
+        limit: String(PRACTICE_AVOID_LIMIT + 1),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects days 0 and 8, limit 0 and 41, and a missing or non-numeric value", () => {
+    expect(recentPromptsQuerySchema.safeParse({ days: "0", limit: "40" }).success).toBe(false);
+    expect(recentPromptsQuerySchema.safeParse({ days: "8", limit: "40" }).success).toBe(false);
+    expect(recentPromptsQuerySchema.safeParse({ days: "7", limit: "0" }).success).toBe(false);
+    expect(recentPromptsQuerySchema.safeParse({ days: "7", limit: "41" }).success).toBe(false);
+    expect(recentPromptsQuerySchema.safeParse({ days: "7" }).success).toBe(false);
+    expect(recentPromptsQuerySchema.safeParse({ days: "x", limit: "40" }).success).toBe(false);
+  });
+
+  it("parses a list of recent prompts and an empty one", () => {
+    const items = [{ runId: "r1", prompt: "I ___ (be) there.", rule: "Present perfect" }];
+    expect(recentPromptsSchema.parse({ items }).items).toEqual(items);
+    expect(recentPromptsSchema.parse({ items: [] }).items).toEqual([]);
+  });
+
+  it("rejects an item without a rule", () => {
+    expect(recentPromptsSchema.safeParse({ items: [{ runId: "r1", prompt: "p" }] }).success).toBe(
+      false,
+    );
   });
 });

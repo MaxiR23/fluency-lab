@@ -19,6 +19,7 @@ import {
   type PracticeRunWithItems,
   type Profile,
   type ProfileUpdate,
+  type RecentPrompt,
   type Session,
   type StudyNote,
   type ThreadMessage,
@@ -223,6 +224,19 @@ export function toFinishedRun(row: unknown): { finishedAt: string; missed: boole
         finishedAt: parsed.data.finished_at,
         missed: parsed.data.practice_items.some((item) => item.correct === false),
       }
+    : null;
+}
+
+const recentPromptRowSchema = z.object({
+  run_id: z.string(),
+  prompt: z.string(),
+  rule: z.string(),
+});
+
+export function toRecentPrompt(row: unknown): RecentPrompt | null {
+  const parsed = recentPromptRowSchema.safeParse(row);
+  return parsed.success
+    ? { runId: parsed.data.run_id, prompt: parsed.data.prompt, rule: parsed.data.rule }
     : null;
 }
 

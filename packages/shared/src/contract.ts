@@ -459,6 +459,23 @@ export const practiceRunWithItemsSchema = z.object({
 // INFO: run null is the expected empty: no practice started today.
 export const practiceTodaySchema = z.object({ run: practiceRunWithItemsSchema.nullable() });
 
+// INFO: the regexes stay in sync with PRACTICE_AVOID_DAYS (1 to 7) and PRACTICE_AVOID_LIMIT (1 to 40).
+const avoidDays = z
+  .string()
+  .regex(/^[1-7]$/)
+  .transform(Number);
+const avoidLimit = z
+  .string()
+  .regex(/^([1-9]|[1-3]\d|40)$/)
+  .transform(Number);
+export const recentPromptsQuerySchema = z.object({ days: avoidDays, limit: avoidLimit });
+
+// INFO: newest first; [] is the expected empty: no practice in the last days.
+export const recentPromptsSchema = z.object({
+  items: z.array(z.object({ runId: z.string(), prompt: z.string(), rule: z.string() })),
+});
+export type RecentPrompt = z.infer<typeof recentPromptsSchema>["items"][number];
+
 export const practiceItemsResponseSchema = z.object({ items: z.array(practiceItemSchema) });
 
 // INFO: the shape of the structured output of a practice round. It is parsed

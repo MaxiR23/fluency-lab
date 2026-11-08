@@ -4,6 +4,7 @@
 //
 // Tested:
 // - practiceRunView: loading, no key, failed and ready for a new run and for a resumed one
+// - practiceRunView fails on the recent read and puts the rules not practiced recently first
 // - practiceNotice: the notice under the exercise
 //
 // What is covered:
@@ -67,6 +68,7 @@ const base: ViewInput = {
   mistakes,
   words: null,
   note: null,
+  recent: { ok: true, value: [] },
   language: null,
 };
 
@@ -192,9 +194,45 @@ describe("practiceRunView", () => {
         count: 5,
         missedRules: [],
         language: null,
+        avoid: [],
       }),
       count: 5,
+      avoid: [],
     });
+  });
+
+  it("fails on the recent prompts read", () => {
+    const failed = { ok: false, failure: "network" } as const;
+    expect(practiceRunView({ ...base, recent: failed }).kind).toBe("failed");
+  });
+
+  it("is loading until the recent prompts are read", () => {
+    expect(practiceRunView({ ...base, recent: null })).toEqual({ kind: "loading" });
+  });
+
+  it("puts the mistake rules not practiced recently first", () => {
+    const view = practiceRunView({
+      ...base,
+      mistakes: {
+        ok: true,
+        value: {
+          items: [mistakeGroupWith({ rule: "Rule 1" }), mistakeGroupWith({ rule: "Rule 2" })],
+          nextOffset: null,
+        },
+      },
+      recent: { ok: true, value: [{ runId: "old", prompt: "p ___", rule: "Rule 1" }] },
+    });
+    const focus = view.kind === "ready" ? view.run.focus : null;
+    expect(focus?.kind === "mistakes" && focus.corrections.map((c) => c.rule)).toEqual([
+      "Rule 2",
+      "Rule 1",
+    ]);
+  });
+
+  it("starts the run with the recent prompts", () => {
+    const recent = [{ runId: "old", prompt: "p ___", rule: "Rule 1" }];
+    const view = practiceRunView({ ...base, recent: { ok: true, value: recent } });
+    expect(view.kind === "ready" && view.run.recent).toEqual(recent);
   });
 
   describe("a note run", () => {

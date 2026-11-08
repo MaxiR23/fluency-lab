@@ -21,3 +21,10 @@ export function todayRun(
   }
   return newest;
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// INFO: the start of the window of recent prompts: the given days back from the time.
+export function recentPromptsSince(at: Date, days: number): string {
+  return new Date(at.getTime() - days * DAY_MS).toISOString();
+}

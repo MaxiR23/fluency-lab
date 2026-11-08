@@ -13,7 +13,7 @@
 // - getSessionSummary
 // - getProfileStats and deleteAccount
 // - getMonthProgress, listHistory, listMistakes and listWords
-// - The practice calls: getTodayPractice, createPracticeRun, openPracticeRun, addPracticeItems,
+// - The practice calls: getTodayPractice, listRecentPrompts, createPracticeRun, openPracticeRun, addPracticeItems,
 //   answerPracticeItem, addPracticeUsage, setPracticeTarget and finishPracticeRun
 // - The note calls: createNote, getNote, deleteNote and listNotes (createNote, getNote and deleteNote have no expected empty: a note exists or is not_found)
 // - openThread, addThreadMessage and withdrawCorrections; openSession carries the thread reply counts
@@ -1261,6 +1261,15 @@ describe("the practice calls", () => {
       run: (data) => data.getTodayPractice("UTC"),
     },
     {
+      name: "listRecentPrompts",
+      method: "GET",
+      url: "http://api.test/practice/recent-prompts?days=7&limit=40",
+      body: null,
+      answer: { items: [{ runId: "run-1", prompt: "I ___ (be) there.", rule: "Present perfect" }] },
+      value: [{ runId: "run-1", prompt: "I ___ (be) there.", rule: "Present perfect" }],
+      run: (data) => data.listRecentPrompts(7, 40),
+    },
+    {
       name: "createPracticeRun",
       method: "POST",
       url: "http://api.test/practice/runs",
@@ -1376,6 +1385,11 @@ describe("the practice calls", () => {
   it("getTodayPractice returns null with no run today", async () => {
     const { data } = setup(reply({ run: null }));
     expect(await data.getTodayPractice("UTC")).toEqual({ ok: true, value: null });
+  });
+
+  it("listRecentPrompts returns [] when the API answers no items", async () => {
+    const { data } = setup(reply({ items: [] }));
+    expect(await data.listRecentPrompts(7, 40)).toEqual({ ok: true, value: [] });
   });
 
   it("openPracticeRun returns a run with no items", async () => {
