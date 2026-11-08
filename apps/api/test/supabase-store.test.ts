@@ -52,6 +52,8 @@ const sessionRow = {
   title: "Free chat",
   status: "active",
   summary: null,
+  context_summary: null,
+  context_through_id: null,
   cost_usd: 0,
   created_at: stamp,
   updated_at: stamp,
@@ -759,6 +761,71 @@ describe("endSession", () => {
   });
 });
 
+describe("setSessionContext", () => {
+  const context = { summary: "Lives in Lisbon.", throughId: id };
+
+  it("patches the summary and the through id and returns the session", async () => {
+    const { user, requests } = setup([
+      ok([{ ...sessionRow, context_summary: context.summary, context_through_id: id }]),
+    ]);
+
+    const outcome = await user.setSessionContext(sessionId, context);
+
+    expect(outcome).toMatchObject({
+      ok: true,
+      value: { contextSummary: "Lives in Lisbon.", contextThroughId: id },
+    });
+    expect(requests[0].method).toBe("PATCH");
+    expect(requests[0].url.searchParams.get("id")).toBe(`eq.${sessionId}`);
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({
+      context_summary: "Lives in Lisbon.",
+      context_through_id: id,
+    });
+  });
+
+  it("returns null when the session is not visible", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.setSessionContext(sessionId, context)).toEqual({ ok: true, value: null });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.setSessionContext(sessionId, context)).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.setSessionContext(sessionId, context)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("returns unavailable for a bad row", async () => {
+    const { user } = setup([ok([{ id }])]);
+    expect(await user.setSessionContext(sessionId, context)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("returns unavailable when the message is of another session", async () => {
+    const { user } = setup([
+      new Response(JSON.stringify({ message: "violates foreign key", code: "23503" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ]);
+    expect(await user.setSessionContext(sessionId, context)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+});
+
 describe("listOpenSessions", () => {
   it("returns the active sessions newest first, each with its newest message, in one request", async () => {
     const { user, requests } = setup([
@@ -1228,6 +1295,8 @@ describe("listEndedSessions", () => {
             title: "Free chat",
             status: "ended",
             summary: null,
+            contextSummary: null,
+            contextThroughId: null,
             costUsd: 0,
             createdAt: stamp,
             updatedAt: stamp,

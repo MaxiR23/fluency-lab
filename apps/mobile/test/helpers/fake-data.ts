@@ -8,7 +8,7 @@
 // deleteAccount with success, so a signed in user lands on Home, and getSessionSummary with an
 // empty ended session (Summary reads it). Progress reads all five of getMonthProgress, listHistory,
 // listMistakes, listWords and listNotes: zeros and empty pages. Thread reads openThread: a thread with no
-// messages on a learner message with two corrections. Home also reads getTodayPractice: no run today. Practice also reads listRecentPrompts: none.
+// messages on a learner message with two corrections. Home also reads getTodayPractice: no run today. Practice also reads listRecentPrompts: none. setSessionContext answers the default session with the summary and the point it was given.
 
 import { jest } from "@jest/globals";
 import type {
@@ -41,6 +41,7 @@ export const fakeData = {
   openSession: jest.fn<DataPort["openSession"]>(),
   addMessage: jest.fn<DataPort["addMessage"]>(),
   addUsage: jest.fn<DataPort["addUsage"]>(),
+  setSessionContext: jest.fn<DataPort["setSessionContext"]>(),
   endSession: jest.fn<DataPort["endSession"]>(),
   createNote: jest.fn<DataPort["createNote"]>(),
   getNote: jest.fn<DataPort["getNote"]>(),
@@ -101,6 +102,8 @@ export function activeSessionWith(
       title: "Travel",
       status: "active",
       summary: null,
+      contextSummary: null,
+      contextThroughId: null,
       costUsd: 0,
       createdAt: "2026-11-05T09:00:00Z",
       updatedAt: "2026-11-05T09:30:00Z",
@@ -135,6 +138,8 @@ export function summaryWith(
       title: "Travel",
       status: "ended",
       summary: null,
+      contextSummary: null,
+      contextThroughId: null,
       costUsd: 0,
       createdAt: "2026-11-05T09:00:00Z",
       updatedAt: "2026-11-05T09:30:00Z",
@@ -158,6 +163,8 @@ export function historyItemWith(
       title: "Tell me about yourself",
       status: "ended",
       summary: null,
+      contextSummary: null,
+      contextThroughId: null,
       costUsd: 0,
       createdAt: "2026-11-05T09:00:00Z",
       updatedAt: "2026-11-05T09:30:00Z",
@@ -197,6 +204,8 @@ export function threadWith(
       title: "Travel",
       status: "active",
       summary: null,
+      contextSummary: null,
+      contextThroughId: null,
       costUsd: 0,
       createdAt: "2026-11-05T09:00:00Z",
       updatedAt: "2026-11-05T09:30:00Z",
@@ -310,6 +319,14 @@ export function resetFakeData(): void {
   for (const fn of Object.values(fakeData)) {
     fn.mockReset();
   }
+  fakeData.setSessionContext.mockImplementation(async (_sessionId, input) => ({
+    ok: true,
+    value: {
+      ...activeSessionWith({ id: "session-1" }).session,
+      contextSummary: input.summary,
+      contextThroughId: input.throughId,
+    },
+  }));
   fakeData.getProfile.mockResolvedValue({ ok: true, value: completedProfile() });
   fakeData.getActiveSession.mockResolvedValue({ ok: true, value: null });
   fakeData.listOpenSessions.mockResolvedValue({ ok: true, value: [] });

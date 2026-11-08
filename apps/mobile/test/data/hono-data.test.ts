@@ -8,7 +8,7 @@
 // - The token read counts inside the deadline
 // - Each call: success, expected empty, 400/401/404, network failure, bad body
 // - The chat calls: createSession with a starter, openSession, addMessage, addUsage,
-//   endSession and getMonthSpend
+//   setSessionContext, endSession and getMonthSpend
 // - listOpenSessions and deleteSession
 // - getSessionSummary
 // - getProfileStats and deleteAccount
@@ -54,6 +54,8 @@ const session = {
   title: "Free chat",
   status: "active",
   summary: null,
+  contextSummary: null,
+  contextThroughId: null,
   costUsd: 0,
   createdAt: stamp,
   updatedAt: stamp,
@@ -675,6 +677,58 @@ describe("addUsage", () => {
   it("returns bad_response for the wrong shape", async () => {
     const { data } = setup(reply({ id }));
     expect(await data.addUsage(id, usage)).toEqual({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("setSessionContext", () => {
+  const input = { summary: "Lives in Lisbon.", throughId: id };
+
+  it("patches the context and returns the session", async () => {
+    const saved = { ...session, contextSummary: input.summary, contextThroughId: id };
+    const { data, seen } = setup(reply(saved));
+
+    expect(await data.setSessionContext(id, input)).toEqual({ ok: true, value: saved });
+    expect(seen[0].method).toBe("PATCH");
+    expect(seen[0].url).toBe(`http://api.test/sessions/${id}/context`);
+    expect(JSON.parse(seen[0].body ?? "null")).toEqual(input);
+  });
+
+  it("returns unauthorized on 401 and not_found on 404", async () => {
+    expect(
+      await setup(reply({ error: "unauthorized" }, 401)).data.setSessionContext(id, input),
+    ).toEqual({ ok: false, failure: "unauthorized" });
+    expect(
+      await setup(reply({ error: "not_found" }, 404)).data.setSessionContext(id, input),
+    ).toEqual({ ok: false, failure: "not_found" });
+  });
+
+  it("returns invalid_input on 400", async () => {
+    const { data } = setup(reply({ error: "invalid_input" }, 400));
+    expect(await data.setSessionContext("abc", input)).toEqual({
+      ok: false,
+      failure: "invalid_input",
+    });
+  });
+
+  it("returns unavailable on 503", async () => {
+    const { data } = setup(reply({ error: "unavailable" }, 503));
+    expect(await data.setSessionContext(id, input)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("returns network when fetch rejects", async () => {
+    const { data } = setup(new TypeError("Network request failed"));
+    expect(await data.setSessionContext(id, input)).toEqual({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for the wrong shape", async () => {
+    const { data } = setup(reply({ id }));
+    expect(await data.setSessionContext(id, input)).toEqual({
+      ok: false,
+      failure: "bad_response",
+    });
   });
 });
 

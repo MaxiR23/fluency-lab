@@ -104,6 +104,10 @@ export function useChat(chatOrigin: ChatOrigin): {
       if (conversation === null) return;
       const step = nextStep(conversation);
       if (step.kind === "none") return;
+      if (step.kind === "limit") {
+        dispatch({ type: "limit_reached" });
+        return;
+      }
       if (step.kind === "create") {
         const created = await data.createSession(step.body);
         if (!created.ok) {
@@ -131,6 +135,12 @@ export function useChat(chatOrigin: ChatOrigin): {
             return;
           }
           dispatch({ type: "write_done", savedId: saved.value.id });
+        } else if (step.write.kind === "context") {
+          const saved = await data.setSessionContext(session.id, step.write.input);
+          // INFO: a summary that cannot be saved is dropped and tried again on the next turn.
+          dispatch(
+            saved.ok ? { type: "write_done", session: saved.value } : { type: "context_dropped" },
+          );
         } else {
           const saved = await data.addUsage(session.id, step.write.usage);
           if (!saved.ok) {
@@ -138,6 +148,20 @@ export function useChat(chatOrigin: ChatOrigin): {
             return;
           }
           dispatch({ type: "write_done" });
+        }
+      } else if (step.kind === "summarize") {
+        const summary = await ai.summarize(step.request);
+        if (!summary.ok) {
+          // INFO: a failed summary never blocks the reply: the turn goes on with the context it has.
+          dispatch({ type: "summary_failed", usage: summary.usage });
+        } else {
+          dispatch({
+            type: "summary_received",
+            summary: summary.value.summary,
+            throughId: step.throughId,
+            model: summary.value.model,
+            usage: summary.value.usage,
+          });
         }
       } else {
         const answer = await ai.reply(step.request);

@@ -78,6 +78,7 @@ function conversation(overrides: Partial<Conversation> = {}): Conversation {
     provider: "claude",
     limitUsd: null,
     spentUsd: 0,
+    summaryTried: false,
   };
   return { ...base, ...overrides };
 }
@@ -239,6 +240,25 @@ describe("tutorTurns", () => {
 
   it("a reply to a missing message sends the text alone", () => {
     expect(tutorTurns(messages, "Yes", "gone").at(-1)).toEqual({ role: "user", text: "Yes" });
+  });
+
+  it("sends only the messages from the given index, with the pending turn last", () => {
+    expect(tutorTurns(messages, "Yes", null, 2)).toEqual([
+      { role: "tutor", text: "Nice!\nWas it sunny?" },
+      { role: "user", text: "Yes" },
+    ]);
+  });
+
+  it("keeps the quoted text of a reply whose original is before the start", () => {
+    const history = [
+      messages[0],
+      messages[2],
+      chatMessage("message-3", "user", "Yes", { replyTo: "message-2" }),
+    ];
+    expect(tutorTurns(history, "More", "message-2", 2)).toEqual([
+      { role: "user", text: "> Nice!\n> Was it sunny?\n\nYes" },
+      { role: "user", text: "> Nice!\n> Was it sunny?\n\nMore" },
+    ]);
   });
 });
 

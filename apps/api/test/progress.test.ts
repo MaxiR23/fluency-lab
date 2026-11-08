@@ -30,6 +30,8 @@ function sessionAt(createdAt: string): Session {
     title: "Free chat",
     status: "ended",
     summary: null,
+    contextSummary: null,
+    contextThroughId: null,
     costUsd: 0,
     createdAt,
     updatedAt: createdAt,

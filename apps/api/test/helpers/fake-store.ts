@@ -33,6 +33,7 @@ export function createFakeStore() {
     listNotes: vi.fn<UserStore["listNotes"]>(),
     listSessionNotes: vi.fn<UserStore["listSessionNotes"]>(),
     addSessionCost: vi.fn<UserStore["addSessionCost"]>(),
+    setSessionContext: vi.fn<UserStore["setSessionContext"]>(),
     endSession: vi.fn<UserStore["endSession"]>(),
     listSessionStarts: vi.fn<UserStore["listSessionStarts"]>(),
     listFinishedRunsSince: vi.fn<UserStore["listFinishedRunsSince"]>(),

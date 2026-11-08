@@ -43,6 +43,8 @@ export type PracticeRound = {
 
 export type StudyNoteReply = { note: StudyNoteDraft; model: ModelId; usage: TokenUsage };
 
+export type ContextSummaryReply = { summary: string; model: ModelId; usage: TokenUsage };
+
 // INFO: explanation is null when the tutor gave none.
 // INFO: flawed is true when the tutor found the exercise itself wrong.
 export type AnswerGrade = {
@@ -96,4 +98,6 @@ export type AiPort = {
   gradeAnswer(request: TutorRequest): Promise<AiResult<AnswerGrade>>;
   // INFO: no expected empty: a note that cannot be used is a bad_response.
   studyNote(request: TutorRequest): Promise<AiResult<StudyNoteReply>>;
+  // INFO: no expected empty: an empty summary or one over SUMMARY_MAX is a bad_response.
+  summarize(request: TutorRequest): Promise<AiResult<ContextSummaryReply>>;
 };

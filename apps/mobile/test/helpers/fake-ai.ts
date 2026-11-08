@@ -3,7 +3,8 @@
 // fake is jest.requireActual of this file. Call resetFakeAi() in beforeEach: it
 // makes reply answer with tutorReplyWith({}), a normal reply, and replyInThread
 // with threadReplyWith({}), a normal thread reply, practiceRound with five choose exercises and
-// gradeAnswer with a wrong verdict and an explanation, and studyNote with a table note.
+// gradeAnswer with a wrong verdict and an explanation, studyNote with a table note, and summarize
+// with contextSummaryWith({}), a short summary.
 
 import { jest } from "@jest/globals";
 import { TUTOR_MODEL, type StudyNoteDraft } from "@fluency-lab/shared";
@@ -11,6 +12,7 @@ import { TUTOR_MODEL, type StudyNoteDraft } from "@fluency-lab/shared";
 import type {
   AiPort,
   AnswerGrade,
+  ContextSummaryReply,
   PracticeExercise,
   PracticeRound,
   StudyNoteReply,
@@ -24,6 +26,7 @@ export const fakeAi = {
   practiceRound: jest.fn<AiPort["practiceRound"]>(),
   gradeAnswer: jest.fn<AiPort["gradeAnswer"]>(),
   studyNote: jest.fn<AiPort["studyNote"]>(),
+  summarize: jest.fn<AiPort["summarize"]>(),
 } satisfies AiPort;
 
 export function tutorReplyWith(overrides: Partial<TutorReply> = {}): TutorReply {
@@ -131,6 +134,17 @@ export function answerGradeWith(overrides: Partial<AnswerGrade> = {}): AnswerGra
   };
 }
 
+export function contextSummaryWith(
+  overrides: Partial<ContextSummaryReply> = {},
+): ContextSummaryReply {
+  return {
+    summary: "The learner lives in Lisbon and works in tech.",
+    model: TUTOR_MODEL,
+    usage: { ...usage, inputTokens: 900, outputTokens: 120 },
+    ...overrides,
+  };
+}
+
 export function resetFakeAi(): void {
   fakeAi.reply.mockReset();
   fakeAi.reply.mockResolvedValue({ ok: true, value: tutorReplyWith() });
@@ -142,4 +156,6 @@ export function resetFakeAi(): void {
   fakeAi.gradeAnswer.mockResolvedValue({ ok: true, value: answerGradeWith() });
   fakeAi.studyNote.mockReset();
   fakeAi.studyNote.mockResolvedValue({ ok: true, value: studyNoteReplyWith() });
+  fakeAi.summarize.mockReset();
+  fakeAi.summarize.mockResolvedValue({ ok: true, value: contextSummaryWith() });
 }
