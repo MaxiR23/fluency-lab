@@ -12,6 +12,7 @@
 // - A reply with a note queues the note before the tutor message, fills its saved id into that message and counts its cost once
 // - A resumed session reads each message's note; threads_refreshed refreshes it
 // - threads_refreshed updates those two on the saved messages and touches nothing else
+// - A long chat: one summary step before the ask, its usage and context writes, and a failed summary that never blocks the reply
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -67,6 +68,8 @@ const session: Session = {
   title: "Free chat",
   status: "active",
   summary: null,
+  contextSummary: null,
+  contextThroughId: null,
   costUsd: 0,
   createdAt: "2026-11-05T09:00:00Z",
   updatedAt: "2026-11-05T09:00:00Z",
@@ -143,6 +146,7 @@ function play(
     } else if (step.kind === "write") {
       const w = step.write;
       if (w.kind === "note") steps.push(`write note: ${w.input.title}`);
+      else if (w.kind === "context") steps.push("write context");
       else
         steps.push(w.kind === "usage" ? "write usage" : `write ${w.input.role}: ${w.input.text}`);
       event =
@@ -1248,5 +1252,191 @@ describe("the notes of a resumed session", () => {
       opened: { session, messages: [], threadReplies: [], notes: [] },
     });
     expect(after.messages[2]?.note).not.toBeNull();
+  });
+});
+
+describe("summarizing older turns", () => {
+  const usage = {
+    inputTokens: 900,
+    outputTokens: 120,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+  };
+
+  // INFO: m-t0 is the opening (tutor); odd indexes are learner messages.
+  function saved(n: number): Message[] {
+    return Array.from({ length: n }, (_, i) => message(i % 2 === 0 ? "tutor" : "user", `t${i}`));
+  }
+
+  function long(n: number, withSession: Partial<Session> = {}): Conversation {
+    return typed(
+      startConversation({
+        origin: { kind: "resume", sessionId: "s1" },
+        profile,
+        spentUsd: 0,
+        opened: {
+          session: { ...session, ...withSession },
+          messages: saved(n),
+          threadReplies: [],
+          notes: [],
+        },
+      }),
+      "Next",
+    );
+  }
+
+  function summarizeStep(c: Conversation) {
+    const step = nextStep(c);
+    if (step.kind !== "summarize") throw new Error(`expected summarize, got ${step.kind}`);
+    return step;
+  }
+
+  function askStep(c: Conversation) {
+    const step = nextStep(c);
+    if (step.kind !== "ask") throw new Error(`expected ask, got ${step.kind}`);
+    return step;
+  }
+
+  const received = {
+    type: "summary_received",
+    summary: "Lives in Lisbon.",
+    throughId: "m-t18",
+    model: TUTOR_MODEL,
+    usage,
+  } as const;
+
+  function savedContext(c: Conversation): Conversation {
+    // INFO: plays the two writes the summary queued, the context write returning the session.
+    const withContext = {
+      ...session,
+      contextSummary: "Lives in Lisbon.",
+      contextThroughId: "m-t18",
+    };
+    return apply(c, { type: "write_done" }, { type: "write_done", session: withContext });
+  }
+
+  it("asks for a summary before the tutor once 30 messages follow the point", () => {
+    const step = summarizeStep(long(31));
+    expect(step.throughId).toBe("m-t18");
+    expect(JSON.parse(step.request.turns[0].text).messages).toHaveLength(19);
+  });
+
+  it("asks the tutor directly with fewer than 30 messages after the point", () => {
+    expect(nextStep(long(29)).kind).toBe("ask");
+  });
+
+  it("queues the summary's usage, then its context, and adds its cost to the spend", () => {
+    const c = apply(long(31), received);
+    expect(c.writes).toEqual([
+      { kind: "usage", usage: { model: TUTOR_MODEL, ...usage } },
+      { kind: "context", input: { summary: "Lives in Lisbon.", throughId: "m-t18" } },
+    ]);
+    expect(c.spentUsd).toBe(usageCostUsd(TUTOR_MODEL, usage));
+    expect(c.phase).toBe("asking");
+    expect(c.summaryTried).toBe(true);
+    expect(nextStep(c)).toEqual({ kind: "write", write: c.writes[0] });
+  });
+
+  it("stops the turn at the limit after the summary's cost, once its writes are sent", () => {
+    const cost = usageCostUsd(TUTOR_MODEL, usage);
+    const start = { ...long(31), limitUsd: cost };
+    expect(sendState(start).locked).toBe(false);
+    const c = savedContext(apply(start, received));
+    expect(nextStep(c)).toEqual({ kind: "limit" });
+    const stopped = apply(c, { type: "limit_reached" });
+    expect(stopped.phase).toBe("idle");
+    expect(stopped.pending).toBeNull();
+    expect(stopped.draft).toBe("Next");
+    expect(stopped.failure).toBeNull();
+    expect(stopped.session?.contextSummary).toBe("Lives in Lisbon.");
+  });
+
+  it("stops the turn at the limit after a billed failed summary", () => {
+    const cost = usageCostUsd(TUTOR_MODEL, usage);
+    const c = apply(
+      { ...long(31), limitUsd: cost },
+      { type: "summary_failed", usage },
+      {
+        type: "write_done",
+      },
+    );
+    expect(nextStep(c)).toEqual({ kind: "limit" });
+  });
+
+  it("asks the tutor when the summary's cost leaves the spend under the limit", () => {
+    const cost = usageCostUsd(TUTOR_MODEL, usage);
+    const c = savedContext(apply({ ...long(31), limitUsd: cost * 2 }, received));
+    expect(nextStep(c).kind).toBe("ask");
+  });
+
+  it("asks the tutor with the summary line and the latest messages once the context is saved", () => {
+    const c = savedContext(apply(long(31), received));
+    expect(c.session?.contextSummary).toBe("Lives in Lisbon.");
+    expect(c.writes).toEqual([]);
+    const { request } = askStep(c);
+    expect(request.system.endsWith("Earlier in this chat: Lives in Lisbon.")).toBe(true);
+    expect(request.turns.map((t) => t.text)).toEqual([
+      ...saved(31)
+        .slice(19)
+        .map((m) => m.text),
+      "Next",
+    ]);
+  });
+
+  it("asks the tutor with the history as it was when the summary failed, and does not try again this turn", () => {
+    const c = apply(long(31), { type: "summary_failed" });
+    expect(c.writes).toEqual([]);
+    const { request } = askStep(c);
+    expect(request.turns).toHaveLength(32);
+    expect(request.system).not.toContain("Earlier in this chat");
+  });
+
+  it("saves the usage of a billed failed summary and adds its cost", () => {
+    const c = apply(long(31), { type: "summary_failed", usage });
+    expect(c.writes).toEqual([{ kind: "usage", usage: { model: TUTOR_MODEL, ...usage } }]);
+    expect(c.spentUsd).toBe(usageCostUsd(TUTOR_MODEL, usage));
+    expect(c.phase).toBe("asking");
+  });
+
+  it("drops the summary when its save fails and asks with the history as it was", () => {
+    const c = apply(long(31), received, { type: "write_done" }, { type: "context_dropped" });
+    expect(c.writes).toEqual([]);
+    expect(c.session?.contextSummary).toBeNull();
+    expect(c.phase).toBe("asking");
+    expect(askStep(c).request.turns).toHaveLength(32);
+  });
+
+  it("ignores context_dropped when the head write is not a context", () => {
+    const c = apply(long(31), received);
+    expect(conversationReducer(c, { type: "context_dropped" })).toBe(c);
+  });
+
+  it("tries the summary again on the next send", () => {
+    const failed = apply(long(31), { type: "summary_failed" });
+    const done = play(failed).c;
+    expect(done.summaryTried).toBe(true);
+    const next = apply(done, { type: "draft_changed", text: "More" }, { type: "send_started" });
+    expect(next.summaryTried).toBe(false);
+    expect(nextStep(next).kind).toBe("summarize");
+  });
+
+  it("does not summarize a chat without a session", () => {
+    const c = apply(
+      free(),
+      { type: "draft_changed", text: "Hi" },
+      { type: "send_started" },
+      { type: "session_created", session },
+    );
+    expect(c.session).not.toBeNull();
+    expect(nextStep({ ...c, writes: [], session: null }).kind).not.toBe("summarize");
+  });
+
+  it("sends the earlier summary as previous when summarizing again", () => {
+    const step = summarizeStep(
+      long(61, { contextSummary: "Lives in Lisbon.", contextThroughId: "m-t18" }),
+    );
+    const payload = JSON.parse(step.request.turns[0].text);
+    expect(payload.previousSummary).toBe("Lives in Lisbon.");
+    expect(payload.messages[0].text).toBe("t19");
   });
 });

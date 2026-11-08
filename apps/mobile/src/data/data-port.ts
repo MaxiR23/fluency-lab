@@ -21,6 +21,7 @@ import type {
   Session,
   SessionCreate,
   SessionSummary,
+  SessionContext,
   SessionUsage,
   SessionWeek,
   SessionWithMessages,
@@ -48,6 +49,8 @@ export type DataPort = {
   openSession(sessionId: string): Promise<DataOutcome<SessionWithMessages>>;
   addMessage(sessionId: string, input: MessageCreate): Promise<DataOutcome<Message>>;
   addUsage(sessionId: string, usage: SessionUsage): Promise<DataOutcome<Session>>;
+  // INFO: saves the chat's summary of its older turns; the answer is the session as saved.
+  setSessionContext(sessionId: string, input: SessionContext): Promise<DataOutcome<Session>>;
   endSession(sessionId: string): Promise<DataOutcome<Session>>;
   // INFO: no expected empty: a note exists or is not_found.
   createNote(input: StudyNoteCreate): Promise<DataOutcome<StudyNote>>;

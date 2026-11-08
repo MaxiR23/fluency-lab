@@ -26,6 +26,9 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  contextSummarySchema,
+  sessionContextSchema,
+  sessionSchema,
   accountDeletedSchema,
   activeSessionResponseSchema,
   correctionSchema,
@@ -105,6 +108,8 @@ const session = {
   title: "Free chat",
   status: "active",
   summary: null,
+  contextSummary: null,
+  contextThroughId: null,
   costUsd: 0,
   createdAt: stamp,
   updatedAt: stamp,
@@ -1218,5 +1223,71 @@ describe("recentPromptsQuerySchema and recentPromptsSchema", () => {
     expect(recentPromptsSchema.safeParse({ items: [{ runId: "r1", prompt: "p" }] }).success).toBe(
       false,
     );
+  });
+});
+
+describe("session context", () => {
+  it("parses a session with its context summary and the message it covers", () => {
+    const withContext = { ...session, contextSummary: "Lives in Lisbon.", contextThroughId: uuid };
+    expect(sessionSchema.parse(withContext)).toEqual(withContext);
+  });
+
+  it("parses a session with no context as nulls", () => {
+    expect(sessionSchema.parse(session)).toEqual(session);
+  });
+
+  it("rejects a session without the context fields", () => {
+    const { contextSummary: _s, contextThroughId: _t, ...bare } = session;
+    expect(sessionSchema.safeParse(bare).success).toBe(false);
+  });
+});
+
+describe("sessionContextSchema", () => {
+  it("accepts a summary and a message uuid", () => {
+    expect(
+      sessionContextSchema.safeParse({ summary: "Lives in Lisbon.", throughId: uuid }).success,
+    ).toBe(true);
+  });
+
+  it("trims the summary", () => {
+    expect(sessionContextSchema.parse({ summary: "  Lisbon.  ", throughId: uuid }).summary).toBe(
+      "Lisbon.",
+    );
+  });
+
+  it("rejects an empty or blank summary", () => {
+    expect(sessionContextSchema.safeParse({ summary: "", throughId: uuid }).success).toBe(false);
+    expect(sessionContextSchema.safeParse({ summary: "   ", throughId: uuid }).success).toBe(false);
+  });
+
+  it("accepts a summary of exactly 2000 characters and rejects 2001", () => {
+    expect(
+      sessionContextSchema.safeParse({ summary: "a".repeat(2000), throughId: uuid }).success,
+    ).toBe(true);
+    expect(
+      sessionContextSchema.safeParse({ summary: "a".repeat(2001), throughId: uuid }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a through id that is not a uuid", () => {
+    expect(sessionContextSchema.safeParse({ summary: "Lisbon.", throughId: "m1" }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects unknown keys", () => {
+    expect(
+      sessionContextSchema.safeParse({ summary: "Lisbon.", throughId: uuid, extra: 1 }).success,
+    ).toBe(false);
+  });
+});
+
+describe("contextSummarySchema", () => {
+  it("parses the summary payload", () => {
+    expect(contextSummarySchema.parse({ summary: "Lisbon." })).toEqual({ summary: "Lisbon." });
+  });
+
+  it("rejects a payload without summary", () => {
+    expect(contextSummarySchema.safeParse({}).success).toBe(false);
   });
 });

@@ -4,11 +4,13 @@ import {
   usageCostUsd,
   type Goal,
   type Level,
+  type ModelId,
   type Message,
   type MessageCreate,
   type Profile,
   type Provider,
   type Session,
+  type SessionContext,
   type SessionCreate,
   type SessionUsage,
   type SessionWithMessages,
@@ -29,10 +31,12 @@ import {
   topicGreeting,
   type ChatOrigin,
 } from "@/utils/chat-opening";
+import { contextTurns, summaryCut, summaryPoint } from "@/utils/chat-context";
+import { summaryRequest } from "@/utils/context-prompt";
 import { noteDraft } from "@/utils/note";
 import { spendLevel } from "@/utils/spend-limit";
 import { tutorPrompt } from "@/utils/tutor-prompt";
-import { replyTargetId, tutorTurns } from "@/utils/chat-reply";
+import { replyTargetId } from "@/utils/chat-reply";
 import { groundCorrections } from "@/utils/tutor-reply";
 
 // INFO: the longest message the API saves (messageCreateSchema).
@@ -64,7 +68,9 @@ export type Write =
   | { kind: "message"; localId: string; input: MessageCreate }
   // INFO: localId is the list id of the tutor message the note came with.
   | { kind: "note"; localId: string; input: StudyNoteCreate }
-  | { kind: "usage"; usage: SessionUsage };
+  | { kind: "usage"; usage: SessionUsage }
+  // INFO: the summary of the older turns and the last message it covers, saved on the session.
+  | { kind: "context"; input: SessionContext };
 
 export type Learner = {
   displayName: string | null;
@@ -97,6 +103,8 @@ export type Conversation = {
   provider: Provider | null;
   limitUsd: number | null;
   spentUsd: number;
+  // INFO: this turn already tried a summary, so a failure does not loop; reset on each send.
+  summaryTried: boolean;
 };
 
 export type ConversationEvent =
@@ -108,7 +116,21 @@ export type ConversationEvent =
   | { type: "reply_received"; reply: TutorReply }
   // INFO: usage is present when the provider answered and billed a reply that was not usable.
   | { type: "reply_failed"; failure: ChatFailure; usage?: TokenUsage }
-  | { type: "write_done"; savedId?: string }
+  | {
+      type: "summary_received";
+      summary: string;
+      throughId: string;
+      model: ModelId;
+      usage: TokenUsage;
+    }
+  // INFO: usage is present when the provider billed a summary that was not usable.
+  | { type: "summary_failed"; usage?: TokenUsage }
+  // INFO: the context write failed: the summary is dropped and tried again on the next turn.
+  | { type: "context_dropped" }
+  // INFO: the turn's summary took the spend to the limit: the text goes back to the draft, no failure.
+  | { type: "limit_reached" }
+  // INFO: session is the session the context write returned.
+  | { type: "write_done"; savedId?: string; session?: Session }
   | { type: "write_failed"; failure: ChatFailure }
   | { type: "create_failed"; failure: ChatFailure }
   | { type: "retry" }
@@ -129,6 +151,9 @@ export type Step =
   | { kind: "none" }
   | { kind: "create"; body: SessionCreate }
   | { kind: "write"; write: Write }
+  | { kind: "summarize"; request: TutorRequest; throughId: string }
+  // INFO: the turn stops here: the summary's cost reached the spend limit before the ask.
+  | { kind: "limit" }
   | { kind: "ask"; request: TutorRequest };
 
 export type SendState = {
@@ -202,6 +227,7 @@ export function startConversation(input: {
     provider: profile.provider,
     limitUsd: profile.monthlyLimitUsd,
     spentUsd: input.spentUsd,
+    summaryTried: false,
   };
   if (origin.kind === "resume" && input.opened !== undefined) {
     const { session, messages, threadReplies, notes } = input.opened;
@@ -335,6 +361,7 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
         draft: c.pending === null ? "" : c.draft,
         failure: null,
         endFailed: false,
+        summaryTried: false,
         phase: c.session === null ? "creating" : "asking",
       };
     }
@@ -448,10 +475,54 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
       return {
         ...c,
         messages,
+        session:
+          done?.kind === "context" && event.session !== undefined ? event.session : c.session,
         writes: rest,
         phase: rest.length === 0 && c.phase === "saving" ? "idle" : c.phase,
       };
     }
+    case "summary_received":
+      return {
+        ...c,
+        summaryTried: true,
+        writes: [
+          ...c.writes,
+          // INFO: a failed usage write stops the turn on purpose, so no billed call goes uncounted.
+          { kind: "usage", usage: usageWrite(event.model, event.usage) },
+          { kind: "context", input: { summary: event.summary, throughId: event.throughId } },
+        ],
+        spentUsd: round8(c.spentUsd + usageCostUsd(event.model, event.usage)),
+      };
+    case "summary_failed":
+      if (event.usage === undefined) return { ...c, summaryTried: true };
+      // INFO: the billed call still counts, as in reply_failed.
+      return {
+        ...c,
+        summaryTried: true,
+        writes: [...c.writes, { kind: "usage", usage: usageWrite(TUTOR_MODEL, event.usage) }],
+        spentUsd: round8(c.spentUsd + usageCostUsd(TUTOR_MODEL, event.usage)),
+      };
+    case "context_dropped": {
+      const [done, ...rest] = c.writes;
+      if (done?.kind !== "context") return c;
+      return {
+        ...c,
+        writes: rest,
+        phase: rest.length === 0 && c.phase === "saving" ? "idle" : c.phase,
+      };
+    }
+    case "limit_reached":
+      return {
+        ...c,
+        draft: (c.draft === "" ? (c.pending ?? "") : `${c.pending ?? ""} ${c.draft}`).slice(
+          0,
+          MAX_MESSAGE_LENGTH,
+        ),
+        pending: null,
+        replyTo: c.pendingReplyTo ?? c.replyTo,
+        pendingReplyTo: null,
+        phase: "idle",
+      };
     case "write_failed":
     case "create_failed":
       return { ...c, phase: "idle", failure: event.failure };
@@ -507,13 +578,29 @@ export function nextStep(c: Conversation): Step {
     return { kind: "write", write: c.writes[0] };
   }
   if (c.phase === "asking" && c.pending !== null) {
-    const turns = tutorTurns(c.messages, c.pending, c.pendingReplyTo);
-    const system = tutorPrompt({
+    // INFO: send() checked the limit before the turn; a summary this turn may have spent past it.
+    if (c.summaryTried && sendState(c).locked) return { kind: "limit" };
+    const summary = c.session?.contextSummary ?? null;
+    const throughId = c.session?.contextThroughId ?? null;
+    if (c.session !== null && !c.summaryTried) {
+      const cut = summaryCut(c.messages, summary, throughId);
+      if (cut !== null) {
+        const usable = summaryPoint(c.messages, summary, throughId) !== -1;
+        return {
+          kind: "summarize",
+          request: summaryRequest(usable ? summary : null, c.messages, cut.covered),
+          throughId: cut.throughId,
+        };
+      }
+    }
+    const context = contextTurns(c.messages, summary, throughId, c.pending, c.pendingReplyTo);
+    const prompt = tutorPrompt({
       ...c.learner,
       topicTitle: c.topicTitle,
       openingLine: c.opening,
     });
-    return { kind: "ask", request: { system, turns } };
+    const system = context.addition === null ? prompt : `${prompt}\n${context.addition}`;
+    return { kind: "ask", request: { system, turns: context.turns } };
   }
   return { kind: "none" };
 }

@@ -13,6 +13,7 @@
 // - End, Update key, the refocus refresh, and a reply that ends after unmount
 // - A reply with a note saves the note first, then the tutor message with its id, and the card opens its note
 // - A chat with a session re-reads it on refocus, to show the thread counts and withdrawn corrections
+// - A long chat: one summary before the turn, saved with its point, then the summary and the latest messages; a failed summary sends the history and retries next turn
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -24,13 +25,25 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { router, useIsFocused } from "expo-router";
-import { STARTERS, TUTOR_MODEL, type Message, type Session } from "@fluency-lab/shared";
+import {
+  STARTERS,
+  TUTOR_MODEL,
+  usageCostUsd,
+  type Message,
+  type Session,
+} from "@fluency-lab/shared";
 
 import { useChat } from "@/hooks/use-chat";
 import type { Conversation } from "@/utils/chat-conversation";
 import type { ChatOrigin } from "@/utils/chat-opening";
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
-import { fakeAi, noteWith, resetFakeAi, tutorReplyWith } from "../helpers/fake-ai";
+import {
+  contextSummaryWith,
+  fakeAi,
+  noteWith,
+  resetFakeAi,
+  tutorReplyWith,
+} from "../helpers/fake-ai";
 import { fakeData, noteWith as storedNote, profileWith, resetFakeData } from "../helpers/fake-data";
 import { fakeKeys, resetFakeKeys } from "../helpers/fake-keys";
 
@@ -58,6 +71,8 @@ const session: Session = {
   title: "Free chat",
   status: "active",
   summary: null,
+  contextSummary: null,
+  contextThroughId: null,
   costUsd: 0,
   createdAt: "2026-11-05T09:00:00Z",
   updatedAt: "2026-11-05T09:00:00Z",
@@ -1016,6 +1031,168 @@ describe("useChat", () => {
       const c = conversationOf(hook.result.current.view);
       expect(c.draft).toBe("Japan");
       expect(c.replyTo).toBe("message-2");
+    });
+  });
+
+  describe("a long chat", () => {
+    // INFO: the opening (tutor) and 15 pairs: m-t0 to m-t30, odd indexes are learner messages.
+    const texts = Array.from({ length: 31 }, (_, i) => `t${i}`);
+
+    async function longChat() {
+      withKey();
+      fakeData.openSession.mockResolvedValue({
+        ok: true,
+        value: {
+          session,
+          messages: texts.map((text, i) => saved(i % 2 === 0 ? "tutor" : "user", text)),
+          threadReplies: [],
+          notes: [],
+        },
+      });
+      return ready({ kind: "resume", sessionId: "session-1" });
+    }
+
+    function replyRequest(call = 0) {
+      return fakeAi.reply.mock.calls[call][0];
+    }
+
+    it("runs one summary before the turn and saves it with the last covered message's id", async () => {
+      const hook = await longChat();
+      await sendText(hook, "Next");
+
+      expect(fakeAi.summarize).toHaveBeenCalledTimes(1);
+      expect(fakeData.setSessionContext).toHaveBeenCalledWith("session-1", {
+        summary: contextSummaryWith().summary,
+        throughId: "m-t18",
+      });
+      expect(fakeAi.summarize.mock.invocationCallOrder[0]).toBeLessThan(
+        fakeData.setSessionContext.mock.invocationCallOrder[0],
+      );
+      expect(fakeData.setSessionContext.mock.invocationCallOrder[0]).toBeLessThan(
+        fakeAi.reply.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("sends the summary line and only the latest messages after the summary is saved", async () => {
+      const hook = await longChat();
+      await sendText(hook, "Next");
+
+      const request = replyRequest();
+      expect(request.system.endsWith(`Earlier in this chat: ${contextSummaryWith().summary}`)).toBe(
+        true,
+      );
+      expect(request.turns.map((t) => t.text)).toEqual([...texts.slice(19), "Next"]);
+    });
+
+    it("does not summarize again on the next turn and sends the summary with the newer messages", async () => {
+      const hook = await longChat();
+      await sendText(hook, "Next");
+      await sendText(hook, "Again");
+
+      expect(fakeAi.summarize).toHaveBeenCalledTimes(1);
+      const request = replyRequest(1);
+      expect(request.system).toContain(`Earlier in this chat: ${contextSummaryWith().summary}`);
+      expect(request.turns.map((t) => t.text)).toEqual([
+        ...texts.slice(19),
+        "Next",
+        "Nice! Where did you go?",
+        "Again",
+      ]);
+    });
+
+    it("adds the summary's usage to the session and the month spend", async () => {
+      const hook = await longChat();
+      await sendText(hook, "Next");
+
+      const summaryUsage = contextSummaryWith().usage;
+      const replyUsage = tutorReplyWith().usage;
+      expect(fakeData.addUsage).toHaveBeenCalledTimes(2);
+      expect(fakeData.addUsage.mock.calls[0]).toEqual([
+        "session-1",
+        { model: TUTOR_MODEL, ...summaryUsage },
+      ]);
+      expect(fakeData.addUsage.mock.calls[1]).toEqual([
+        "session-1",
+        { model: TUTOR_MODEL, ...replyUsage },
+      ]);
+      expect(conversationOf(hook.result.current.view).spentUsd).toBeCloseTo(
+        usageCostUsd(TUTOR_MODEL, summaryUsage) + usageCostUsd(TUTOR_MODEL, replyUsage),
+        8,
+      );
+    });
+
+    it("stops before the tutor when the summary's cost reaches the limit", async () => {
+      const summaryUsage = contextSummaryWith().usage;
+      withKey({ monthlyLimitUsd: usageCostUsd(TUTOR_MODEL, summaryUsage) });
+      fakeData.openSession.mockResolvedValue({
+        ok: true,
+        value: {
+          session,
+          messages: texts.map((text, i) => saved(i % 2 === 0 ? "tutor" : "user", text)),
+          threadReplies: [],
+          notes: [],
+        },
+      });
+      const hook = await ready({ kind: "resume", sessionId: "session-1" });
+      await sendText(hook, "Next");
+
+      expect(fakeAi.summarize).toHaveBeenCalledTimes(1);
+      expect(fakeAi.reply).not.toHaveBeenCalled();
+      expect(fakeData.addUsage).toHaveBeenCalledTimes(1);
+      expect(fakeData.setSessionContext).toHaveBeenCalledTimes(1);
+      const c = conversationOf(hook.result.current.view);
+      expect(c.phase).toBe("idle");
+      expect(c.draft).toBe("Next");
+      expect(c.failure).toBeNull();
+    });
+
+    it("sends the full history when the summary fails and still saves the reply", async () => {
+      fakeAi.summarize.mockResolvedValue({ ok: false, failure: "overloaded" });
+      const hook = await longChat();
+      await sendText(hook, "Next");
+
+      expect(fakeData.setSessionContext).not.toHaveBeenCalled();
+      expect(replyRequest().turns.map((t) => t.text)).toEqual([...texts, "Next"]);
+      expect(fakeData.addMessage).toHaveBeenCalledTimes(2);
+      expect(conversationOf(hook.result.current.view).failure).toBeNull();
+    });
+
+    it("saves the usage of a billed failed summary and still replies", async () => {
+      const usage = contextSummaryWith().usage;
+      fakeAi.summarize.mockResolvedValue({ ok: false, failure: "bad_response", usage });
+      const hook = await longChat();
+      await sendText(hook, "Next");
+
+      expect(fakeData.addUsage.mock.calls[0]).toEqual([
+        "session-1",
+        { model: TUTOR_MODEL, ...usage },
+      ]);
+      expect(fakeAi.reply).toHaveBeenCalledTimes(1);
+      expect(fakeData.addMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it("sends the full history when the summary cannot be saved and tries again next turn", async () => {
+      fakeData.setSessionContext.mockResolvedValue({ ok: false, failure: "network" });
+      const hook = await longChat();
+      await sendText(hook, "Next");
+
+      expect(replyRequest().turns.map((t) => t.text)).toEqual([...texts, "Next"]);
+      expect(replyRequest().system).not.toContain("Earlier in this chat");
+      expect(conversationOf(hook.result.current.view).failure).toBeNull();
+
+      await sendText(hook, "Again");
+      expect(fakeAi.summarize).toHaveBeenCalledTimes(2);
+    });
+
+    it("tries the summary again on the turn after a failure", async () => {
+      fakeAi.summarize.mockResolvedValueOnce({ ok: false, failure: "network" });
+      const hook = await longChat();
+      await sendText(hook, "Next");
+      await sendText(hook, "Again");
+
+      expect(fakeAi.summarize).toHaveBeenCalledTimes(2);
+      expect(fakeData.setSessionContext).toHaveBeenCalledTimes(1);
+      expect(replyRequest(1).system).toContain("Earlier in this chat");
     });
   });
 });

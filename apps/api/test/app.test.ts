@@ -10,7 +10,7 @@
 //   when the signing keys cannot be loaded
 // - GET/PUT /profile, GET/POST /sessions, GET /sessions/open, DELETE /sessions/:id, GET /sessions/week, GET /sessions/spend,
 //   GET /profile/stats, GET /progress/month, /progress/history, /progress/mistakes and /progress/words, DELETE /account,
-//   GET/POST /sessions/:id/messages, GET/POST /messages/:id/thread, POST /messages/:id/withdraw, GET /sessions/:id/summary, POST /sessions/:id/usage and POST /sessions/:id/end:
+//   GET/POST /sessions/:id/messages, GET/POST /messages/:id/thread, POST /messages/:id/withdraw, GET /sessions/:id/summary, POST /sessions/:id/usage, PATCH /sessions/:id/context and POST /sessions/:id/end:
 //   401 without a valid token, 400 on invalid input, 404, 503, and the typed client
 // - GET /sessions/:id/messages carries the thread reply counts
 // - GET /sessions/:id/summary counts the messages and collects the corrections and new words
@@ -254,6 +254,8 @@ const session: Session = {
   title: "Free chat",
   status: "active",
   summary: null,
+  contextSummary: null,
+  contextThroughId: null,
   costUsd: 0,
   createdAt: stamp,
   updatedAt: stamp,
@@ -382,6 +384,12 @@ const routes: { name: string; path: string; method: string; body?: unknown }[] =
       cacheCreationInputTokens: 0,
       cacheReadInputTokens: 0,
     },
+  },
+  {
+    name: "PATCH /sessions/:id/context",
+    path: `/sessions/${sessionId}/context`,
+    method: "PATCH",
+    body: { summary: "The learner lives in Lisbon.", throughId: sessionId },
   },
   { name: "POST /sessions/:id/end", path: `/sessions/${sessionId}/end`, method: "POST" },
   { name: "GET /practice/today", path: "/practice/today?tz=UTC", method: "GET" },
@@ -1475,6 +1483,65 @@ describe("POST /sessions/:id/usage", () => {
   it("responds 503 when the store is unavailable", async () => {
     fake.user.addSessionCost.mockResolvedValue({ ok: false, failure: "unavailable" });
     expect((await post(sessionId, json(usage))).status).toBe(503);
+  });
+});
+
+describe("PATCH /sessions/:id/context", () => {
+  const throughId = "6f1c2a4e-8d3b-4c5a-9e7f-1a2b3c4d5eb1";
+
+  async function save(id: string, body: unknown) {
+    return app.request(`/sessions/${id}/context`, {
+      method: "PATCH",
+      headers: { ...(await authed()), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("responds 200 with the session and saves the trimmed summary", async () => {
+    const saved = { ...session, contextSummary: "Lives in Lisbon.", contextThroughId: throughId };
+    fake.user.setSessionContext.mockResolvedValue({ ok: true, value: saved });
+
+    const res = await save(sessionId, { summary: "  Lives in Lisbon.  ", throughId });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(saved);
+    expect(fake.user.setSessionContext).toHaveBeenCalledWith(sessionId, {
+      summary: "Lives in Lisbon.",
+      throughId,
+    });
+  });
+
+  it("responds 400 for an id that is not a uuid", async () => {
+    expect((await save("abc", { summary: "Lisbon.", throughId })).status).toBe(400);
+    expect(fake.user.setSessionContext).not.toHaveBeenCalled();
+  });
+
+  it("responds 400 for an empty summary, one over 2000 characters, a through id that is not a uuid, or an unknown key", async () => {
+    const bodies = [
+      { summary: "  ", throughId },
+      { summary: "a".repeat(2001), throughId },
+      { summary: "Lisbon.", throughId: "m1" },
+      { summary: "Lisbon.", throughId, apiKey: "x" },
+    ];
+    for (const body of bodies) {
+      expect((await save(sessionId, body)).status).toBe(400);
+    }
+    expect(fake.user.setSessionContext).not.toHaveBeenCalled();
+  });
+
+  it("responds 404 when the session is not visible", async () => {
+    fake.user.setSessionContext.mockResolvedValue({ ok: true, value: null });
+    expect((await save(sessionId, { summary: "Lisbon.", throughId })).status).toBe(404);
+  });
+
+  it("responds 401 when the store answers unauthorized", async () => {
+    fake.user.setSessionContext.mockResolvedValue({ ok: false, failure: "unauthorized" });
+    expect((await save(sessionId, { summary: "Lisbon.", throughId })).status).toBe(401);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.setSessionContext.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await save(sessionId, { summary: "Lisbon.", throughId })).status).toBe(503);
   });
 });
 

@@ -203,6 +203,13 @@ export const sessionUsageSchema = z.strictObject({
   cacheReadInputTokens: tokenCount,
 });
 
+// INFO: the chat's summary of its older turns and the last message it covers.
+// 2000 is the database check; the app keeps summaries under SUMMARY_MAX.
+export const sessionContextSchema = z.strictObject({
+  summary: z.string().trim().min(1).max(2000),
+  throughId: z.uuid(),
+});
+
 export const sessionIdParamSchema = z.object({ id: z.uuid() });
 
 export const messageIdParamSchema = z.object({ id: z.uuid() });
@@ -226,6 +233,8 @@ export const sessionSchema = z.object({
   title: z.string(),
   status: z.enum(SESSION_STATUSES),
   summary: z.string().nullable(),
+  contextSummary: z.string().nullable(),
+  contextThroughId: z.string().nullable(),
   costUsd: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -501,6 +510,9 @@ export const answerGradeSchema = z.object({
   explanation: z.string(),
 });
 
+// INFO: the structured output of a context summary, parsed loosely and normalized by the app (toContextSummary).
+export const contextSummarySchema = z.object({ summary: z.string() });
+
 export const accountDeletedSchema = z.object({ deleted: z.literal(true) });
 
 export type Profile = z.infer<typeof profileSchema>;
@@ -513,6 +525,8 @@ export type ActiveSession = z.infer<typeof activeSessionSchema>;
 export type Correction = z.infer<typeof correctionSchema>;
 export type MessageCorrections = z.infer<typeof messageCorrectionsSchema>;
 export type MessageCreate = z.infer<typeof messageCreateSchema>;
+export type SessionContext = z.infer<typeof sessionContextSchema>;
+export type ContextSummaryPayload = z.infer<typeof contextSummarySchema>;
 export type SessionUsage = z.infer<typeof sessionUsageSchema>;
 export type TutorReplyPayload = z.infer<typeof tutorReplySchema>;
 export type MonthSpend = z.infer<typeof monthSpendSchema>;

@@ -29,6 +29,8 @@ const sessionBody = {
   title: "Free chat",
   status: "active",
   summary: null,
+  contextSummary: null,
+  contextThroughId: null,
   costUsd: 0,
   createdAt: stamp,
   updatedAt: stamp,
@@ -246,7 +248,7 @@ function apiAnswer(method: string, pathname: string): Response {
   }
   if (pathname === "/sessions" && method === "POST") return json(sessionBody, 201);
   if (pathname.endsWith("/messages") && method === "POST") return json(messageBody, 201);
-  if (pathname.endsWith("/usage")) return json(sessionBody);
+  if (pathname.endsWith("/usage") || pathname.endsWith("/context")) return json(sessionBody);
   return json({ error: "not_found" }, 404);
 }
 

@@ -58,8 +58,10 @@ export function tutorTurns(
   messages: readonly ChatMessage[],
   pending: string,
   pendingReplyTo: string | null,
+  from = 0,
 ): TutorTurn[] {
-  const history: TutorTurn[] = messages.map((m) => ({
+  // INFO: from skips the turns a summary covers; quotes are still read from the whole list.
+  const history: TutorTurn[] = messages.slice(from).map((m) => ({
     role: m.role,
     text: m.role === "user" ? learnerTurn(m.text, quotedText(messages, m.replyTo)) : m.text,
   }));

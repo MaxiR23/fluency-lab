@@ -553,6 +553,16 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           return mapRow(result, toSession);
         },
 
+        async setSessionContext(sessionId, context) {
+          const result = await client
+            .from("sessions")
+            .update({ context_summary: context.summary, context_through_id: context.throughId })
+            .eq("id", sessionId)
+            .select("*")
+            .maybeSingle();
+          return mapRow(result, toSession);
+        },
+
         async endSession(sessionId) {
           const result = await client
             .from("sessions")

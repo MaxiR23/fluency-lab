@@ -10,6 +10,7 @@
 // - The key never reaches an outcome or a log
 // - replyInThread: the same request with the thread schema, its payload, and the same failures
 // - A reply may carry a study note; studyNote: its schema, payload and failures
+// - summarize: its schema (no length keyword), its 1024 tokens, the trimmed summary, bad_response for an empty or over-long one, and the same failures
 // - practiceRound and gradeAnswer: their schemas, their token limits, their payloads and the same failures, and practiceRound drops the prompts in avoid
 //
 // What is covered:
@@ -24,6 +25,7 @@ import { TUTOR_MODEL } from "@fluency-lab/shared";
 
 import {
   ANSWER_GRADE_JSON_SCHEMA,
+  CONTEXT_SUMMARY_JSON_SCHEMA,
   PRACTICE_ROUND_JSON_SCHEMA,
   STUDY_NOTE_JSON_SCHEMA,
   THREAD_REPLY_JSON_SCHEMA,
@@ -1213,5 +1215,123 @@ describe("studyNote", () => {
     expect(
       await setup(new Response("<html>", { status: 200 })).ai.studyNote(noteRequest),
     ).toMatchObject({ ok: false, failure: "bad_response" });
+  });
+});
+
+describe("summarize", () => {
+  const summaryRequest = {
+    system: "Summarize the chat.",
+    turns: [{ role: "user" as const, text: '{"previousSummary":null,"messages":[]}' }],
+  };
+  const usage = {
+    inputTokens: 700,
+    outputTokens: 150,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+  };
+
+  it("returns the trimmed summary and the usage", async () => {
+    const { ai } = setup(success({ summary: "  The learner lives in Lisbon.  " }));
+    expect(await ai.summarize(summaryRequest)).toEqual({
+      ok: true,
+      value: { summary: "The learner lives in Lisbon.", model: TUTOR_MODEL, usage },
+    });
+  });
+
+  it("sends the context summary schema at the root, 1024 tokens and the key only in the header", async () => {
+    const { ai, seen } = setup(success({ summary: "Lisbon." }));
+    await ai.summarize(summaryRequest);
+    const body = JSON.parse(seen[0].body);
+    expect(body.output_config.format.schema).toEqual(CONTEXT_SUMMARY_JSON_SCHEMA);
+    expect(body.max_tokens).toBe(1024);
+    expect(seen[0].headers.get("x-api-key")).toBe(key);
+    expect(seen[0].body).not.toContain(key);
+  });
+
+  it("returns bad_response with the usage for an empty summary", async () => {
+    const { ai } = setup(success({ summary: "   " }));
+    expect(await ai.summarize(summaryRequest)).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: { inputTokens: 700, outputTokens: 150 },
+    });
+  });
+
+  it("returns bad_response with the usage for a summary over 1500 characters", async () => {
+    const { ai } = setup(success({ summary: "a".repeat(1501) }));
+    expect(await ai.summarize(summaryRequest)).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: { inputTokens: 700, outputTokens: 150 },
+    });
+  });
+
+  it("returns refused with the usage on a refusal", async () => {
+    const { ai } = setup(
+      rawResponse({
+        stop_reason: "refusal",
+        content: [],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+    );
+    expect(await ai.summarize(summaryRequest)).toMatchObject({
+      ok: false,
+      failure: "refused",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+  });
+
+  it("returns invalid_key on a 401", async () => {
+    const { ai } = setup(errorResponse(401, "authentication_error"));
+    expect(await ai.summarize(summaryRequest)).toMatchObject({ ok: false, failure: "invalid_key" });
+  });
+
+  it("returns rate_limited on a 429", async () => {
+    const { ai } = setup(errorResponse(429, "rate_limit_error"));
+    expect(await ai.summarize(summaryRequest)).toMatchObject({
+      ok: false,
+      failure: "rate_limited",
+    });
+  });
+
+  it("returns network on a rejected fetch", async () => {
+    const { ai } = setup(new TypeError("Network request failed"));
+    expect(await ai.summarize(summaryRequest)).toMatchObject({ ok: false, failure: "network" });
+  });
+
+  it("returns network on a timeout", async () => {
+    jest.useFakeTimers();
+    const hang = jest.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const ai = createClaudeAi({
+      fetchFn: hang as unknown as typeof fetch,
+      readKey: async () => ({ ok: true, value: key }),
+      timeoutMs: 50,
+    });
+    const pending = ai.summarize(summaryRequest);
+    await jest.advanceTimersByTimeAsync(60);
+    expect(await pending).toMatchObject({ ok: false, failure: "network" });
+  });
+
+  it("returns bad_response for a body with the wrong shape", async () => {
+    expect(await setup(success({ nope: true })).ai.summarize(summaryRequest)).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+    });
+  });
+});
+
+describe("CONTEXT_SUMMARY_JSON_SCHEMA", () => {
+  it("closes the summary object and requires summary, with no length keyword", () => {
+    expect(CONTEXT_SUMMARY_JSON_SCHEMA.additionalProperties).toBe(false);
+    expect(CONTEXT_SUMMARY_JSON_SCHEMA.required).toEqual(["summary"]);
+    expect(CONTEXT_SUMMARY_JSON_SCHEMA.properties).toEqual({ summary: { type: "string" } });
+    const json = JSON.stringify(CONTEXT_SUMMARY_JSON_SCHEMA);
+    expect(json).not.toContain("maxLength");
+    expect(json).not.toContain("minLength");
   });
 });

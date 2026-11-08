@@ -5,6 +5,7 @@ import {
   PRACTICE_KINDS,
   TUTOR_MODEL,
   answerGradeSchema,
+  contextSummarySchema,
   practiceRoundSchema,
   studyNotePayloadSchema,
   threadReplySchema,
@@ -16,6 +17,7 @@ import {
 import type { AiFailure, AiPort, TutorRequest } from "@/ai/ai-port";
 import type { FailureCause } from "@/auth/auth-port";
 import type { KeyReadOutcome } from "@/keys/key-port";
+import { toContextSummary } from "@/utils/chat-context";
 import { DEADLINE, withinDeadline } from "@/utils/deadline";
 import { toAnswerGrade } from "@/utils/practice-grade";
 import { toPracticeRound } from "@/utils/practice-round";
@@ -50,6 +52,15 @@ export const STUDY_NOTE_JSON_SCHEMA = {
     points: { type: "array", items: { type: "string" } },
     remember: { type: "string" },
   },
+} as const;
+
+// INFO: no maxLength: the provider does not support it in structured outputs.
+// SUMMARY_MAX is asked in the prompt and applied by toContextSummary.
+export const CONTEXT_SUMMARY_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["summary"],
+  properties: { summary: { type: "string" } },
 } as const;
 
 // INFO: no minLength, maxLength, minimum, maximum or minItems: the provider does not
@@ -332,6 +343,12 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
         const payload = studyNotePayloadSchema.safeParse(value);
         const note = payload.success ? toStudyNote(payload.data) : null;
         return note === null ? null : { note };
+      }),
+    summarize: (request) =>
+      ask(request, CONTEXT_SUMMARY_JSON_SCHEMA, MAX_TOKENS, (value) => {
+        const payload = contextSummarySchema.safeParse(value);
+        const summary = payload.success ? toContextSummary(payload.data.summary) : null;
+        return summary === null ? null : { summary };
       }),
     gradeAnswer: (request) =>
       ask(request, ANSWER_GRADE_JSON_SCHEMA, GRADE_MAX_TOKENS, (value) => {

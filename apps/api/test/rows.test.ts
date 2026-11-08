@@ -72,6 +72,8 @@ const sessionRow = {
   title: "Music",
   status: "active",
   summary: null,
+  context_summary: null,
+  context_through_id: null,
   cost_usd: 0.25,
   created_at: stamp,
   updated_at: stamp,
@@ -154,10 +156,28 @@ describe("toSession", () => {
       title: "Music",
       status: "active",
       summary: null,
+      contextSummary: null,
+      contextThroughId: null,
       costUsd: 0.25,
       createdAt: stamp,
       updatedAt: stamp,
     });
+  });
+
+  it("maps the context summary and the message it covers", () => {
+    const mapped = toSession({
+      ...sessionRow,
+      context_summary: "Lives in Lisbon.",
+      context_through_id: id,
+    });
+    expect(mapped?.contextSummary).toBe("Lives in Lisbon.");
+    expect(mapped?.contextThroughId).toBe(id);
+  });
+
+  it("maps a session with no context to nulls", () => {
+    const mapped = toSession(sessionRow);
+    expect(mapped?.contextSummary).toBeNull();
+    expect(mapped?.contextThroughId).toBeNull();
   });
 
   it("maps a free chat session with a null topic", () => {

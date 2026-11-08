@@ -16,6 +16,7 @@ import type {
   ProfileUpdate,
   RecentPrompt,
   Session,
+  SessionContext,
   ThreadMessage,
   ThreadMessageCreate,
   ThreadReplies,
@@ -95,6 +96,11 @@ export type UserStore = {
   // INFO: the notes saved in the session, oldest first; [] is the expected empty.
   listSessionNotes(sessionId: string): Promise<StoreOutcome<StudyNote[]>>;
   addSessionCost(sessionId: string, amountUsd: number): Promise<StoreOutcome<Session | null>>;
+  // INFO: null means the session is not visible to the caller (missing or another user's).
+  setSessionContext(
+    sessionId: string,
+    context: SessionContext,
+  ): Promise<StoreOutcome<Session | null>>;
   endSession(sessionId: string): Promise<StoreOutcome<Session | null>>;
   listSessionStarts(since: string): Promise<StoreOutcome<string[]>>;
   // INFO: the caller's runs finished since the given time, each with whether an item was

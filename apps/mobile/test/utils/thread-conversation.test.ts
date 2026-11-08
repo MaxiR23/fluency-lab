@@ -61,6 +61,8 @@ const session: Session = {
   title: "Travel",
   status: "active",
   summary: null,
+  contextSummary: null,
+  contextThroughId: null,
   costUsd: 0,
   createdAt: "2026-11-05T09:00:00Z",
   updatedAt: "2026-11-05T09:00:00Z",
