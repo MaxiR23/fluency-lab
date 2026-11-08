@@ -71,9 +71,22 @@ const fixExercise = {
   source: "",
 };
 
-// INFO: the provider's answer to a practice round: five fix exercises.
+const otherFixes = [
+  ["Third person", "She never go to school.", "She never goes to school."],
+  ["Third person", "He don't like tea.", "He doesn't like tea."],
+  ["Past simple", "We never was late.", "We were never late."],
+  ["Past simple", "They did not went home.", "They did not go home."],
+].map(([rule, prompt, accepted]) => ({
+  ...fixExercise,
+  rule,
+  prompt,
+  accepted: [accepted],
+}));
+
+// INFO: the provider's answer to a practice round: five fix exercises, each with its own
+// prompt and at most two of a rule, so the round validation keeps all five.
 export function providerRoundSuccess(): Response {
-  return providerBody({ items: Array.from({ length: 5 }, () => fixExercise) });
+  return providerBody({ items: [fixExercise, ...otherFixes] });
 }
 
 // INFO: the provider's answer to the grading of a typed answer.
@@ -187,6 +200,7 @@ function apiAnswer(method: string, pathname: string): Response {
   }
   if (pathname.endsWith("/thread") && method === "POST") return json(threadRowBody, 201);
   if (pathname.endsWith("/withdraw")) return json(threadMessageBody);
+  if (pathname === "/practice/recent-prompts") return json({ items: [] });
   if (pathname === "/profile") {
     return json({
       id: "user-1",

@@ -9,6 +9,8 @@ export const PRACTICE_KINDS = ["choose", "fix", "gap", "translate"] as const;
 export const PRACTICE_TARGETS = [5, 10, 15] as const;
 export const PRACTICE_ROUND_SIZE = 5;
 export const PRACTICE_MAX_TARGET = 15;
+export const PRACTICE_AVOID_DAYS = 7;
+export const PRACTICE_AVOID_LIMIT = 40;
 
 export type Level = (typeof LEVELS)[number];
 export type Goal = (typeof GOALS)[number];

@@ -85,8 +85,13 @@ export type AiPort = {
   reply(request: TutorRequest): Promise<AiOutcome>;
   // INFO: a thread reply with no new words and no withdrawals is the expected empty, a success.
   replyInThread(request: TutorRequest): Promise<ThreadAiOutcome>;
-  // INFO: no expected empty for a round: a round with fewer usable exercises than count is a bad_response.
-  practiceRound(request: TutorRequest, count: number): Promise<AiResult<PracticeRound>>;
+  // INFO: no expected empty for a round: a round with fewer usable exercises than count, after
+  // dropping the prompts in avoid, is a bad_response.
+  practiceRound(
+    request: TutorRequest,
+    count: number,
+    avoid: readonly string[],
+  ): Promise<AiResult<PracticeRound>>;
   // INFO: an answer with no explanation is the expected empty: explanation is null.
   gradeAnswer(request: TutorRequest): Promise<AiResult<AnswerGrade>>;
   // INFO: no expected empty: a note that cannot be used is a bad_response.

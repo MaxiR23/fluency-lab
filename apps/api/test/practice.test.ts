@@ -5,6 +5,7 @@
 // Tested:
 // - todayRun picks the newest run created today in the learner's time zone
 // - PRACTICE_LOOKBACK_MS covers a local day
+// - recentPromptsSince goes back the given days from a time
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -15,7 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { PracticeRunWithItems } from "@fluency-lab/shared";
-import { PRACTICE_LOOKBACK_MS, todayRun } from "../src/practice";
+import { PRACTICE_LOOKBACK_MS, recentPromptsSince, todayRun } from "../src/practice";
 
 const BUENOS_AIRES = "America/Argentina/Buenos_Aires";
 
@@ -71,5 +72,19 @@ describe("todayRun", () => {
 describe("PRACTICE_LOOKBACK_MS", () => {
   it("is two days", () => {
     expect(PRACTICE_LOOKBACK_MS).toBe(2 * 24 * 60 * 60 * 1000);
+  });
+});
+
+describe("recentPromptsSince", () => {
+  it("reads seven days back from now", () => {
+    expect(recentPromptsSince(new Date("2026-11-05T12:00:00.000Z"), 7)).toBe(
+      "2026-10-29T12:00:00.000Z",
+    );
+  });
+
+  it("reads one day back", () => {
+    expect(recentPromptsSince(new Date("2026-11-05T12:00:00.000Z"), 1)).toBe(
+      "2026-11-04T12:00:00.000Z",
+    );
   });
 });

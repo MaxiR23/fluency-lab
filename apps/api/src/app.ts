@@ -9,6 +9,7 @@ import {
   practiceRunCreateSchema,
   practiceRunIdParamSchema,
   practiceTargetSchema,
+  recentPromptsQuerySchema,
   profileUpdateSchema,
   progressPageQuerySchema,
   sessionCreateSchema,
@@ -31,7 +32,7 @@ import type {} from "hono/jwt";
 import { requireAuth, readBearerToken, readTokenUser, type AuthConfig } from "./auth";
 import { MONTH_LOOKBACK_MS, currentMonthStart, monthSpend } from "./month";
 import type { Caller, Store, StoreFailure } from "./store";
-import { PRACTICE_LOOKBACK_MS, todayRun } from "./practice";
+import { PRACTICE_LOOKBACK_MS, recentPromptsSince, todayRun } from "./practice";
 import { PAGE_SIZE, historyItem, mistakeGroup, noteItem, pageOf, wordItem } from "./progress";
 import { dayStreak } from "./streak";
 import { sessionSummary } from "./summary";
@@ -575,6 +576,23 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
           return c.json(body, status);
         }
         return c.json({ run: todayRun(outcome.value, tz, currentWeek(at, tz).today) }, 200);
+      },
+    )
+    .get(
+      "/practice/recent-prompts",
+      auth,
+      caller,
+      zValidator("query", recentPromptsQuerySchema, invalidInput),
+      async (c) => {
+        const { days, limit } = c.req.valid("query");
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .listRecentPrompts(recentPromptsSince(now(), days), limit);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        return c.json({ items: outcome.value }, 200);
       },
     )
     .post(

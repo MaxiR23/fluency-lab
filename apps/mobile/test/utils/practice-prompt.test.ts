@@ -6,6 +6,9 @@
 // - focusDataFrom picks the focus data a round sends
 // - roundRequest sends the focus data, the count, the missed rules and the language, and nothing else
 // - roundRequest states the generation rules and asks for two spare exercises
+// - roundRequest sends the avoid list
+// - avoidPrompts builds it from the run and the recent prompts
+// - rotateMistakes puts the rules not practiced recently first
 // - focusDataFrom and roundRequest carry a note as the focus of a note round
 // - studyNoteRequest asks for one study note on the missed item's rule and sends nothing personal
 // - gradeRequest sends the exercise, the accepted answers and the learner's answer only
@@ -21,6 +24,9 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   ROUND_SPARE,
+  RULE_PRACTICE_AVOID,
+  RULE_PRACTICE_NO_ANSWER,
+  RULE_PRACTICE_PER_RULE,
   RULE_PRACTICE_ANSWERABLE,
   RULE_PRACTICE_CHOOSE,
   RULE_PRACTICE_FIX,
@@ -32,8 +38,10 @@ import {
   RULE_PRACTICE_NO_TRANSLATE,
   RULE_PRACTICE_RULE,
   RULE_PRACTICE_RULE_WORDS,
+  avoidPrompts,
   focusDataFrom,
   gradeRequest,
+  rotateMistakes,
   roundRequest,
   studyNoteRequest,
   translateRule,
@@ -65,7 +73,9 @@ function userTurn(request: { turns: { role: string; text: string }[] }) {
 
 describe("focusDataFrom", () => {
   it("sends the latest example of each mistake group with its rule", () => {
-    expect(focusDataFrom("mistakes", null, mistakes(2), words(0), "intermediate", null)).toEqual({
+    expect(
+      focusDataFrom("mistakes", null, mistakes(2), words(0), "intermediate", null, []),
+    ).toEqual({
       kind: "mistakes",
       corrections: [
         { original: "bad 0", corrected: "good 0", rule: null },
@@ -75,31 +85,31 @@ describe("focusDataFrom", () => {
   });
 
   it("sends at most ten mistake groups and fifteen words", () => {
-    const data = focusDataFrom("mistakes", null, mistakes(14), words(20), null, null);
+    const data = focusDataFrom("mistakes", null, mistakes(14), words(20), null, null, []);
     expect(data.kind === "mistakes" && data.corrections).toHaveLength(10);
-    const wordData = focusDataFrom("words", null, mistakes(0), words(20), null, null);
+    const wordData = focusDataFrom("words", null, mistakes(0), words(20), null, null, []);
     expect(wordData.kind === "words" && wordData.words).toHaveLength(15);
   });
 
   it("sends only the words for the words focus", () => {
-    expect(focusDataFrom("words", null, mistakes(3), words(2), null, null)).toEqual({
+    expect(focusDataFrom("words", null, mistakes(3), words(2), null, null, [])).toEqual({
       kind: "words",
       words: ["word0", "word1"],
     });
   });
 
   it("sends the topic and the level for a topic", () => {
-    expect(focusDataFrom("topic", "conditionals", mistakes(0), words(0), "advanced", null)).toEqual(
-      {
-        kind: "topic",
-        topic: "Conditionals",
-        level: "advanced",
-      },
-    );
+    expect(
+      focusDataFrom("topic", "conditionals", mistakes(0), words(0), "advanced", null, []),
+    ).toEqual({
+      kind: "topic",
+      topic: "Conditionals",
+      level: "advanced",
+    });
   });
 
   it("sends a null level when none is set", () => {
-    expect(focusDataFrom("topic", "articles", mistakes(0), words(0), null, null)).toEqual({
+    expect(focusDataFrom("topic", "articles", mistakes(0), words(0), null, null, [])).toEqual({
       kind: "topic",
       topic: "Articles",
       level: null,
@@ -113,11 +123,12 @@ describe("roundRequest", () => {
     count: 5,
     missedRules: [] as string[],
     language: null,
+    avoid: [] as string[],
   };
 
   it("sends the focus data and the count in one user turn", () => {
     const request = roundRequest(base);
-    expect(userTurn(request)).toEqual({ focus: base.focus, count: 5 + ROUND_SPARE });
+    expect(userTurn(request)).toEqual({ focus: base.focus, count: 5 + ROUND_SPARE, avoid: [] });
   });
 
   it("asks for two more than the round needs", () => {
@@ -152,6 +163,9 @@ describe("roundRequest", () => {
       expect(system).toContain(RULE_PRACTICE_FIX);
       expect(system).toContain(RULE_PRACTICE_GAP);
       expect(system).toContain(RULE_PRACTICE_CHOOSE);
+      expect(system).toContain(RULE_PRACTICE_NO_ANSWER);
+      expect(system).toContain(RULE_PRACTICE_AVOID);
+      expect(system).toContain(RULE_PRACTICE_PER_RULE);
     }
   });
 
@@ -160,6 +174,26 @@ describe("roundRequest", () => {
     expect(RULE_PRACTICE_GAP).toContain('"not"');
     expect(RULE_PRACTICE_ANSWERABLE).toContain("polarity");
     expect(RULE_PRACTICE_ANSWERABLE).toContain("exactly one answer");
+  });
+
+  it("asks a gap to show the base verb only for a different form and never the bare form", () => {
+    expect(RULE_PRACTICE_GAP).toContain('"(go)" for "went"');
+    expect(RULE_PRACTICE_GAP).toContain("bare base form");
+  });
+
+  it("asks for no answer in the prompt, no reuse of avoid and two items per rule at most", () => {
+    expect(RULE_PRACTICE_NO_ANSWER).toContain("No prompt contains its accepted answer");
+    expect(RULE_PRACTICE_AVOID).toContain("never reuse one of those prompts");
+    expect(RULE_PRACTICE_PER_RULE).toContain("At most two exercises");
+  });
+
+  it("sends the avoid list in the user turn", () => {
+    const request = roundRequest({ ...base, avoid: ["I ___ (be) there."] });
+    expect(userTurn(request).avoid).toEqual(["I ___ (be) there."]);
+  });
+
+  it("sends an empty avoid on the first round of a new run", () => {
+    expect(userTurn(roundRequest(base)).avoid).toEqual([]);
   });
 
   it("asks a fix to hold one real mistake and keep the learner's meaning", () => {
@@ -176,13 +210,13 @@ describe("roundRequest", () => {
   it("sends no name, goals, interests or chat text", () => {
     const request = roundRequest({
       ...base,
-      focus: focusDataFrom("words", null, mistakes(0), words(2), "beginner", null),
+      focus: focusDataFrom("words", null, mistakes(0), words(2), "beginner", null, []),
     });
     const everything = `${request.system}\n${request.turns.map((turn) => turn.text).join("\n")}`;
     expect(everything).not.toContain("private sentence");
     expect(everything.toLowerCase()).not.toContain("goals");
     expect(everything.toLowerCase()).not.toContain("name");
-    expect(Object.keys(userTurn(request)).sort()).toEqual(["count", "focus"]);
+    expect(Object.keys(userTurn(request)).sort()).toEqual(["avoid", "count", "focus"]);
   });
 
   it("states the rules of the four kinds and never asks for an API key", () => {
@@ -296,9 +330,15 @@ describe("study notes", () => {
   });
 
   it("sends the note's kind, title, topic and content as the focus of a note round", () => {
-    const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft);
+    const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft, []);
     expect(data).toEqual({ kind: "note", note: draft });
-    const request = roundRequest({ focus: data, count: 5, missedRules: [], language: null });
+    const request = roundRequest({
+      focus: data,
+      count: 5,
+      missedRules: [],
+      language: null,
+      avoid: [],
+    });
     expect(userTurn(request)).toEqual({
       focus: {
         kind: "note",
@@ -310,26 +350,138 @@ describe("study notes", () => {
         },
       },
       count: 5 + ROUND_SPARE,
+      avoid: [],
     });
   });
 
   it("asks a note round to practice the rules of the note", () => {
-    const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft);
-    const note = roundRequest({ focus: data, count: 5, missedRules: [], language: null });
-    expect(note.system).toContain(RULE_PRACTICE_NOTE);
-    const other = roundRequest({
-      focus: focusDataFrom("mistakes", null, mistakes(1), words(0), null, null),
+    const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft, []);
+    const note = roundRequest({
+      focus: data,
       count: 5,
       missedRules: [],
       language: null,
+      avoid: [],
+    });
+    expect(note.system).toContain(RULE_PRACTICE_NOTE);
+    const other = roundRequest({
+      focus: focusDataFrom("mistakes", null, mistakes(1), words(0), null, null, []),
+      count: 5,
+      missedRules: [],
+      language: null,
+      avoid: [],
     });
     expect(other.system).not.toContain(RULE_PRACTICE_NOTE);
   });
 
   it("uses the grammar rule line for a note round", () => {
-    const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft);
-    const note = roundRequest({ focus: data, count: 5, missedRules: [], language: null });
+    const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft, []);
+    const note = roundRequest({
+      focus: data,
+      count: 5,
+      missedRules: [],
+      language: null,
+      avoid: [],
+    });
     expect(note.system).toContain(RULE_PRACTICE_RULE);
     expect(note.system).not.toContain(RULE_PRACTICE_RULE_WORDS);
+  });
+});
+
+describe("avoidPrompts", () => {
+  const own = [
+    { prompt: "First ___.", position: 0 },
+    { prompt: "Second ___.", position: 1 },
+  ];
+  const recent = (...prompts: string[]) =>
+    prompts.map((prompt, index) => ({ runId: `old-${index}`, prompt, rule: "R" }));
+
+  it("puts this run's prompts newest first, then the recent prompts of other runs", () => {
+    expect(avoidPrompts(own, recent("Old one ___.", "Old two ___."), "run-1")).toEqual([
+      "Second ___.",
+      "First ___.",
+      "Old one ___.",
+      "Old two ___.",
+    ]);
+  });
+
+  it("leaves out the recent items of this run", () => {
+    const items = [
+      { runId: "run-1", prompt: "First ___.", rule: "R" },
+      { runId: "old", prompt: "Old ___.", rule: "R" },
+    ];
+    expect(avoidPrompts([], items, "run-1")).toEqual(["Old ___."]);
+  });
+
+  it("removes duplicates after normalizing", () => {
+    expect(avoidPrompts(own, recent("first ___", "Other ___."), null)).toEqual([
+      "Second ___.",
+      "First ___.",
+      "Other ___.",
+    ]);
+  });
+
+  it("keeps 40 at most", () => {
+    const many = (n: number) => recent(...Array.from({ length: n }, (_, i) => `Old ${i} ___.`));
+    expect(avoidPrompts([], many(41), null)).toHaveLength(40);
+    expect(avoidPrompts([], many(40), null)).toHaveLength(40);
+    expect(avoidPrompts([], many(39), null)).toHaveLength(39);
+  });
+
+  it("is [] with no items and no recent prompts", () => {
+    expect(avoidPrompts([], [], null)).toEqual([]);
+  });
+});
+
+describe("rotateMistakes and focusDataFrom", () => {
+  const groups = (count: number) => mistakes(count).items;
+
+  it("puts the rules not seen in the recent items first, then the rest in order", () => {
+    const rotated = rotateMistakes(groups(4), ["Rule 1"]);
+    expect(rotated.map((group) => group.rule)).toEqual([null, "Rule 2", "Rule 3", "Rule 1"]);
+  });
+
+  it("compares rule labels trimmed and case-insensitive", () => {
+    const rotated = rotateMistakes(groups(3), [" rule 1 "]);
+    expect(rotated.map((group) => group.rule)).toEqual([null, "Rule 2", "Rule 1"]);
+  });
+
+  it("counts a group with no rule as not seen", () => {
+    const rotated = rotateMistakes(groups(3), ["Rule 1", "Rule 2"]);
+    expect(rotated.map((group) => group.rule)).toEqual([null, "Rule 1", "Rule 2"]);
+  });
+
+  it("keeps the existing order with no recent rules", () => {
+    expect(rotateMistakes(groups(4), [])).toEqual(groups(4));
+  });
+
+  it("still sends ten at most after the rotation", () => {
+    const seen = ["Rule 1", "Rule 2", "Rule 3", "Rule 4"];
+    const data = focusDataFrom("mistakes", null, mistakes(14), words(0), null, null, seen);
+    const rules = data.kind === "mistakes" ? data.corrections.map((c) => c.rule) : [];
+    expect(rules).toHaveLength(10);
+    expect(rules).toEqual([
+      null,
+      "Rule 5",
+      "Rule 6",
+      "Rule 7",
+      "Rule 8",
+      "Rule 9",
+      "Rule 10",
+      "Rule 11",
+      "Rule 12",
+      "Rule 13",
+    ]);
+  });
+
+  it("sends the seen rules when every rule was seen", () => {
+    const seen = Array.from({ length: 4 }, (_, i) => `Rule ${i}`);
+    const data = focusDataFrom("mistakes", null, mistakes(4), words(0), null, null, seen);
+    expect(data.kind === "mistakes" && data.corrections.map((c) => c.rule)).toEqual([
+      null,
+      "Rule 1",
+      "Rule 2",
+      "Rule 3",
+    ]);
   });
 });

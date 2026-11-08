@@ -7,7 +7,7 @@
 // - Every request carries the caller's token and the publishable key
 // - listOpenSessions reads active sessions newest first with their newest message in one request; deleteSession deletes by id
 // - listSessionCostsSince reads the sessions, deleted_session_costs and practice_runs and returns all three
-// - The practice methods read and write practice_runs and practice_items (listFinishedRunsSince reads the finished runs with their item verdicts) and call add_practice_cost with the caller's token
+// - The practice methods read and write practice_runs and practice_items (listFinishedRunsSince reads the finished runs with their item verdicts, listRecentPrompts reads the caller's items newest first through their runs) and call add_practice_cost with the caller's token
 // - getStats calls profile_stats with the caller's token; deleteAccount deletes the caller through the admin API with the secret key and never the caller's token
 // - getMonthProgress, listEndedSessions, listMistakeGroups and listNewWords call their progress_* function with the caller's token
 // - getThread, addThreadMessage, withdrawCorrections and listThreadCounts read and write the thread table and its functions with the caller's token, and getSessionWithMessages never reads thread rows
@@ -1562,6 +1562,66 @@ describe("getSessionWithMessages and threads", () => {
     const { user, requests } = setup([ok([sessionRow]), ok([messageRow(1)])]);
     await user.getSessionWithMessages(sessionId);
     expect(requests.map((r) => r.url.pathname)).toEqual(["/rest/v1/sessions", "/rest/v1/messages"]);
+  });
+});
+
+describe("listRecentPrompts", () => {
+  const since = "2026-10-29T12:00:00.000Z";
+
+  it("reads the caller's items with their runs' dates, newest first, up to the limit", async () => {
+    const { user, requests } = setup([
+      ok([
+        {
+          run_id: "run-2",
+          prompt: "I ___ (be) there.",
+          rule: "Present perfect",
+          practice_runs: { created_at: "2026-11-04T10:00:00+00:00" },
+        },
+        {
+          run_id: "run-1",
+          prompt: "She ___ (go) home.",
+          rule: "Past simple",
+          practice_runs: { created_at: "2026-11-02T10:00:00+00:00" },
+        },
+      ]),
+    ]);
+
+    const outcome = await user.listRecentPrompts(since, 40);
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: [
+        { runId: "run-2", prompt: "I ___ (be) there.", rule: "Present perfect" },
+        { runId: "run-1", prompt: "She ___ (go) home.", rule: "Past simple" },
+      ],
+    });
+    const params = requests[0].url.searchParams;
+    expect(requests[0].url.pathname).toBe("/rest/v1/practice_items");
+    expect(params.get("select")).toBe("run_id,prompt,rule,practice_runs!inner(created_at)");
+    expect(params.get("practice_runs.created_at")).toBe(`gte.${since}`);
+    expect(params.get("order")).toBe("practice_runs(created_at).desc,position.desc");
+    expect(params.get("limit")).toBe("40");
+    expect(requests[0].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("returns an empty list when the caller practiced nothing recently", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.listRecentPrompts(since, 40)).toEqual({ ok: true, value: [] });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.listRecentPrompts(since, 40)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.listRecentPrompts(since, 40)).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("returns unavailable for a bad row", async () => {
+    const { user } = setup([ok([{ run_id: "run-1" }])]);
+    expect(await user.listRecentPrompts(since, 40)).toEqual({ ok: false, failure: "unavailable" });
   });
 });
 

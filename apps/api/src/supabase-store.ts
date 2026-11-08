@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { noteDeletedSchema, type Message } from "@fluency-lab/shared";
 import {
   toFinishedRun,
+  toRecentPrompt,
   toHistoryRow,
   toMessage,
   toMistakeRow,
@@ -351,6 +352,17 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
             .gte("finished_at", since)
             .order("finished_at", { ascending: true });
           return readPage(result, toFinishedRun);
+        },
+
+        async listRecentPrompts(since, limit) {
+          const result = await client
+            .from("practice_items")
+            .select("run_id, prompt, rule, practice_runs!inner(created_at)")
+            .gte("practice_runs.created_at", since)
+            .order("practice_runs(created_at)", { ascending: false })
+            .order("position", { ascending: false })
+            .limit(limit);
+          return readPage(result, toRecentPrompt);
         },
 
         async createPracticeRun(input) {

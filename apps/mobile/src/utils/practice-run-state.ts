@@ -5,6 +5,7 @@ import type {
   PracticeFocus,
   PracticeRunWithItems,
   Profile,
+  RecentPrompt,
   StudyNote,
   WordPage,
 } from "@fluency-lab/shared";
@@ -34,6 +35,7 @@ const noWords: WordPage = { items: [], nextOffset: null };
 // INFO: a read that was not made (null) leaves the view loading. With no key nothing else is read,
 // as in the chat. The focus data of a run comes from the mistakes or words read only when its focus
 // needs it; a topic run needs neither. A note run reads its note: a note that is gone ends the run.
+// The recent prompts are read for every run: they rotate the mistake rules and feed the avoid list.
 export function practiceRunView(input: {
   key: KeyPresenceOutcome;
   profile: DataOutcome<Profile>;
@@ -43,9 +45,10 @@ export function practiceRunView(input: {
   mistakes: DataOutcome<MistakePage> | null;
   words: DataOutcome<WordPage> | null;
   note: DataOutcome<StudyNote> | null;
+  recent: DataOutcome<RecentPrompt[]> | null;
   language: string | null;
 }): PracticeScreenView {
-  const { key, profile, spend, origin, opened, mistakes, words, note } = input;
+  const { key, profile, spend, origin, opened, mistakes, words, note, recent } = input;
   if (!key.ok) return { kind: "failed", message: keyReadFailureMessage, cause: key.cause };
   if (!key.value) return { kind: "no_key" };
   if (!profile.ok) return { kind: "failed", message: dataFailureMessage(profile.failure) };
@@ -62,7 +65,11 @@ export function practiceRunView(input: {
           : dataFailureMessage(opened.failure),
     };
   }
+  if (recent !== null && !recent.ok) {
+    return { kind: "failed", message: dataFailureMessage(recent.failure) };
+  }
   if (spend === null) return { kind: "loading" };
+  if (recent === null) return { kind: "loading" };
   if (origin.kind === "resume" && opened === null) return { kind: "loading" };
   const run = opened === null ? null : opened.value;
   const focus: PracticeFocus =
@@ -98,6 +105,7 @@ export function practiceRunView(input: {
     words?.ok ? words.value : noWords,
     profile.value.level,
     note?.ok ? noteDraft(note.value) : null,
+    recent.value.map((item) => item.rule),
   );
   return {
     kind: "ready",
@@ -108,6 +116,7 @@ export function practiceRunView(input: {
       spentUsd: spend.value.spentUsd,
       focus: data,
       language: input.language,
+      recent: recent.value,
     }),
   };
 }

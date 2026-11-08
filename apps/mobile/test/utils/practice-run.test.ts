@@ -3,6 +3,7 @@
 // Tests for the state machine of a practice run.
 //
 // Tested:
+// - practiceStep sends this run's prompts and the recent ones as avoid
 // - startPractice: a new run starts by creating the run; a resumed run settles on its items
 // - practiceReducer and practiceStep: the order of the outside calls of a round and of an answer
 // - A gap answered with the whole sentence is right locally; a flawed grade is saved correct and never escalates
@@ -89,6 +90,7 @@ function fresh(
     spentUsd: overrides.spentUsd ?? 0,
     focus,
     language: overrides.language ?? null,
+    recent: [],
   });
 }
 
@@ -100,6 +102,7 @@ function resumed(opened: PracticeRunWithItems, spentUsd = 0) {
     spentUsd,
     focus,
     language: null,
+    recent: [],
   });
 }
 
@@ -151,7 +154,8 @@ describe("startPractice", () => {
     expect(state.run?.id).toBe("run-1");
     expect(practiceStep(state)).toEqual({
       kind: "round",
-      request: roundRequest({ focus, count: 5, missedRules: [], language: null }),
+      request: roundRequest({ focus, count: 5, missedRules: [], language: null, avoid: [] }),
+      avoid: [],
       count: 5,
     });
   });
@@ -163,12 +167,49 @@ describe("startPractice", () => {
     const step = practiceStep(state);
     expect(step).toEqual({
       kind: "round",
-      request: roundRequest({ focus, count: 2, missedRules: [], language: null }),
+      request: roundRequest({
+        focus,
+        count: 2,
+        missedRules: [],
+        language: null,
+        avoid: ["I ___ to Japan twice."],
+      }),
+      avoid: ["I ___ to Japan twice."],
       count: 2,
     });
     expect(
       JSON.parse(step.kind === "round" ? (step.request.turns[0]?.text ?? "{}") : "{}").count,
     ).toBe(4);
+  });
+
+  it("sends this run's earlier prompts and the recent ones of other runs as avoid", () => {
+    const recent = [
+      { runId: "old-run", prompt: "Old ___ prompt.", rule: "Verbs" },
+      { runId: "run-1", prompt: "Own saved ___.", rule: "Verbs" },
+    ];
+    const state = startPractice({
+      origin: { kind: "resume", runId: "run-1" },
+      opened: practiceTodayWith(
+        [item(0, true, { prompt: "First ___." }), item(1, true, { prompt: "Second ___." })],
+        { target: 5 },
+      ),
+      profile,
+      spentUsd: 0,
+      focus,
+      language: null,
+      recent,
+    });
+    const step = practiceStep(state);
+    const expected = ["Second ___.", "First ___.", "Old ___ prompt."];
+    expect(step.kind === "round" && step.avoid).toEqual(expected);
+    const turn = step.kind === "round" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
+    expect(turn.avoid).toEqual(expected);
+  });
+
+  it("sends an empty avoid for a new run with no recent practice", () => {
+    const state = apply(fresh(), { type: "write_done", run: practiceRunWith() });
+    const step = practiceStep(state);
+    expect(step.kind === "round" && step.avoid).toEqual([]);
   });
 
   it("settles a resumed run on its first unanswered item", () => {
@@ -265,7 +306,14 @@ describe("a round", () => {
     expect(state.phase).toBe("asking");
     expect(practiceStep(state)).toEqual({
       kind: "round",
-      request: roundRequest({ focus, count: 4, missedRules: ["Articles"], language: null }),
+      request: roundRequest({
+        focus,
+        count: 4,
+        missedRules: ["Articles"],
+        language: null,
+        avoid: ["I ___ to Japan twice."],
+      }),
+      avoid: ["I ___ to Japan twice."],
       count: 4,
     });
   });
@@ -278,11 +326,13 @@ describe("a round", () => {
       spentUsd: 0,
       focus,
       language: "es-AR",
+      recent: [],
     });
     const next = apply(state, { type: "write_done", run: practiceRunWith() });
     expect(practiceStep(next)).toEqual({
       kind: "round",
-      request: roundRequest({ focus, count: 5, missedRules: [], language: "es-AR" }),
+      request: roundRequest({ focus, count: 5, missedRules: [], language: "es-AR", avoid: [] }),
+      avoid: [],
       count: 5,
     });
   });
@@ -676,7 +726,14 @@ describe("the end of a round", () => {
     expect(saved.phase).toBe("asking");
     expect(practiceStep(saved)).toEqual({
       kind: "round",
-      request: roundRequest({ focus, count: 5, missedRules: ["Present perfect"], language: null }),
+      request: roundRequest({
+        focus,
+        count: 5,
+        missedRules: ["Present perfect"],
+        language: null,
+        avoid: ["I ___ to Japan twice."],
+      }),
+      avoid: ["I ___ to Japan twice."],
       count: 5,
     });
   });
@@ -746,6 +803,7 @@ describe("the spend", () => {
       spentUsd: 0,
       focus,
       language: null,
+      recent: [],
     });
     expect(sendState(state)).toEqual({ locked: true, notice: "unsupported" });
   });

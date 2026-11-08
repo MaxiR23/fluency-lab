@@ -7,6 +7,7 @@
 // - toOpenSession reads a session row with its newest embedded message
 // - toSessionStart reads the start time of a session row
 // - toFinishedRun reads the finish time of a run and whether an item was missed
+// - toRecentPrompt reads the run, prompt and rule of an item row
 // - toProfileStatsRow reads the session count, the session days and the new words count
 // - toSessionCost reads the start time and the cost of a session row
 // - toMonthProgressRow, toHistoryRow, toMistakeRow and toWordRow read the Progress rows
@@ -36,6 +37,7 @@ import {
   toPracticeRun,
   toPracticeRunWithItems,
   toProfile,
+  toRecentPrompt,
   toProfilePatch,
   toProfileStatsRow,
   toSession,
@@ -684,5 +686,29 @@ describe("study note rows", () => {
     };
     expect(toPracticeRun(run)?.noteId).toBe(id);
     expect(toPracticeRun({ ...run, note_id: null })?.noteId).toBeNull();
+  });
+});
+
+describe("toRecentPrompt", () => {
+  it("maps an item row with its run date to the contract", () => {
+    const row = {
+      run_id: "run-1",
+      prompt: "I ___ (be) there.",
+      rule: "Present perfect",
+      practice_runs: { created_at: stamp },
+    };
+    expect(toRecentPrompt(row)).toEqual({
+      runId: "run-1",
+      prompt: "I ___ (be) there.",
+      rule: "Present perfect",
+    });
+  });
+
+  it("returns null for a row missing the prompt", () => {
+    expect(toRecentPrompt({ run_id: "run-1", rule: "r" })).toBeNull();
+  });
+
+  it("returns null for a rule that is not a string", () => {
+    expect(toRecentPrompt({ run_id: "run-1", prompt: "p", rule: 3 })).toBeNull();
   });
 });

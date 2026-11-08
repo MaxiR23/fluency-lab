@@ -14,6 +14,7 @@ import type {
   StudyNoteCreate,
   Profile,
   ProfileUpdate,
+  RecentPrompt,
   Session,
   ThreadMessage,
   ThreadMessageCreate,
@@ -101,6 +102,9 @@ export type UserStore = {
   listFinishedRunsSince(
     since: string,
   ): Promise<StoreOutcome<{ finishedAt: string; missed: boolean }[]>>;
+  // INFO: the prompts and rules of the caller's items in runs created since the given
+  // time, newest run first and last position first, limit rows; [] is the expected empty.
+  listRecentPrompts(since: string, limit: number): Promise<StoreOutcome<RecentPrompt[]>>;
   // INFO: the cost of each session, deleted session and practice run since the given time.
   listSessionCostsSince(
     since: string,

@@ -8,7 +8,7 @@
 // deleteAccount with success, so a signed in user lands on Home, and getSessionSummary with an
 // empty ended session (Summary reads it). Progress reads all five of getMonthProgress, listHistory,
 // listMistakes, listWords and listNotes: zeros and empty pages. Thread reads openThread: a thread with no
-// messages on a learner message with two corrections. Home also reads getTodayPractice: no run today.
+// messages on a learner message with two corrections. Home also reads getTodayPractice: no run today. Practice also reads listRecentPrompts: none.
 
 import { jest } from "@jest/globals";
 import type {
@@ -58,6 +58,7 @@ export const fakeData = {
   listMistakes: jest.fn<DataPort["listMistakes"]>(),
   listWords: jest.fn<DataPort["listWords"]>(),
   getTodayPractice: jest.fn<DataPort["getTodayPractice"]>(),
+  listRecentPrompts: jest.fn<DataPort["listRecentPrompts"]>(),
   createPracticeRun: jest.fn<DataPort["createPracticeRun"]>(),
   openPracticeRun: jest.fn<DataPort["openPracticeRun"]>(),
   addPracticeItems: jest.fn<DataPort["addPracticeItems"]>(),
@@ -332,6 +333,7 @@ export function resetFakeData(): void {
   fakeData.getSessionSummary.mockResolvedValue({ ok: true, value: summaryWith() });
   fakeData.openThread.mockResolvedValue({ ok: true, value: threadWith() });
   fakeData.getTodayPractice.mockResolvedValue({ ok: true, value: null });
+  fakeData.listRecentPrompts.mockResolvedValue({ ok: true, value: [] });
   fakeData.listNotes.mockResolvedValue({
     ok: true,
     value: { items: [], nextOffset: null, today: "2026-11-05" },

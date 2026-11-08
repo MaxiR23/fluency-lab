@@ -16,7 +16,7 @@
 // - GET /sessions/:id/summary counts the messages and collects the corrections and new words
 // - GET /sessions/spend still counts the cost of a deleted session
 // - the notes routes: create, read, delete and the Progress page, and the notes and note ids of the chat and practice routes
-// - the practice routes: today, create, read, items, answer, usage, target and finish
+// - the practice routes: today, recent prompts, create, read, items, answer, usage, target and finish
 // - the usage route prices the tokens, and the routes reject an apiKey field
 //
 // What is covered:
@@ -385,6 +385,11 @@ const routes: { name: string; path: string; method: string; body?: unknown }[] =
   },
   { name: "POST /sessions/:id/end", path: `/sessions/${sessionId}/end`, method: "POST" },
   { name: "GET /practice/today", path: "/practice/today?tz=UTC", method: "GET" },
+  {
+    name: "GET /practice/recent-prompts",
+    path: "/practice/recent-prompts?days=7&limit=40",
+    method: "GET",
+  },
   {
     name: "POST /practice/runs",
     path: "/practice/runs",
@@ -1655,6 +1660,18 @@ describe("typed client (data routes)", () => {
     expect(withdrawRes.status).toBe(200);
   });
 
+  it("exposes the recent prompts route through AppType", async () => {
+    fake.user.listRecentPrompts.mockResolvedValue({ ok: true, value: [] });
+    const client = testClient(app, undefined, undefined, { headers: await authed() });
+
+    const res = await client.practice["recent-prompts"].$get({
+      query: { days: "7", limit: "40" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ items: [] });
+  });
+
   it("exposes the profile and session routes through AppType", async () => {
     fake.user.getProfile.mockResolvedValue({ ok: true, value: profile });
     fake.user.getActiveSession.mockResolvedValue({ ok: true, value: null });
@@ -2141,6 +2158,56 @@ describe("the practice routes", () => {
       expect((await call("GET", "/practice/today")).status).toBe(400);
       fake.user.listPracticeRunsSince.mockResolvedValue({ ok: false, failure: "unavailable" });
       expect((await call("GET", "/practice/today?tz=UTC")).status).toBe(503);
+    });
+  });
+
+  describe("GET /practice/recent-prompts", () => {
+    const recent = [
+      { runId: "run-2", prompt: "I ___ (be) there.", rule: "Present perfect" },
+      { runId: "run-1", prompt: "She ___ (go) home.", rule: "Past simple" },
+    ];
+
+    it("answers the caller's recent prompts newest first", async () => {
+      fake.user.listRecentPrompts.mockResolvedValue({ ok: true, value: recent });
+      const res = await call("GET", "/practice/recent-prompts?days=7&limit=40");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ items: recent });
+      expect(fake.user.listRecentPrompts).toHaveBeenCalledWith("2026-10-29T12:00:00.000Z", 40);
+    });
+
+    it("reads with the store of the token's user and the raw token", async () => {
+      fake.user.listRecentPrompts.mockResolvedValue({ ok: true, value: [] });
+      const headers = await authed();
+
+      await app.request("/practice/recent-prompts?days=7&limit=40", { headers });
+
+      expect(fake.callers).toEqual([
+        { id: "user-1", accessToken: headers.Authorization.replace("Bearer ", "") },
+      ]);
+    });
+
+    it("answers an empty list with no recent practice", async () => {
+      fake.user.listRecentPrompts.mockResolvedValue({ ok: true, value: [] });
+      const res = await call("GET", "/practice/recent-prompts?days=7&limit=40");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ items: [] });
+    });
+
+    it("answers 401 when the store reports unauthorized", async () => {
+      fake.user.listRecentPrompts.mockResolvedValue({ ok: false, failure: "unauthorized" });
+      expect((await call("GET", "/practice/recent-prompts?days=7&limit=40")).status).toBe(401);
+    });
+
+    it("answers 400 for days 8, limit 41 or a missing query", async () => {
+      expect((await call("GET", "/practice/recent-prompts?days=8&limit=40")).status).toBe(400);
+      expect((await call("GET", "/practice/recent-prompts?days=7&limit=41")).status).toBe(400);
+      expect((await call("GET", "/practice/recent-prompts")).status).toBe(400);
+      expect(fake.user.listRecentPrompts).not.toHaveBeenCalled();
+    });
+
+    it("answers 503 when the store is down", async () => {
+      fake.user.listRecentPrompts.mockResolvedValue({ ok: false, failure: "unavailable" });
+      expect((await call("GET", "/practice/recent-prompts?days=7&limit=40")).status).toBe(503);
     });
   });
 

@@ -62,6 +62,77 @@ export function gapSentenceFill(
   return null;
 }
 
+export const MAX_PER_RULE = 2;
+const HINT = /\(([^)]*)\)/g;
+
+// INFO: rules are compared trimmed and case-insensitive.
+export function ruleKey(rule: string): string {
+  return rule.trim().toLowerCase();
+}
+
+// INFO: a hint without "not" and the slash that equals an accepted answer gives it away.
+export function hintGivesAnswer(prompt: string, accepted: readonly string[]): boolean {
+  const answers = accepted.map(normalizeAnswer);
+  for (const match of prompt.matchAll(HINT)) {
+    const inner = (match[1] ?? "").replace(/\//g, " ").replace(/\bnot\b/gi, " ");
+    const hint = normalizeAnswer(inner);
+    if (hint !== "" && answers.includes(hint)) return true;
+  }
+  return false;
+}
+
+function wordsOf(text: string): string[] {
+  return normalizeAnswer(text).match(/[a-z0-9']+/g) ?? [];
+}
+
+function containsRun(words: readonly string[], phrase: readonly string[]): boolean {
+  if (phrase.length === 0) return false;
+  for (let start = 0; start + phrase.length <= words.length; start += 1) {
+    if (phrase.every((word, offset) => words[start + offset] === word)) return true;
+  }
+  return false;
+}
+
+// INFO: a gap whose prompt outside the parentheses holds an accepted answer as whole
+// words, or a translate whose prompt holds one; choose and fix are never checked.
+export function promptShowsAnswer(item: {
+  kind: PracticeKind;
+  prompt: string;
+  accepted: readonly string[];
+}): boolean {
+  if (item.kind !== "gap" && item.kind !== "translate") return false;
+  const text = item.kind === "gap" ? item.prompt.replace(HINT, " ").replace(GAP, " ") : item.prompt;
+  const words = wordsOf(text);
+  return item.accepted.some((answer) => containsRun(words, wordsOf(answer)));
+}
+
+// INFO: drops an item whose normalized prompt is in avoid or on an earlier item.
+export function dropRepeats(
+  items: readonly PracticeExercise[],
+  avoid: readonly string[],
+): PracticeExercise[] {
+  const seen = new Set(avoid.map(normalizeAnswer));
+  const kept: PracticeExercise[] = [];
+  for (const item of items) {
+    const key = normalizeAnswer(item.prompt);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.push(item);
+  }
+  return kept;
+}
+
+// INFO: keeps the first MAX_PER_RULE items of each rule, in order.
+export function capPerRule(items: readonly PracticeExercise[]): PracticeExercise[] {
+  const counts = new Map<string, number>();
+  return items.filter((item) => {
+    const key = ruleKey(item.rule);
+    const count = counts.get(key) ?? 0;
+    counts.set(key, count + 1);
+    return count < MAX_PER_RULE;
+  });
+}
+
 function within(text: string, max: number): boolean {
   return text !== "" && text.length <= max;
 }
@@ -83,6 +154,8 @@ function toExercise(raw: PracticeRoundPayload["items"][number]): PracticeExercis
   if (needsGap ? gaps !== 1 : gaps !== 0) return null;
   if (kind !== "choose") {
     if (kind === "fix" && !fixKeepsPrompt(prompt, accepted)) return null;
+    if (kind === "gap" && hintGivesAnswer(prompt, accepted)) return null;
+    if (promptShowsAnswer({ kind, prompt, accepted })) return null;
     const source = raw.source.trim();
     return {
       kind,
@@ -104,16 +177,19 @@ function toExercise(raw: PracticeRoundPayload["items"][number]): PracticeExercis
   return { kind, rule, prompt, options, accepted, explanation, source: null };
 }
 
-// INFO: an exercise that breaks a rule of its kind or a limit is dropped; null
+// INFO: an exercise that breaks a rule of its kind or a limit is dropped, and so is a
+// repeated prompt (in avoid or earlier in the round) and a third item of a rule; null
 // when fewer than count are left, which the caller reads as a bad response.
 export function toPracticeRound(
   payload: PracticeRoundPayload,
   count: number,
+  avoid: readonly string[],
 ): PracticeExercise[] | null {
-  const items: PracticeExercise[] = [];
+  const valid: PracticeExercise[] = [];
   for (const raw of payload.items) {
     const exercise = toExercise(raw);
-    if (exercise !== null) items.push(exercise);
+    if (exercise !== null) valid.push(exercise);
   }
+  const items = capPerRule(dropRepeats(valid, avoid));
   return items.length < count ? null : items.slice(0, count);
 }

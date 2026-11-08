@@ -17,6 +17,7 @@ import {
   practiceRunSchema,
   practiceRunWithItemsSchema,
   practiceTodaySchema,
+  recentPromptsSchema,
   profileSchema,
   profileStatsSchema,
   sessionMessagesResponseSchema,
@@ -201,6 +202,16 @@ export function createHonoData(config: HonoDataConfig): DataPort {
         practiceTodaySchema,
       );
       return outcome.ok ? { ok: true, value: outcome.value.run } : outcome;
+    },
+    async listRecentPrompts(days, limit) {
+      const outcome = await call(
+        (client) =>
+          client.practice["recent-prompts"].$get({
+            query: { days: String(days), limit: String(limit) },
+          }),
+        recentPromptsSchema,
+      );
+      return outcome.ok ? { ok: true, value: outcome.value.items } : outcome;
     },
     createPracticeRun: (input) =>
       call((client) => client.practice.runs.$post({ json: input }), practiceRunSchema),

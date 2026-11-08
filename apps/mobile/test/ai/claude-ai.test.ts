@@ -10,7 +10,7 @@
 // - The key never reaches an outcome or a log
 // - replyInThread: the same request with the thread schema, its payload, and the same failures
 // - A reply may carry a study note; studyNote: its schema, payload and failures
-// - practiceRound and gradeAnswer: their schemas, their token limits, their payloads and the same failures
+// - practiceRound and gradeAnswer: their schemas, their token limits, their payloads and the same failures, and practiceRound drops the prompts in avoid
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -850,8 +850,8 @@ describe("practiceRound", () => {
   const round = {
     items: [exercise, { ...exercise, prompt: "He ___ twice.", accepted: ["has been"] }],
   };
-  const ask = (ai: ReturnType<typeof setup>["ai"], count = 2) =>
-    ai.practiceRound({ system: roundRequest.system, turns: [...roundRequest.turns] }, count);
+  const ask = (ai: ReturnType<typeof setup>["ai"], count = 2, avoid: string[] = []) =>
+    ai.practiceRound({ system: roundRequest.system, turns: [...roundRequest.turns] }, count, avoid);
 
   it("returns the parsed round with its usage", async () => {
     const { ai } = setup(success(round));
@@ -898,6 +898,21 @@ describe("practiceRound", () => {
   it("a round with fewer valid exercises than the count is bad_response with its usage", async () => {
     const { ai } = setup(success(round));
     expect(await ask(ai, 3)).toMatchObject({
+      ok: false,
+      failure: "bad_response",
+      usage: { inputTokens: 700, outputTokens: 150 },
+    });
+  });
+
+  it("keeps a round whose prompts are not in avoid", async () => {
+    const { ai } = setup(success(round));
+    const outcome = await ask(ai, 2, ["Something else ___."]);
+    expect(outcome.ok && outcome.value.items).toHaveLength(2);
+  });
+
+  it("a round left short by the prompts in avoid is bad_response with its usage", async () => {
+    const { ai } = setup(success(round));
+    expect(await ask(ai, 2, ["she ___ here since May"])).toMatchObject({
       ok: false,
       failure: "bad_response",
       usage: { inputTokens: 700, outputTokens: 150 },

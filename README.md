@@ -128,7 +128,8 @@ practice runs (`practice_runs.cost_usd`). `GET
 /sessions/:id/messages` answers the session, its messages and the study notes saved in it. `POST
 /sessions/:id/usage` prices the reported tokens and adds them to the session's
 cost. `POST /sessions` takes a topic or a starter id. The practice has `GET
-/practice/today?tz=<IANA zone>` (today's run in that zone, or none), `POST /practice/runs`, `GET /practice/runs/:id`,
+/practice/today?tz=<IANA zone>` (today's run in that zone, or none), `GET
+/practice/recent-prompts?days=<1-7>&limit=<1-40>` (the recent exercise prompts, to avoid repeating them), `POST /practice/runs`, `GET /practice/runs/:id`,
 `POST /practice/runs/:id/items` (a position already saved is ignored, so a retry repeats safely), `POST /practice/runs/:id/usage`
 (priced and added to the run's cost, which counts in the month's spend), `POST /practice/runs/:id/target`, `POST
 /practice/runs/:id/finish` and `POST /practice/items/:id/answer`. The study notes have `POST /notes`,

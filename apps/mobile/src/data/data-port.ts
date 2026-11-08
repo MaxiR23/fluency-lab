@@ -14,6 +14,7 @@ import type {
   PracticeRun,
   PracticeRunCreate,
   PracticeRunWithItems,
+  RecentPrompt,
   Profile,
   ProfileStats,
   ProfileUpdate,
@@ -81,6 +82,8 @@ export type DataPort = {
   listWords(timeZone: string, offset: number): Promise<DataOutcome<WordPage>>;
   // INFO: null is the expected empty: no practice was started today.
   getTodayPractice(timeZone: string): Promise<DataOutcome<PracticeRunWithItems | null>>;
+  // INFO: [] is the expected empty: no practice in the last days.
+  listRecentPrompts(days: number, limit: number): Promise<DataOutcome<RecentPrompt[]>>;
   createPracticeRun(input: PracticeRunCreate): Promise<DataOutcome<PracticeRun>>;
   // INFO: a run with no items is the expected empty: its first round has not been saved.
   openPracticeRun(runId: string): Promise<DataOutcome<PracticeRunWithItems>>;
