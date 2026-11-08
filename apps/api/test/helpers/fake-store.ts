@@ -19,6 +19,7 @@ export function createFakeStore() {
     addThreadMessage: vi.fn<UserStore["addThreadMessage"]>(),
     withdrawCorrections: vi.fn<UserStore["withdrawCorrections"]>(),
     listThreadCounts: vi.fn<UserStore["listThreadCounts"]>(),
+    listThreadWords: vi.fn<UserStore["listThreadWords"]>(),
     listPracticeRunsSince: vi.fn<UserStore["listPracticeRunsSince"]>(),
     createPracticeRun: vi.fn<UserStore["createPracticeRun"]>(),
     getPracticeRun: vi.fn<UserStore["getPracticeRun"]>(),

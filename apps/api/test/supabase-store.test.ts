@@ -10,7 +10,7 @@
 // - The practice methods read and write practice_runs and practice_items (listFinishedRunsSince reads the finished runs with their item verdicts, listRecentPrompts reads the caller's items newest first through their runs) and call add_practice_cost with the caller's token
 // - getStats calls profile_stats with the caller's token; deleteAccount deletes the caller through the admin API with the secret key and never the caller's token
 // - getMonthProgress, listEndedSessions, listMistakeGroups and listNewWords call their progress_* function with the caller's token
-// - getThread, addThreadMessage, withdrawCorrections and listThreadCounts read and write the thread table and its functions with the caller's token, and getSessionWithMessages never reads thread rows
+// - getThread, addThreadMessage, withdrawCorrections, listThreadCounts and listThreadWords read and write the thread table and its functions with the caller's token, and getSessionWithMessages never reads thread rows
 // - createNote, getNote, deleteNote, listNotes and listSessionNotes read and write study_notes with the caller's token
 // - Each store call: success, expected empty, 401, transport failure, bad row
 //
@@ -1623,6 +1623,50 @@ describe("listThreadCounts", () => {
     });
     const bad = setup([ok([{ message_id: "x", reply_count: "2" }])]).user;
     expect(await bad.listThreadCounts(sessionId)).toEqual({ ok: false, failure: "unavailable" });
+  });
+});
+
+describe("listThreadWords", () => {
+  const embedded = { session_id: sessionId };
+
+  it("reads the new words of the session's thread rows, oldest first, through their messages", async () => {
+    const { user, requests } = setup([
+      ok([
+        { new_words: ["deadline"], messages: embedded },
+        { new_words: ["Budget", "deadline"], messages: embedded },
+      ]),
+    ]);
+
+    const outcome = await user.listThreadWords(sessionId);
+
+    expect(outcome).toEqual({ ok: true, value: ["deadline", "Budget", "deadline"] });
+    expect(requests.length).toBe(1);
+    expect(requests[0].url.pathname).toBe("/rest/v1/thread_messages");
+    expect(requests[0].url.searchParams.get("select")).toBe("new_words,messages!inner(session_id)");
+    expect(requests[0].url.searchParams.get("messages.session_id")).toBe(`eq.${sessionId}`);
+    expect(requests[0].url.searchParams.get("new_words")).toBe("not.is.null");
+    expect(requests[0].url.searchParams.get("order")).toBe("created_at.asc");
+    expect(requests[0].headers.get("Authorization")).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("returns no words as a success for a session without threads", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.listThreadWords(sessionId)).toEqual({ ok: true, value: [] });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.listThreadWords(sessionId)).toEqual({ ok: false, failure: "unauthorized" });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.listThreadWords(sessionId)).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("returns unavailable for a bad row", async () => {
+    const { user } = setup([ok([{ new_words: "deadline", messages: embedded }])]);
+    expect(await user.listThreadWords(sessionId)).toEqual({ ok: false, failure: "unavailable" });
   });
 });
 

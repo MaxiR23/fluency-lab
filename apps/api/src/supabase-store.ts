@@ -20,6 +20,7 @@ import {
   toSessionStart,
   toStudyNote,
   toThreadCount,
+  toThreadWords,
   toThreadMessage,
   toWordRow,
 } from "./rows";
@@ -334,6 +335,21 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
             await client.rpc("thread_counts", { session_id: sessionId }),
             toThreadCount,
           );
+        },
+
+        // INFO: messages!inner keeps only the rows whose message is in the session; row level
+        // security keeps out every other user's rows. Rows with no words are not fetched.
+        async listThreadWords(sessionId) {
+          const rows = readPage(
+            await client
+              .from("thread_messages")
+              .select("new_words, messages!inner(session_id)")
+              .eq("messages.session_id", sessionId)
+              .not("new_words", "is", null)
+              .order("created_at", { ascending: true }),
+            toThreadWords,
+          );
+          return rows.ok ? { ok: true, value: rows.value.flat() } : rows;
         },
 
         async listPracticeRunsSince(since) {

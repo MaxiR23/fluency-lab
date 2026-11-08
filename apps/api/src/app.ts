@@ -445,8 +445,18 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
           return c.json(body, status);
         }
         if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        const threadWords = await config.store
+          .forUser(c.get("caller"))
+          .listThreadWords(c.req.valid("param").id);
+        if (!threadWords.ok) {
+          const { status, body } = failureResponse(threadWords.failure);
+          return c.json(body, status);
+        }
         return c.json(
-          { session: outcome.value.session, ...sessionSummary(outcome.value.messages) },
+          {
+            session: outcome.value.session,
+            ...sessionSummary(outcome.value.messages, threadWords.value),
+          },
           200,
         );
       },
