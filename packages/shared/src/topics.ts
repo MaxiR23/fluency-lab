@@ -21,7 +21,7 @@ export const TOPIC_IDS = TOPICS.map((topic) => topic.id) as unknown as readonly 
   ...TopicId[],
 ];
 
-export function topicLabel(id: TopicId): string {
+export function topicLabel(id: string): string {
   const topic = TOPICS.find((entry) => entry.id === id);
   return topic === undefined ? id : topic.label;
 }

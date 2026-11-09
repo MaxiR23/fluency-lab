@@ -6,6 +6,7 @@
 // - greeting by the hour and the display name
 // - avatarInitial from the display name
 // - continueCard title, meta and icon
+// - continueCard draws a topic outside the catalog with its raw id and the chat icon
 // - seeAllLabel next to Continue
 //
 // What is covered:
@@ -86,6 +87,18 @@ describe("continueCard", () => {
       title: "Job interviews",
       meta: "Job interviews · yesterday",
       icon: "briefcase",
+    });
+  });
+
+  it("draws a topic outside the catalog with its raw id and the chat icon", () => {
+    const active = activeSessionWith(
+      { topicId: "cooking", title: "Cooking" },
+      { createdAt: "2026-11-05T11:55:00Z" },
+    );
+    expect(continueCard(active, now)).toEqual({
+      title: "Cooking",
+      meta: "cooking · 5 min ago",
+      icon: "chat",
     });
   });
 

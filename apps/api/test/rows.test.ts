@@ -3,7 +3,7 @@
 // Tests for the mapping of database rows to the API contract.
 //
 // Tested:
-// - toProfile, toSession and toMessage rename snake_case rows and reject bad rows
+// - toProfile, toSession and toMessage rename snake_case rows and reject bad rows; toSession and toPracticeRun keep a topic outside the catalogs
 // - toOpenSession reads a session row with its newest embedded message
 // - toSessionStart reads the start time of a session row
 // - toFinishedRun reads the finish time of a run and whether an item was missed
@@ -183,6 +183,10 @@ describe("toSession", () => {
 
   it("maps a free chat session with a null topic", () => {
     expect(toSession({ ...sessionRow, topic_id: null })?.topicId).toBeNull();
+  });
+
+  it("keeps a session topic outside the catalog", () => {
+    expect(toSession({ ...sessionRow, topic_id: "cooking" })?.topicId).toBe("cooking");
   });
 
   it("returns null for a row with a missing column", () => {
@@ -592,6 +596,10 @@ describe("practice rows", () => {
       createdAt: stamp,
       finishedAt: null,
     });
+  });
+
+  it("keeps a run topic outside the grammar catalog", () => {
+    expect(toPracticeRun({ ...runRow, topic_id: "subjunctive" })?.topicId).toBe("subjunctive");
   });
 
   it("returns null for a run with an unknown focus or target", () => {

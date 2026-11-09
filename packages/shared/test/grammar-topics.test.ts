@@ -6,7 +6,7 @@
 // - The eight topics in catalog order, with unique ids
 // - Which topics each level suggests
 // - The order that puts the suggested topics first
-// - grammarTopicLabel returns the label of a topic id
+// - grammarTopicLabel returns the label of a topic id, and the raw id for one outside the catalog
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -86,5 +86,13 @@ describe("orderedGrammarTopics", () => {
 describe("grammarTopicLabel", () => {
   it("labels an id with its catalog label", () => {
     expect(grammarTopicLabel("present_perfect")).toBe("Present perfect");
+  });
+
+  it("falls back to the raw id for a topic outside the catalog", () => {
+    expect(grammarTopicLabel("subjunctive")).toBe("subjunctive");
+  });
+
+  it("does not label a conversation topic as a grammar topic", () => {
+    expect(grammarTopicLabel("sports")).toBe("sports");
   });
 });

@@ -1,4 +1,4 @@
-import type { Goal, TopicId } from "@fluency-lab/shared";
+import { TOPIC_IDS, type Goal, type TopicId } from "@fluency-lab/shared";
 
 import type { IconName } from "@/components/icon";
 
@@ -29,6 +29,8 @@ export function starterIcon(starter: { topicId: TopicId | null; goal: Goal | nul
   return starter.goal === null ? "chat" : GOAL_ICONS[starter.goal];
 }
 
-export function sessionIcon(topicId: TopicId | null): IconName {
-  return topicId === null ? "chat" : TOPIC_ICONS[topicId];
+// INFO: a topic id outside the catalog draws the chat icon, as a free chat does.
+export function sessionIcon(topicId: string | null): IconName {
+  const known = TOPIC_IDS.find((id) => id === topicId);
+  return known === undefined ? "chat" : TOPIC_ICONS[known];
 }

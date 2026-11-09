@@ -227,9 +227,11 @@ export const profileSchema = z.object({
   updatedAt: z.string(),
 });
 
+// INFO: the read side takes any id: the database no longer checks it, and
+// the app draws an unknown one with its fallback. The create schemas keep the catalog enum.
 export const sessionSchema = z.object({
   id: z.string(),
-  topicId: z.enum(TOPIC_IDS).nullable(),
+  topicId: z.string().nullable(),
   title: z.string(),
   status: z.enum(SESSION_STATUSES),
   summary: z.string().nullable(),
@@ -432,10 +434,12 @@ export const practiceRunIdParamSchema = z.object({ id: z.uuid() });
 
 export const practiceItemIdParamSchema = z.object({ id: z.uuid() });
 
+// INFO: the read side takes any id: the database no longer checks it, and
+// the app draws an unknown one with its fallback. The create schemas keep the catalog enum.
 export const practiceRunSchema = z.object({
   id: z.string(),
   focus: z.enum(PRACTICE_FOCUSES),
-  topicId: z.enum(GRAMMAR_TOPIC_IDS).nullable(),
+  topicId: z.string().nullable(),
   noteId: z.string().nullable(),
   target: practiceTargetValue,
   costUsd: z.number(),

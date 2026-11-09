@@ -29,7 +29,7 @@ export const GRAMMAR_TOPIC_IDS = GRAMMAR_TOPICS.map((topic) => topic.id) as unkn
   ...GrammarTopicId[],
 ];
 
-export function grammarTopicLabel(id: GrammarTopicId): string {
+export function grammarTopicLabel(id: string): string {
   const topic = GRAMMAR_TOPICS.find((entry) => entry.id === id);
   return topic === undefined ? id : topic.label;
 }

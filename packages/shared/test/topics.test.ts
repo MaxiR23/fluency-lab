@@ -4,7 +4,7 @@
 //
 // Tested:
 // - The twelve topics in catalog order, with unique ids and English labels
-// - topicLabel returns the label of a topic id
+// - topicLabel returns the label of a topic id, and the raw id for one outside the catalog
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -50,5 +50,13 @@ describe("TOPICS", () => {
 describe("topicLabel", () => {
   it("returns the label of a topic id", () => {
     expect(topicLabel("job_interviews")).toBe("Job interviews");
+  });
+
+  it("falls back to the raw id for a topic outside the catalog", () => {
+    expect(topicLabel("cooking")).toBe("cooking");
+  });
+
+  it("returns an empty id as it is", () => {
+    expect(topicLabel("")).toBe("");
   });
 });

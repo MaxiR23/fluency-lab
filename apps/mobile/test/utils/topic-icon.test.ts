@@ -5,9 +5,10 @@
 // Tested:
 // - The topic and goal icon maps
 // - starterIcon and sessionIcon
+// - sessionIcon falls back to the chat icon for an unknown topic
 //
 // What is covered:
-// - Normal case, edges. An empty case does not apply: the maps are closed.
+// - Normal case, edges (a topic outside the catalog). An empty case does not apply: the maps are closed.
 //
 // Run with: pnpm exec jest apps/mobile/test/utils/topic-icon.test.ts
 //
@@ -47,5 +48,10 @@ describe("topic icons", () => {
   it("uses the chat icon for a free chat", () => {
     expect(sessionIcon(null)).toBe("chat");
     expect(sessionIcon("travel")).toBe("globe");
+  });
+
+  it("uses the chat icon for a topic outside the catalog", () => {
+    expect(sessionIcon("cooking")).toBe("chat");
+    expect(sessionIcon("")).toBe("chat");
   });
 });

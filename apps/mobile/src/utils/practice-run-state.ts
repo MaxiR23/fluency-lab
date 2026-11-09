@@ -1,5 +1,4 @@
 import type {
-  GrammarTopicId,
   MistakePage,
   MonthSpend,
   PracticeFocus,
@@ -74,7 +73,7 @@ export function practiceRunView(input: {
   const run = opened === null ? null : opened.value;
   const focus: PracticeFocus =
     origin.kind === "new" ? origin.input.focus : (run?.run.focus ?? "mistakes");
-  const topicId: GrammarTopicId | null =
+  const topicId: string | null =
     origin.kind === "new"
       ? origin.input.focus === "topic"
         ? origin.input.topicId

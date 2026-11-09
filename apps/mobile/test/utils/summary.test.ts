@@ -7,6 +7,7 @@
 // - summaryParams
 // - summaryHeading, summarySubtitle and summaryStats
 // - practiceAgainHref
+// - A topic outside the catalog is joined by its raw id and opens a free chat
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -132,6 +133,11 @@ describe("summarySubtitle", () => {
     const { session } = summaryWith({}, { title: "Job interviews", topicId: "job_interviews" });
     expect(summarySubtitle(session)).toBe("Job interviews");
   });
+
+  it("joins the raw id for a topic outside the catalog", () => {
+    const { session } = summaryWith({}, { title: "Cooking", topicId: "cooking" });
+    expect(summarySubtitle(session)).toBe("Cooking · cooking");
+  });
 });
 
 describe("summaryStats", () => {
@@ -174,5 +180,9 @@ describe("practiceAgainHref", () => {
 
   it("opens a free chat for a session without a topic", () => {
     expect(practiceAgainHref(summaryWith().session)).toBe("/chat");
+  });
+
+  it("opens a free chat for a topic outside the catalog", () => {
+    expect(practiceAgainHref(summaryWith({}, { topicId: "cooking" }).session)).toBe("/chat");
   });
 });

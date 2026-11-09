@@ -1,7 +1,6 @@
 import {
   PRACTICE_AVOID_LIMIT,
   grammarTopicLabel,
-  type GrammarTopicId,
   type Level,
   type MistakePage,
   type PracticeFocus,
@@ -110,7 +109,7 @@ export function rotateMistakes<T extends { rule: string | null }>(
 
 export function focusDataFrom(
   focus: PracticeFocus,
-  topicId: GrammarTopicId | null,
+  topicId: string | null,
   mistakes: MistakePage,
   words: WordPage,
   level: Level | null,

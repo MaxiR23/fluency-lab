@@ -8,6 +8,7 @@
 // - roundRequest states the generation rules and asks for two spare exercises
 // - roundRequest sends the avoid list
 // - avoidPrompts builds it from the run and the recent prompts
+// - focusDataFrom sends the raw id of a topic outside the catalog
 // - rotateMistakes puts the rules not practiced recently first
 // - focusDataFrom and roundRequest carry a note as the focus of a note round
 // - studyNoteRequest asks for one study note on the missed item's rule and sends nothing personal
@@ -81,6 +82,14 @@ describe("focusDataFrom", () => {
         { original: "bad 0", corrected: "good 0", rule: null },
         { original: "bad 1", corrected: "good 1", rule: "Rule 1" },
       ],
+    });
+  });
+
+  it("sends the raw id as the topic of a round on a topic outside the catalog", () => {
+    expect(focusDataFrom("topic", "subjunctive", mistakes(0), words(0), null, null, [])).toEqual({
+      kind: "topic",
+      topic: "subjunctive",
+      level: null,
     });
   });
 
