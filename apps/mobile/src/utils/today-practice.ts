@@ -1,7 +1,12 @@
-import type { Level, MistakePage, PracticeRunWithItems } from "@fluency-lab/shared";
+import {
+  grammarTopicLabel,
+  type Level,
+  type MistakePage,
+  type PracticeRunWithItems,
+} from "@fluency-lab/shared";
 
 import { answeredCount } from "@/utils/practice-escalation";
-import { defaultFocus, focusLabel, focusModel, type FocusChoice } from "@/utils/practice-focus";
+import { defaultFocus, focusLabel, focusModel } from "@/utils/practice-focus";
 
 export const NOTE_FOCUS_LABEL = "From your note";
 const START_TARGET = 5;
@@ -45,10 +50,11 @@ function runChips(today: PracticeRunWithItems): string[] {
   return names.slice(0, MAX_CHIPS);
 }
 
-function runChoice(today: PracticeRunWithItems): FocusChoice {
+function runTitle(today: PracticeRunWithItems): string {
   const { focus, topicId } = today.run;
-  if (focus === "topic" && topicId !== null) return { kind: "topic", topicId };
-  return focus === "words" ? { kind: "words" } : { kind: "mistakes" };
+  if (focus === "note") return NOTE_FOCUS_LABEL;
+  if (focus === "topic" && topicId !== null) return grammarTopicLabel(topicId);
+  return focusLabel(focus === "words" ? { kind: "words" } : { kind: "mistakes" });
 }
 
 function leftMeta(left: number): string {
@@ -100,7 +106,7 @@ export function todayCard(input: {
     target: run.target,
     fraction: answered / run.target,
     ringLabel: `${answered}/${run.target}`,
-    title: run.focus === "note" ? NOTE_FOCUS_LABEL : focusLabel(runChoice(today)),
+    title: runTitle(today),
     meta,
     chips: runChips(today),
     action: finished ? "Practice again" : "Keep going",

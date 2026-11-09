@@ -5,6 +5,7 @@
 // Tested:
 // - A topic session is titled with the topic label
 // - A free chat is titled "Free chat"
+// - A topic outside the catalog is titled with its raw id
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -24,6 +25,10 @@ describe("sessionTitle", () => {
 
   it("titles a free chat 'Free chat'", () => {
     expect(sessionTitle(null)).toBe("Free chat");
+  });
+
+  it("titles a session on a topic outside the catalog with the raw id", () => {
+    expect(sessionTitle("cooking")).toBe("cooking");
   });
 
   it("titles every catalog topic with its own label", () => {

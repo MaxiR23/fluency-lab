@@ -1,5 +1,5 @@
-import { topicLabel, type TopicId } from "./topics";
+import { topicLabel } from "./topics";
 
-export function sessionTitle(topicId: TopicId | null): string {
+export function sessionTitle(topicId: string | null): string {
   return topicId === null ? "Free chat" : topicLabel(topicId);
 }

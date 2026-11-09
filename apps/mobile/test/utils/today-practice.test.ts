@@ -5,6 +5,7 @@
 // Tested:
 // - minutesLeft rounds up at 1.2 minutes per exercise
 // - todayCard draws today's run, the start state and a finished run
+// - todayCard titles a run on a topic outside the catalog with the raw id
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -95,6 +96,11 @@ describe("todayCard with a run", () => {
   it("titles a topic run with the topic", () => {
     const today = practiceTodayWith([], { focus: "topic", topicId: "conditionals" });
     expect(todayCard({ today, mistakes: none, level: null }).title).toBe("Conditionals");
+  });
+
+  it("titles a run on a topic outside the catalog with the raw id", () => {
+    const today = practiceTodayWith([], { focus: "topic", topicId: "subjunctive" });
+    expect(todayCard({ today, mistakes: none, level: null }).title).toBe("subjunctive");
   });
 
   it("titles a note run From your note", () => {

@@ -1,4 +1,5 @@
 import {
+  TOPIC_IDS,
   topicLabel,
   type Profile,
   type Session,
@@ -74,10 +75,10 @@ export function summaryStats(summary: SessionSummary): { value: string; label: s
   ];
 }
 
+// INFO: a topic outside the catalog opens a free chat.
 export function practiceAgainHref(
   session: Session,
 ): "/chat" | { pathname: "/chat"; params: { topic: TopicId } } {
-  return session.topicId === null
-    ? "/chat"
-    : { pathname: "/chat", params: { topic: session.topicId } };
+  const topic = TOPIC_IDS.find((id) => id === session.topicId);
+  return topic === undefined ? "/chat" : { pathname: "/chat", params: { topic } };
 }

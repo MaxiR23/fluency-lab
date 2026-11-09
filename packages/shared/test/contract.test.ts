@@ -16,6 +16,7 @@
 // - The study note schemas: both shapes, their limits, the create body, the stored note, the page and the loose payload
 // - The recent prompts query and response
 // - The thread schemas: the stored correction with its withdrawn flag, the thread rows, the withdraw body, the reply counts and the thread reply payload
+// - The session and run read schemas accept a topic id outside the catalogs; the create schemas reject it
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -999,6 +1000,10 @@ describe("practice schemas", () => {
     expect(practiceRunWithItemsSchema.parse({ run, items: [] })).toEqual({ run, items: [] });
   });
 
+  it("parses a run whose topic is outside the grammar catalog", () => {
+    expect(practiceRunSchema.parse({ ...run, topicId: "subjunctive" }).topicId).toBe("subjunctive");
+  });
+
   it("parses a stored item", () => {
     expect(practiceItemSchema.parse(stored)).toEqual(stored);
   });
@@ -1230,6 +1235,10 @@ describe("session context", () => {
   it("parses a session with its context summary and the message it covers", () => {
     const withContext = { ...session, contextSummary: "Lives in Lisbon.", contextThroughId: uuid };
     expect(sessionSchema.parse(withContext)).toEqual(withContext);
+  });
+
+  it("parses a session whose topic is outside the catalog", () => {
+    expect(sessionSchema.parse({ ...session, topicId: "cooking" }).topicId).toBe("cooking");
   });
 
   it("parses a session with no context as nulls", () => {

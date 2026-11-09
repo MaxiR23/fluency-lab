@@ -22,7 +22,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(51);
+select plan(50);
 
 create temp table t_ids (k text primary key, id uuid not null);
 insert into t_ids values
@@ -61,7 +61,6 @@ select results_eq($$select id from public.practice_items$$, $$select id from t_i
 select results_eq($$insert into public.practice_runs (focus, target) values ('words', 15) returning user_id$$, $$select id from t_ids where k = 'u0a'$$, 'a run defaults user_id to the caller');
 select results_eq($$insert into public.practice_runs (focus, topic_id, target) values ('topic', 'articles', 5) returning topic_id$$, array['articles'::text], 'a topic run stores its topic');
 select throws_ok($$insert into public.practice_runs (focus, target) values ('chat', 5)$$, '23514', null, 'an unknown focus fails');
-select throws_ok($$insert into public.practice_runs (focus, topic_id, target) values ('topic', 'sports', 5)$$, '23514', null, 'an unknown topic fails');
 select throws_ok($$insert into public.practice_runs (focus, target) values ('topic', 5)$$, '23514', null, 'a topic run without a topic fails');
 select throws_ok($$insert into public.practice_runs (focus, topic_id, target) values ('mistakes', 'articles', 5)$$, '23514', null, 'a mistakes run with a topic fails');
 select throws_ok($$insert into public.practice_runs (focus, target) values ('mistakes', 7)$$, '23514', null, 'a target of 7 fails');

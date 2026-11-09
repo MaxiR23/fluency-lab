@@ -127,7 +127,7 @@ practice runs (`practice_runs.cost_usd`). `GET
 `SUPABASE_SECRET_KEY`. `GET
 /sessions/:id/messages` answers the session, its messages and the study notes saved in it. `POST
 /sessions/:id/usage` prices the reported tokens and adds them to the session's
-cost. `POST /sessions` takes a topic or a starter id. The practice has `GET
+cost. `POST /sessions` takes a topic or a starter id. The topic of a session and of a practice run is checked by the API against the catalogs in `packages/shared` (`topics.ts` and `grammar-topics.ts`); the database stores any id, and the app draws a session with an unknown topic with the chat icon and the raw id, and a practice run with an unknown topic with the raw id as its title (no icon). A grammar topic is added only in `packages/shared`; a conversation topic also needs the `profiles.topics` check, which still lists them. The practice has `GET
 /practice/today?tz=<IANA zone>` (today's run in that zone, or none), `GET
 /practice/recent-prompts?days=<1-7>&limit=<1-40>` (the recent exercise prompts, to avoid repeating them), `POST /practice/runs`, `GET /practice/runs/:id`,
 `POST /practice/runs/:id/items` (a position already saved is ignored, so a retry repeats safely), `POST /practice/runs/:id/usage`

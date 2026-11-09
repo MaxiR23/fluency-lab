@@ -16,6 +16,7 @@
 // - GET /sessions/:id/summary counts the messages and collects the corrections and new words, the session's thread words included
 // - GET /sessions/spend still counts the cost of a deleted session
 // - the notes routes: create, read, delete and the Progress page, and the notes and note ids of the chat and practice routes
+// - POST /sessions and POST /practice/runs accept a catalog topic and answer invalid_input for one outside it
 // - the practice routes: today, recent prompts, create, read, items, answer, usage, target and finish
 // - the usage route prices the tokens, and the routes reject an apiKey field
 //
@@ -874,7 +875,16 @@ describe("POST /sessions", () => {
   });
 
   it("responds 400 for an unknown topic", async () => {
-    expect((await post(json({ topicId: "cooking" }))).status).toBe(400);
+    const res = await post(json({ topicId: "cooking" }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_input" });
+    expect(fake.user.createSession).not.toHaveBeenCalled();
+  });
+
+  it("responds 400 for a grammar topic, which is not a conversation topic", async () => {
+    const res = await post(json({ topicId: "articles" }));
+    expect(res.status).toBe(400);
+    expect(fake.user.createSession).not.toHaveBeenCalled();
   });
 
   it("responds 400 for a missing topicId", async () => {
@@ -2357,6 +2367,33 @@ describe("the practice routes", () => {
       expect(res.status).toBe(201);
       expect(await res.json()).toEqual(practiceRun);
       expect(fake.user.createPracticeRun).toHaveBeenCalledWith({ focus: "mistakes", target: 5 });
+    });
+
+    it("answers 201 for a topic run on a grammar topic of the catalog", async () => {
+      fake.user.createPracticeRun.mockResolvedValue({
+        ok: true,
+        value: { ...practiceRun, focus: "topic", topicId: "articles" },
+      });
+      const res = await call("POST", "/practice/runs", {
+        focus: "topic",
+        topicId: "articles",
+        target: 5,
+      });
+      expect(res.status).toBe(201);
+      expect(fake.user.createPracticeRun).toHaveBeenCalledWith({
+        focus: "topic",
+        topicId: "articles",
+        target: 5,
+      });
+    });
+
+    it("answers 400 invalid_input for a topic outside the grammar catalog", async () => {
+      for (const topicId of ["subjunctive", "sports"]) {
+        const res = await call("POST", "/practice/runs", { focus: "topic", topicId, target: 5 });
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: "invalid_input" });
+      }
+      expect(fake.user.createPracticeRun).not.toHaveBeenCalled();
     });
 
     it("answers 400 for a bad focus, a target of 20 and a topic run without a topic", async () => {

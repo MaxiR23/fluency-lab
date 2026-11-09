@@ -5,7 +5,7 @@
 // Tested:
 // - Every topic id, level, goal, provider, session status and message role of
 //   packages/shared appears quoted in the migrations
-// - Every grammar topic id, practice focus and practice kind appears quoted too
+// - Every practice focus and practice kind appears quoted too
 // - Row level security is enabled on profiles, sessions, messages, thread_messages,
 //   practice_runs, practice_items and study_notes
 // - Every note kind appears quoted in the migrations
@@ -21,7 +21,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   GOALS,
-  GRAMMAR_TOPIC_IDS,
   LEVELS,
   MESSAGE_ROLES,
   NOTE_KINDS,
@@ -48,7 +47,7 @@ describe("migrations", () => {
     expect(sql.trim()).not.toBe("");
   });
 
-  it("lists every topic id of the catalog in the migration", () => {
+  it("lists every topic id of the catalog, which the profiles topics check still holds", () => {
     expect(missing(TOPIC_IDS)).toEqual([]);
   });
 
@@ -60,8 +59,8 @@ describe("migrations", () => {
     expect(missing([...SESSION_STATUSES, ...MESSAGE_ROLES])).toEqual([]);
   });
 
-  it("lists every grammar topic, practice focus and practice kind", () => {
-    expect(missing([...GRAMMAR_TOPIC_IDS, ...PRACTICE_FOCUSES, ...PRACTICE_KINDS])).toEqual([]);
+  it("lists every practice focus and practice kind", () => {
+    expect(missing([...PRACTICE_FOCUSES, ...PRACTICE_KINDS])).toEqual([]);
   });
 
   it("lists every note kind", () => {

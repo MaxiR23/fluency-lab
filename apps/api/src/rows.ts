@@ -1,7 +1,6 @@
 import {
   GOALS,
   LEVELS,
-  GRAMMAR_TOPIC_IDS,
   MESSAGE_ROLES,
   NOTE_KINDS,
   PRACTICE_FOCUSES,
@@ -41,7 +40,7 @@ const profileRowSchema = z.object({
 
 const sessionRowSchema = z.object({
   id: z.string(),
-  topic_id: z.enum(TOPIC_IDS).nullable(),
+  topic_id: z.string().nullable(),
   title: z.string(),
   status: z.enum(SESSION_STATUSES),
   summary: z.string().nullable(),
@@ -115,7 +114,7 @@ const practiceTarget = z.union([z.literal(5), z.literal(10), z.literal(15)]);
 const practiceRunRowSchema = z.object({
   id: z.string(),
   focus: z.enum(PRACTICE_FOCUSES),
-  topic_id: z.enum(GRAMMAR_TOPIC_IDS).nullable(),
+  topic_id: z.string().nullable(),
   note_id: z.string().nullable(),
   target: practiceTarget,
   cost_usd: z.number(),
