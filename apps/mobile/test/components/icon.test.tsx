@@ -55,6 +55,8 @@ const names: IconName[] = [
   "table",
   "list",
   "trashPlain",
+  "cloudOff",
+  "arc",
 ];
 
 type Node = { props?: Record<string, unknown>; children?: unknown };
@@ -151,5 +153,15 @@ describe("Icon", () => {
   it("draws the plain trash of the note screen, apart from the rounded one", async () => {
     await render(<Icon name="trashPlain" color={colors.textMuted} />);
     expect(drawing()).toBe("M3 6h18|M8 6V4h8v2|M19 6l-1 14H6L5 6");
+  });
+
+  it("draws the crossed cloud of offline.html", async () => {
+    await render(<Icon name="cloudOff" color={colors.accent} />);
+    expect(drawing()).toBe("M17.5 19H8a5 5 0 1 1 1.2-9.86A6 6 0 0 1 20.5 12.5|M3 3l18 18");
+  });
+
+  it("draws the spinner arc of offline-retrying.html", async () => {
+    await render(<Icon name="arc" color={colors.accent} />);
+    expect(drawing()).toBe("M12 3a9 9 0 1 0 9 9");
   });
 });

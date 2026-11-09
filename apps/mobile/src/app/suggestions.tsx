@@ -3,13 +3,16 @@ import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 
 import { Button } from "@/components/button";
 import { FailureMessage } from "@/components/failure-message";
+import { OfflineCard } from "@/components/offline-card";
 import { Screen } from "@/components/screen";
 import { SuggestionCard } from "@/components/suggestion-card";
 import { Text } from "@/components/text";
 import { TextLink } from "@/components/text-link";
 import { colors, spacing } from "@/constants/theme";
 import { useAllSuggestions } from "@/hooks/use-all-suggestions";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { dataFailureMessage } from "@/utils/data-message";
+import { loadFailureView } from "@/utils/load-failure";
 
 function openChat(starter: string) {
   router.push({ pathname: "/chat", params: { starter } });
@@ -17,6 +20,8 @@ function openChat(starter: string) {
 
 export default function Suggestions() {
   const { view, retry } = useAllSuggestions();
+  const motion = useOfflineMotion();
+  const offline = view.kind === "failed" ? loadFailureView("suggestions", view) : null;
 
   return (
     <Screen edges={["left", "right"]}>
@@ -31,7 +36,15 @@ export default function Suggestions() {
         {view.kind === "loading" ? (
           <ActivityIndicator color={colors.accent} testID="suggestions-loading" />
         ) : null}
-        {view.kind === "failed" ? (
+        {view.kind === "failed" && offline !== null && offline.kind === "offline_card" ? (
+          <OfflineCard
+            title={offline.title}
+            retrying={offline.retrying}
+            onRetry={() => void retry()}
+            motion={motion}
+          />
+        ) : null}
+        {view.kind === "failed" && offline !== null && offline.kind === "message" ? (
           <>
             <FailureMessage message={dataFailureMessage(view.failure)} />
             <Button variant="deep" label="Try again" onPress={() => void retry()} />

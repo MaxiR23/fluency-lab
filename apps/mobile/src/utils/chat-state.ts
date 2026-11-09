@@ -25,7 +25,8 @@ import {
   type ConversationEvent,
 } from "@/utils/chat-conversation";
 import type { ChatOrigin } from "@/utils/chat-opening";
-import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
+import { keyReadFailureMessage } from "@/utils/data-message";
+import { dataFailedView } from "@/utils/load-failure";
 import { hasText } from "@/utils/has-text";
 import { providerOptions } from "@/utils/onboarding-options";
 import { tutorName } from "@/utils/chat-reply";
@@ -35,7 +36,7 @@ export type ChatView =
   | { kind: "loading" }
   | { kind: "no_key" }
   | { kind: "ready"; conversation: Conversation }
-  | { kind: "failed"; message: string; cause?: FailureCause };
+  | { kind: "failed"; message: string; cause?: FailureCause; network?: true; retrying?: true };
 
 export const noKeyProviderLine = "No AI connected";
 
@@ -53,12 +54,12 @@ export function chatView(input: {
   const { key, profile, spend, origin, opened } = input;
   if (!key.ok) return { kind: "failed", message: keyReadFailureMessage, cause: key.cause };
   if (!key.value) return { kind: "no_key" };
-  if (!profile.ok) return { kind: "failed", message: dataFailureMessage(profile.failure) };
+  if (!profile.ok) return dataFailedView(profile.failure);
   if (spend !== null && !spend.ok) {
-    return { kind: "failed", message: dataFailureMessage(spend.failure) };
+    return dataFailedView(spend.failure);
   }
   if (opened !== null && !opened.ok) {
-    return { kind: "failed", message: dataFailureMessage(opened.failure) };
+    return dataFailedView(opened.failure);
   }
   if (opened !== null && opened.value.session.status === "ended") {
     return { kind: "failed", message: endedSessionMessage };

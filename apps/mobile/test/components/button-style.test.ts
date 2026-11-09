@@ -205,4 +205,31 @@ describe("buttonStyle", () => {
     expect(buttonStyle("strong").label.fontSize).toBe(fontSize.body);
     expect(buttonStyle("miss").container.borderRadius).toBe(radius.control);
   });
+
+  it("draws the busy look of offline-retrying.html: deep fill, line border, muted label, the spinner beside the label", () => {
+    const { container, label } = buttonStyle("strong", { busy: true });
+    expect(container).toMatchObject({
+      backgroundColor: colors.accentDeep,
+      borderColor: colors.accentLine,
+      flexDirection: "row",
+      gap: spacing.cluster,
+    });
+    expect(label.color).toBe(colors.textMuted);
+  });
+
+  it("draws the inline height of offline-inline.html: 44 tall with 22 at the sides", () => {
+    const { container, label } = buttonStyle("strong", {}, { inline: true });
+    expect(container.minHeight).toBe(size.touch);
+    expect(container.paddingHorizontal).toBe(spacing.section);
+    expect(container.borderRadius).toBe(radius.pill);
+    expect(label.fontSize).toBe(fontSize.body);
+  });
+
+  it("keeps the strong colors when not busy", () => {
+    const { container, label } = buttonStyle("strong", { busy: false });
+    expect(container.backgroundColor).toBe(colors.accentLine);
+    expect(container.borderColor).toBe(colors.accentPressed);
+    expect(container).not.toHaveProperty("flexDirection");
+    expect(label.color).toBe(colors.text);
+  });
 });

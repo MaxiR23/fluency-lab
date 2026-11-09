@@ -157,6 +157,12 @@ export const size = {
   sparkSmall: 4,
   flameWidth: 44,
   flameHeight: 40,
+  cloudRing: 96,
+  cloudBadge: 80,
+  cloudBadgeSmall: 56,
+  iconCloud: 34,
+  iconCloudSmall: 26,
+  iconSpinner: 18,
 } as const;
 export const strokeWidth = {
   icon: 1.8,
@@ -167,6 +173,8 @@ export const strokeWidth = {
   ringSmall: 6,
   ringLarge: 10,
   badge: 3,
+  cloud: 1.7,
+  spinner: 2.4,
 } as const;
 export const borderWidth = { thin: 1, slot: 2 } as const;
 export const fontSize = {
@@ -191,6 +199,7 @@ export const fontSize = {
   score: 32,
   resultTitle: 24,
   sheetTitle: 17,
+  offlineTitle: 22,
 } as const;
 // INFO: React Native takes these in pixels; the design gives them as ratios and em.
 export const lineHeight = {
@@ -218,6 +227,7 @@ export const letterSpacing = {
   prompt: -0.22,
   score: -0.64,
   resultTitle: -0.48,
+  offlineTitle: -0.22,
 } as const;
 // INFO: iOS reads the shadow props and Android reads elevation. The CSS blur of 24 is
 // shadowRadius 12 (half the blur); the design's inset highlight has no equivalent. The chat's
@@ -228,7 +238,8 @@ export const letterSpacing = {
 // card's glow (blur 22 at its peak) is shadowRadius 11, the week's today glow (blur 12) is
 // shadowRadius 6 and the result halo (blur 40 at its peak) is shadowRadius 20; all three are iOS
 // only, and their opacity is animated where the design animates them. The perfect day's flame
-// glow (blur 10) is shadowRadius 5, iOS only like the others.
+// glow (blur 10) is shadowRadius 5, iOS only like the others. The offline badge's glow (blur 24) is
+// shadowRadius 12, iOS only.
 export const shadow = {
   raised: {
     shadowColor: colors.shadow,
@@ -299,6 +310,12 @@ export const shadow = {
     shadowOpacity: 1,
     shadowRadius: 5,
   },
+  cloudGlow: {
+    shadowColor: colors.accentBubble,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 12,
+  },
 } as const;
 export const gradient = {
   flameBody: [
@@ -342,6 +359,10 @@ export const gradient = {
 // rises from 10% to 24% (700) on cubic-bezier(.2,.8,.2,1), motion.sheet.
 // home-perfect-day.html: the flick runs 1.2 s in four ease-in-out steps of 300 from the base
 // (transform-origin 50% 95%).
+// offline.html, offline-retrying.html and offline-inline.html run 5 s: the rise goes from 0% to 20%
+// (1000) from 10 points with ease-out; the rings loop every 2.4 s on ease-out from scale .8 and
+// opacity .6 to scale 1.6 and opacity 0, the second 1.2 s after the first; the spinner turns once
+// every .9 s, linear.
 export const motion = {
   enterDuration: 240,
   enterOffset: 12,
@@ -427,6 +448,16 @@ export const motion = {
     sparkOut: 1500,
     sparkLift: 36,
     sparkScale: 0.4,
+  },
+  offline: {
+    riseDuration: 1000,
+    riseOffset: 10,
+    ringCycle: 2400,
+    ringDelay: 1200,
+    ringFrom: 0.8,
+    ringTo: 1.6,
+    ringOpacity: 0.6,
+    spinCycle: 900,
   },
 } as const;
 export const fontFamily = {

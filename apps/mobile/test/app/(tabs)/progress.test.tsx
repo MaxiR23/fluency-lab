@@ -19,10 +19,11 @@
 // SEE: apps/mobile/src/app/(tabs)/progress.tsx
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { fireEvent, screen, within } from "@testing-library/react-native";
+import { act, fireEvent, screen, within } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 
 import { dataFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { tabBarLayout } from "@/utils/tab-bar";
 
 import { fakeSession, resetFakeAuth } from "../../helpers/fake-auth";
@@ -295,16 +296,53 @@ describe("Progress", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("shows the failure and reads again on Try again", async () => {
+  it("keeps the red failure and Try again when the read fails without the network", async () => {
+    fakeData.listWords.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+    withHistory();
+    await renderAppAt("/progress", fakeSession());
+
+    expect(await screen.findByText(dataFailureMessage("unavailable"))).toBeTruthy();
+    expect(screen.queryByText("Can't load your progress")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText("This month")).toBeTruthy();
+    expect(screen.queryByText(dataFailureMessage("unavailable"))).toBeNull();
+  });
+
+  it("draws the can't-connect card under the header when the read fails on the network", async () => {
     fakeData.listWords.mockResolvedValueOnce({ ok: false, failure: "network" });
     withHistory();
     await renderAppAt("/progress", fakeSession());
 
-    expect(await screen.findByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(await screen.findByRole("header", { name: "Can't load your progress" })).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Progress" })).toBeTruthy();
+    expect(screen.getByText("This month")).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+    expect(screen.queryAllByTestId("stat-card")).toHaveLength(0);
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the progress when the server is back", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof fakeData.listWords>>) => void;
+    fakeData.listWords.mockResolvedValueOnce({ ok: false, failure: "network" });
+    withHistory();
+    await renderAppAt("/progress", fakeSession());
+    await screen.findByRole("header", { name: "Can't load your progress" });
+    fakeData.listWords.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
 
-    expect(await screen.findByText("This month")).toBeTruthy();
-    expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    await act(async () => finish({ ok: true, value: { items: [], nextOffset: null } }));
+    expect(await screen.findAllByTestId("stat-card")).toHaveLength(3);
+    expect(screen.queryByText(retryingLabel)).toBeNull();
   });
 
   it("loads the next page at the end of the list", async () => {

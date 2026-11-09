@@ -27,6 +27,8 @@ import { StyleSheet } from "react-native";
 
 import { composerMaxHeight } from "@/components/chat-composer-style";
 import { radius, size } from "@/constants/theme";
+import { dataFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { fakeAi, resetFakeAi, threadReplyWith } from "../helpers/fake-ai";
 import {
@@ -294,17 +296,53 @@ describe("Thread", () => {
     expect(order[order.length - 1]).toBe("The article is not needed with next year.");
   });
 
-  it("draws the failed state and Try again reads again", async () => {
+  it("keeps the red failure and Try again when the read fails without the network", async () => {
     withKey();
-    fakeData.openThread.mockResolvedValueOnce({ ok: false, failure: "network" });
+    fakeData.openThread.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
     await renderAppAt(open, fakeSession());
-    expect(
-      screen.getByText("Could not reach the server. Check your connection and try again."),
-    ).toBeTruthy();
+    expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
+    expect(screen.queryByText("Can't load this thread")).toBeNull();
 
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
 
     expect(fakeData.openThread).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("header", { name: "Correction" })).toBeTruthy();
+  });
+
+  it("draws the can't-connect card under the header when the read fails on the network", async () => {
+    withKey();
+    fakeData.openThread.mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt(open, fakeSession());
+    expect(screen.getByText("Correction")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back to the chat" })).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load this thread" })).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+
+    expect(fakeData.openThread).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("header", { name: "Correction" })).toBeTruthy();
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the thread when the server is back", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof fakeData.openThread>>) => void;
+    withKey();
+    fakeData.openThread.mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt(open, fakeSession());
+    fakeData.openThread.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    await act(async () => finish({ ok: true, value: threadWith() }));
+    expect(screen.queryByText(retryingLabel)).toBeNull();
     expect(screen.getByRole("header", { name: "Correction" })).toBeTruthy();
   });
 

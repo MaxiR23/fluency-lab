@@ -22,6 +22,7 @@ import { useProfileEdit } from "@/hooks/use-profile-edit";
 import { dataFailureMessage } from "@/utils/data-message";
 import { editDraft } from "@/utils/profile-edit";
 import { completedProfile, fakeData, profileWith, resetFakeData } from "../helpers/fake-data";
+import { failThenHold } from "../helpers/fail-then-hold";
 
 const mockIsFocused = jest.fn(() => true);
 
@@ -108,5 +109,19 @@ describe("useProfileEdit", () => {
     const { result } = await ready("level");
     await act(async () => result.current.save());
     expect(fakeData.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it("keeps the network failure, retrying, while Try again reads again", async () => {
+    const reread = failThenHold(fakeData.getProfile, { ok: false, failure: "network" });
+    const { result } = await renderHook(() => useProfileEdit("name"));
+    await waitFor(() => expect(result.current.state.kind).toBe("failed"));
+    let pending: Promise<void> = Promise.resolve();
+    await act(async () => {
+      pending = result.current.retry();
+    });
+    expect(result.current.state).toEqual({ kind: "failed", failure: "network", retrying: true });
+    reread.release();
+    await act(async () => pending);
+    expect(result.current.state.kind).toBe("ready");
   });
 });

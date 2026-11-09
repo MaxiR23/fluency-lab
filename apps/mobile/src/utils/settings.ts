@@ -4,7 +4,8 @@ import type { FailureCause } from "@/auth/auth-port";
 import type { DataOutcome } from "@/data/data-port";
 import type { KeyPresenceOutcome } from "@/keys/key-port";
 import { MONTH_SHORT } from "@/utils/calendar";
-import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
+import { keyReadFailureMessage } from "@/utils/data-message";
+import { dataFailedView, retryStarted } from "@/utils/load-failure";
 import { providerOptions } from "@/utils/onboarding-options";
 
 const NOT_SET = "Not set";
@@ -53,7 +54,7 @@ export function keyLabel(hasKey: boolean): string {
 
 export type SettingsState =
   | { kind: "loading" }
-  | { kind: "failed"; message: string; cause?: FailureCause }
+  | { kind: "failed"; message: string; cause?: FailureCause; network?: true; retrying?: true }
   | { kind: "ready"; profile: Profile; spend: MonthSpend; hasKey: boolean };
 
 export type SettingsEvent =
@@ -72,16 +73,16 @@ export function settingsFromReads(
   spend: DataOutcome<MonthSpend>,
   key: KeyPresenceOutcome,
 ): SettingsState {
-  if (!profile.ok) return { kind: "failed", message: dataFailureMessage(profile.failure) };
-  if (!spend.ok) return { kind: "failed", message: dataFailureMessage(spend.failure) };
+  if (!profile.ok) return dataFailedView(profile.failure);
+  if (!spend.ok) return dataFailedView(spend.failure);
   if (!key.ok) return { kind: "failed", message: keyReadFailureMessage, cause: key.cause };
   return { kind: "ready", profile: profile.value, spend: spend.value, hasKey: key.value };
 }
 
-export function settingsReducer(_state: SettingsState, event: SettingsEvent): SettingsState {
+export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
   switch (event.type) {
     case "load_started":
-      return initialSettings;
+      return retryStarted(state, initialSettings);
     case "loaded":
       return settingsFromReads(event.profile, event.spend, event.key);
   }

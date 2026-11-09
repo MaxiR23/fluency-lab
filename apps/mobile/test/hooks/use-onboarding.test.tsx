@@ -23,6 +23,7 @@ import { OnboardingProvider, useOnboarding } from "@/hooks/use-onboarding";
 import { SessionProvider } from "@/hooks/use-session";
 import { emitSession, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { completedProfile, fakeData, profileWith, resetFakeData } from "../helpers/fake-data";
+import { failThenHold } from "../helpers/fail-then-hold";
 
 jest.mock("@/auth", () => ({
   auth: jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth").fakeAuth,
@@ -101,6 +102,25 @@ describe("OnboardingProvider", () => {
     await act(async () => result.current.retry());
     expect(fakeData.getProfile).toHaveBeenCalledTimes(2);
     expect(result.current.gate).toEqual({ status: "pending", userId: "user-1" });
+  });
+
+  it("keeps the network failure, retrying, while Try again reads again", async () => {
+    const reread = failThenHold(fakeData.getProfile, { ok: false, failure: "network" });
+    const { result } = await signedIn();
+    expect(result.current.gate.status).toBe("failed");
+    let pending: Promise<void> = Promise.resolve();
+    await act(async () => {
+      pending = result.current.retry();
+    });
+    expect(result.current.gate).toEqual({
+      status: "failed",
+      userId: "user-1",
+      failure: "network",
+      retrying: true,
+    });
+    reread.release();
+    await act(async () => pending);
+    expect(result.current.gate).toEqual({ status: "completed", userId: "user-1" });
   });
 
   it("resets to signed out when the user signs out", async () => {

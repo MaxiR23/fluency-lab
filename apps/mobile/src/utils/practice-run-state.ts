@@ -14,7 +14,8 @@ import type { DataOutcome } from "@/data/data-port";
 import type { KeyPresenceOutcome } from "@/keys/key-port";
 import { noteDraft } from "@/utils/note";
 import { chatNotice, type ChatNotice } from "@/utils/chat-state";
-import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
+import { keyReadFailureMessage } from "@/utils/data-message";
+import { dataFailedView } from "@/utils/load-failure";
 import type { PracticeOrigin } from "@/utils/practice-focus";
 import { focusDataFrom } from "@/utils/practice-prompt";
 import { startPractice, type PracticeRunState } from "@/utils/practice-run";
@@ -22,7 +23,7 @@ import { startPractice, type PracticeRunState } from "@/utils/practice-run";
 export type PracticeScreenView =
   | { kind: "loading" }
   | { kind: "no_key" }
-  | { kind: "failed"; message: string; cause?: FailureCause }
+  | { kind: "failed"; message: string; cause?: FailureCause; network?: true; retrying?: true }
   | { kind: "ready"; run: PracticeRunState };
 
 export const practiceNotFoundMessage = "This practice could not be found.";
@@ -50,22 +51,18 @@ export function practiceRunView(input: {
   const { key, profile, spend, origin, opened, mistakes, words, note, recent } = input;
   if (!key.ok) return { kind: "failed", message: keyReadFailureMessage, cause: key.cause };
   if (!key.value) return { kind: "no_key" };
-  if (!profile.ok) return { kind: "failed", message: dataFailureMessage(profile.failure) };
+  if (!profile.ok) return dataFailedView(profile.failure);
   if (origin === null) return { kind: "failed", message: practiceNotFoundMessage };
   if (spend !== null && !spend.ok) {
-    return { kind: "failed", message: dataFailureMessage(spend.failure) };
+    return dataFailedView(spend.failure);
   }
   if (opened !== null && !opened.ok) {
-    return {
-      kind: "failed",
-      message:
-        opened.failure === "not_found"
-          ? practiceNotFoundMessage
-          : dataFailureMessage(opened.failure),
-    };
+    return opened.failure === "not_found"
+      ? { kind: "failed", message: practiceNotFoundMessage }
+      : dataFailedView(opened.failure);
   }
   if (recent !== null && !recent.ok) {
-    return { kind: "failed", message: dataFailureMessage(recent.failure) };
+    return dataFailedView(recent.failure);
   }
   if (spend === null) return { kind: "loading" };
   if (recent === null) return { kind: "loading" };
@@ -89,13 +86,9 @@ export function practiceRunView(input: {
           : undefined;
   if (read === null) return { kind: "loading" };
   if (read !== undefined && !read.ok) {
-    return {
-      kind: "failed",
-      message:
-        focus === "note" && read.failure === "not_found"
-          ? practiceNoteGoneMessage
-          : dataFailureMessage(read.failure),
-    };
+    return focus === "note" && read.failure === "not_found"
+      ? { kind: "failed", message: practiceNoteGoneMessage }
+      : dataFailedView(read.failure);
   }
   const data = focusDataFrom(
     focus,

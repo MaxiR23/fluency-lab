@@ -6,13 +6,16 @@ import { Button } from "@/components/button";
 import { ChatHeader } from "@/components/chat-header";
 import { ComparisonTable } from "@/components/comparison-table";
 import { FailureMessage } from "@/components/failure-message";
+import { OfflineCard } from "@/components/offline-card";
 import { Screen } from "@/components/screen";
 import { Tag } from "@/components/tag";
 import { Text } from "@/components/text";
 import { borderWidth, colors, radius, shadow, spacing } from "@/constants/theme";
 import { useNote } from "@/hooks/use-note";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { useNoteMotion } from "@/hooks/use-note-motion";
 import { dataFailureMessage } from "@/utils/data-message";
+import { loadFailureView } from "@/utils/load-failure";
 import { deleteNotePrompt, noteParams, noteTable, noteTag } from "@/utils/note";
 import { rowMotion } from "@/utils/note-motion";
 import { rowTransition } from "@/utils/note-transitions";
@@ -22,6 +25,7 @@ export default function Note() {
   const noteId = noteParams(useLocalSearchParams<{ id?: string | string[] }>());
   const { state, retry, remove } = useNote(noteId);
   const motion = useNoteMotion();
+  const offlineMotion = useOfflineMotion();
 
   useEffect(() => {
     if (state.kind === "deleted") router.back();
@@ -37,6 +41,22 @@ export default function Note() {
     );
   }
   if (state.kind === "failed") {
+    // INFO: a note that could not be read on the network draws the can't-connect card under the header; any other failure keeps its red text.
+    const offline = loadFailureView("note", state);
+    if (offline.kind === "offline_card") {
+      return (
+        <Screen edges={["left", "right"]}>
+          <ChatHeader title="Note" backLabel="Back" onBack={() => router.back()} />
+          <OfflineCard
+            title={offline.title}
+            retrying={offline.retrying}
+            onRetry={() => void retry()}
+            motion={offlineMotion}
+            placed
+          />
+        </Screen>
+      );
+    }
     return (
       <Screen>
         <View style={styles.failure}>

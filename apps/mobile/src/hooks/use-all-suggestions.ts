@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { data } from "@/data";
 import { suggestionListView, type SuggestionListView } from "@/utils/suggestion-list";
+import { retryStarted } from "@/utils/load-failure";
 
 export function useAllSuggestions(): { view: SuggestionListView; retry: () => Promise<void> } {
   const [view, setView] = useState<SuggestionListView>({ kind: "loading" });
@@ -18,7 +19,7 @@ export function useAllSuggestions(): { view: SuggestionListView; retry: () => Pr
   }, []);
 
   async function retry(): Promise<void> {
-    setView({ kind: "loading" });
+    setView((current) => retryStarted<SuggestionListView>(current, { kind: "loading" }));
     setView(suggestionListView(await data.getProfile()));
   }
 

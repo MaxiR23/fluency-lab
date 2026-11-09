@@ -164,7 +164,9 @@ describe("noteReducer", () => {
   });
 
   it("goes back to loading", () => {
-    expect(noteReducer({ kind: "failed", failure: "network" }, { type: "load_started" })).toEqual({
+    expect(
+      noteReducer({ kind: "failed", failure: "unavailable" }, { type: "load_started" }),
+    ).toEqual({
       kind: "loading",
     });
   });
@@ -264,5 +266,40 @@ describe("noteTable", () => {
       content: { columns: ["A", "B", "C"], rows: [["x", "y", "z"]], remember: "r" },
     };
     expect(noteTable(table)).toEqual({ columns: ["A", "B", "C"], rows: [["x", "y", "z"]] });
+  });
+});
+
+describe("noteReducer Try again", () => {
+  const network = { kind: "failed", failure: "network" } as const;
+
+  it("keeps a network failure on screen as retrying when Try again starts", () => {
+    expect(noteReducer(network, { type: "load_started" })).toEqual({
+      kind: "failed",
+      failure: "network",
+      retrying: true,
+    });
+  });
+
+  it("goes back to loading when Try again starts after a failure that is not the network", () => {
+    expect(
+      noteReducer({ kind: "failed", failure: "unavailable" }, { type: "load_started" }),
+    ).toEqual({ kind: "loading" });
+  });
+
+  it("draws the data when the retried read succeeds", () => {
+    const retrying = noteReducer(network, { type: "load_started" });
+    expect(
+      noteReducer(retrying, { type: "loaded", note: { ok: true, value: tableOf(1) } }).kind,
+    ).toBe("ready");
+  });
+
+  it("draws a fresh failure, not retrying, when the retried read fails again", () => {
+    const retrying = noteReducer(network, { type: "load_started" });
+    const again = noteReducer(retrying, {
+      type: "loaded",
+      note: { ok: false, failure: "network" },
+    });
+    expect(again).toEqual({ kind: "failed", failure: "network" });
+    expect(again).not.toHaveProperty("retrying");
   });
 });

@@ -633,4 +633,46 @@ describe("theme", () => {
       origin: "50% 95%",
     });
   });
+
+  it("holds the offline badge, ring and icon sizes of offline.html and offline-inline.html", () => {
+    expect(size.cloudRing).toBe(96);
+    expect(size.cloudBadge).toBe(80);
+    expect(size.cloudBadgeSmall).toBe(56);
+    expect(size.iconCloud).toBe(34);
+    expect(size.iconCloudSmall).toBe(26);
+    expect(size.iconSpinner).toBe(18);
+  });
+
+  it("holds the cloud and spinner stroke widths", () => {
+    expect(strokeWidth.cloud).toBe(1.7);
+    expect(strokeWidth.spinner).toBe(2.4);
+  });
+
+  it("holds the offline title's size and letter spacing", () => {
+    expect(fontSize.offlineTitle).toBe(22);
+    expect(letterSpacing.offlineTitle).toBe(-0.22);
+  });
+
+  it("holds the offline badge glow, iOS only", () => {
+    expect(shadow.cloudGlow).toEqual({
+      shadowColor: colors.accentBubble,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 12,
+    });
+    expect(shadow.cloudGlow).not.toHaveProperty("elevation");
+  });
+
+  it("holds the offline motion: a 1000 ms rise from 10, rings every 2400 ms with the second 1200 ms later from .8 and .6 to 1.6, a 900 ms spin", () => {
+    expect(motion.offline).toEqual({
+      riseDuration: 1000,
+      riseOffset: 10,
+      ringCycle: 2400,
+      ringDelay: 1200,
+      ringFrom: 0.8,
+      ringTo: 1.6,
+      ringOpacity: 0.6,
+      spinCycle: 900,
+    });
+  });
 });

@@ -4,15 +4,18 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from "react-na
 import { BackButton } from "@/components/back-button";
 import { Button } from "@/components/button";
 import { FailureMessage } from "@/components/failure-message";
+import { OfflineCard } from "@/components/offline-card";
 import { OpenChatRow } from "@/components/open-chat-row";
 import { RenameSheet } from "@/components/rename-sheet";
 import { Screen } from "@/components/screen";
 import { Text } from "@/components/text";
 import { colors, spacing } from "@/constants/theme";
 import { useChatMotion } from "@/hooks/use-chat-motion";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { useOpenChats } from "@/hooks/use-open-chats";
 import { useRename } from "@/hooks/use-rename";
 import { dataFailureMessage } from "@/utils/data-message";
+import { loadFailureView } from "@/utils/load-failure";
 import {
   deletePromptButtons,
   deletePromptMessage,
@@ -24,8 +27,11 @@ import { renameSheetView } from "@/utils/rename-sheet";
 export default function Chats() {
   const { state, retry, end, remove, titled } = useOpenChats();
   const motion = useChatMotion();
+  const offlineMotion = useOfflineMotion();
   const rename = useRename(titled);
   const sheet = renameSheetView(rename.sheet);
+  const failure = state.kind === "failed" ? loadFailureView("chats", state) : null;
+  const offline = failure !== null && failure.kind === "offline_card" ? failure : null;
 
   return (
     <Screen edges={["left", "right"]}>
@@ -36,14 +42,24 @@ export default function Chats() {
             Open chats
           </Text>
         </View>
-        <View style={styles.intro}>
-          <Text variant="intro">Pick up where you left off. Ended chats move to Progress.</Text>
-        </View>
+        {offline === null ? (
+          <View style={styles.intro}>
+            <Text variant="intro">Pick up where you left off. Ended chats move to Progress.</Text>
+          </View>
+        ) : (
+          <OfflineCard
+            title={offline.title}
+            retrying={offline.retrying}
+            onRetry={() => void retry()}
+            motion={offlineMotion}
+            placed
+          />
+        )}
         <View style={styles.list}>
           {state.kind === "loading" ? (
             <ActivityIndicator color={colors.accent} testID="chats-loading" />
           ) : null}
-          {state.kind === "failed" ? (
+          {state.kind === "failed" && offline === null ? (
             <>
               <FailureMessage message={dataFailureMessage(state.failure)} />
               <Button variant="deep" label="Try again" onPress={() => void retry()} />

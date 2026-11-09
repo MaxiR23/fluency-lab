@@ -22,6 +22,7 @@ import { router } from "expo-router";
 
 import { noCorrectionsText } from "@/utils/summary";
 import { dataFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { fakeData, profileWith, resetFakeData, summaryWith } from "../helpers/fake-data";
 import { resetFakeKeys } from "../helpers/fake-keys";
@@ -178,17 +179,57 @@ describe("Summary", () => {
     expect(screen.getAllByText("New words")).toHaveLength(1);
   });
 
-  it("draws the error with Try again, and Try again reads again", async () => {
-    fakeData.getSessionSummary.mockResolvedValueOnce({ ok: false, failure: "network" });
+  it("keeps the red failure and Try again when the read fails without the network", async () => {
+    fakeData.getSessionSummary.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
     fakeData.getSessionSummary.mockResolvedValue({ ok: true, value: full });
     await renderAppAt(fromChat, fakeSession());
 
-    expect(await screen.findByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(await screen.findByText(dataFailureMessage("unavailable"))).toBeTruthy();
+    expect(screen.queryByText("Can't load this summary")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
 
     expect(await screen.findByText("To review")).toBeTruthy();
     expect(fakeData.getSessionSummary).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(dataFailureMessage("unavailable"))).toBeNull();
+  });
+
+  it("draws the can't-connect card under the header when the read fails on the network", async () => {
+    fakeData.getSessionSummary.mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt(fromChat, fakeSession());
+
+    expect(await screen.findByRole("header", { name: "Can't load this summary" })).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+    expect(screen.queryByRole("button", { name: "Back to Progress" })).toBeNull();
+  });
+
+  it("keeps the Back to Progress row above the card when it comes from the history", async () => {
+    fakeData.getSessionSummary.mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt(fromHistory, fakeSession());
+
+    expect(await screen.findByRole("header", { name: "Can't load this summary" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back to Progress" })).toBeTruthy();
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the summary when the server is back", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof fakeData.getSessionSummary>>) => void;
+    fakeData.getSessionSummary.mockResolvedValueOnce({ ok: false, failure: "network" });
+    fakeData.getSessionSummary.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await renderAppAt(fromChat, fakeSession());
+    await fireEvent.press(await screen.findByRole("button", { name: "Try again" }));
+
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    await act(async () => finish({ ok: true, value: full }));
+    expect(screen.queryByText(retryingLabel)).toBeNull();
+    expect(await screen.findByText("To review")).toBeTruthy();
   });
 
   it("draws the not-found error for a session that is not the user's", async () => {

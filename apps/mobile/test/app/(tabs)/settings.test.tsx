@@ -23,6 +23,7 @@ import { act, fireEvent, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { hapticsFailureMessage } from "@/utils/haptics-setting";
 import { appVersion } from "@/utils/app-version";
 import { tabBarLayout } from "@/utils/tab-bar";
@@ -168,14 +169,45 @@ describe("Settings", () => {
     });
   });
 
-  it("draws the failure and reads again on Try again", async () => {
-    fakeData.getMonthSpend.mockResolvedValueOnce({ ok: false, failure: "network" });
+  it("keeps the red failure and Try again when the read fails without the network", async () => {
+    fakeData.getMonthSpend.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
     await renderAppAt("/settings", fakeSession());
-    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
     expect(screen.queryByRole("header", { name: "Settings" })).toBeNull();
+    expect(screen.queryByText("Can't load your settings")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
     expect(screen.getByRole("header", { name: "Settings" })).toBeTruthy();
+    expect(screen.queryByText(dataFailureMessage("unavailable"))).toBeNull();
+  });
+
+  it("draws the can't-connect card under the header when the read fails on the network", async () => {
+    fakeData.getMonthSpend.mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt("/settings", fakeSession());
+    expect(screen.getByRole("header", { name: "Settings" })).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load your settings" })).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the settings when the server is back", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof fakeData.getMonthSpend>>) => void;
+    fakeData.getMonthSpend.mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt("/settings", fakeSession());
+    fakeData.getMonthSpend.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    await act(async () => finish({ ok: true, value: { monthStart: "2026-11-01", spentUsd: 0 } }));
+    expect(screen.queryByText(retryingLabel)).toBeNull();
+    expect(screen.queryByRole("header", { name: "Can't load your settings" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Edit limit" })).toBeTruthy();
   });
 
   it("draws the key read failure", async () => {

@@ -1,8 +1,9 @@
 import { router } from "expo-router";
-import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from "react-native";
 
 import { Button } from "@/components/button";
 import { FailureMessage } from "@/components/failure-message";
+import { OfflineCard } from "@/components/offline-card";
 import { MistakeCard } from "@/components/mistake-card";
 import { Screen } from "@/components/screen";
 import { SegmentedControl } from "@/components/segmented-control";
@@ -11,9 +12,11 @@ import { StatCard } from "@/components/stat-card";
 import { Text } from "@/components/text";
 import { WordCard } from "@/components/word-card";
 import { colors, size, spacing } from "@/constants/theme";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { useProgress } from "@/hooks/use-progress";
 import { useTabScreenPadding } from "@/hooks/use-tab-screen-padding";
 import { dataFailureMessage } from "@/utils/data-message";
+import { loadFailureView } from "@/utils/load-failure";
 import {
   emptyText,
   monthTiles,
@@ -73,6 +76,7 @@ function Separator() {
 export default function Progress() {
   const { state, section, select, retry, loadMore, retryMore } = useProgress();
   const padding = useTabScreenPadding();
+  const motion = useOfflineMotion();
 
   if (state.kind === "loading") {
     return (
@@ -84,6 +88,30 @@ export default function Progress() {
     );
   }
   if (state.kind === "failed") {
+    // INFO: a month that could not be read on the network draws the can't-connect card under the titles; any other failure keeps its red text.
+    const offline = loadFailureView("progress", state);
+    if (offline.kind === "offline_card") {
+      return (
+        <Screen edges={["left", "right"]}>
+          <ScrollView contentContainerStyle={[styles.content, padding]}>
+            <View style={styles.offline}>
+              <View style={styles.titles}>
+                <Text variant="heading" accessibilityRole="header">
+                  Progress
+                </Text>
+                <Text variant="footer">This month</Text>
+              </View>
+              <OfflineCard
+                title={offline.title}
+                retrying={offline.retrying}
+                onRetry={() => void retry()}
+                motion={motion}
+              />
+            </View>
+          </ScrollView>
+        </Screen>
+      );
+    }
     return (
       <Screen>
         <View style={styles.failure}>
@@ -151,6 +179,8 @@ const styles = StyleSheet.create({
   content: { paddingTop: spacing.screenTopShort, paddingHorizontal: spacing.screenSide },
   header: { gap: spacing.hero, paddingBottom: spacing.hero },
   titles: { gap: spacing.xs },
+  // INFO: offline-inline.html's card sits 8 under the titles.
+  offline: { gap: spacing.sm },
   tiles: { flexDirection: "row", gap: spacing.cluster },
   separator: { height: spacing.cluster },
   more: { paddingTop: spacing.cluster },

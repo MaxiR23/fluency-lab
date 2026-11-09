@@ -595,3 +595,49 @@ describe("the Notes section", () => {
     expect(nextPageOffset(loading, "notes", "retry")).toBeNull();
   });
 });
+
+describe("progressReducer Try again", () => {
+  const network = { kind: "failed", failure: "network" } as const;
+
+  it("keeps a network failure on screen as retrying when Try again starts", () => {
+    expect(progressReducer(network, { type: "load_started" })).toEqual({
+      kind: "failed",
+      failure: "network",
+      retrying: true,
+    });
+  });
+
+  it("goes back to loading when Try again starts after a failure that is not the network", () => {
+    expect(
+      progressReducer({ kind: "failed", failure: "unavailable" }, { type: "load_started" }),
+    ).toEqual(initialProgress);
+  });
+
+  it("draws the data when the retried read succeeds", () => {
+    const retrying = progressReducer(network, { type: "load_started" });
+    expect(
+      progressReducer(retrying, {
+        type: "loaded",
+        month: ok(month),
+        history: historyPage(),
+        mistakes: mistakePage(),
+        words: wordPage(),
+        notes: notePage(),
+      }).kind,
+    ).toBe("ready");
+  });
+
+  it("draws a fresh failure, not retrying, when the retried read fails again", () => {
+    const retrying = progressReducer(network, { type: "load_started" });
+    const again = progressReducer(retrying, {
+      type: "loaded",
+      month: { ok: false, failure: "network" },
+      history: historyPage(),
+      mistakes: mistakePage(),
+      words: wordPage(),
+      notes: notePage(),
+    });
+    expect(again).toEqual({ kind: "failed", failure: "network" });
+    expect(again).not.toHaveProperty("retrying");
+  });
+});

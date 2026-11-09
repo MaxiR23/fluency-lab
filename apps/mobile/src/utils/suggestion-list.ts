@@ -10,7 +10,7 @@ import type { DataFailure, DataOutcome } from "@/data/data-port";
 
 export type SuggestionListView =
   | { kind: "loading" }
-  | { kind: "failed"; failure: DataFailure }
+  | { kind: "failed"; failure: DataFailure; retrying?: true }
   | { kind: "empty" }
   | { kind: "ready"; suggestions: Suggestion[] };
 

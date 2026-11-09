@@ -191,7 +191,7 @@ describe("chatView", () => {
         origin: free,
         opened: null,
       }),
-    ).toEqual({ kind: "failed", message: dataFailureMessage("network") });
+    ).toEqual({ kind: "failed", message: dataFailureMessage("network"), network: true });
   });
 
   it("is failed with the session-ended message when the profile read is unauthorized", () => {
@@ -514,5 +514,30 @@ describe("endPromptButtons", () => {
 
     expect(buttons[0].onPress).toBeUndefined();
     expect(calls).toEqual([]);
+  });
+});
+
+describe("chatView network flag", () => {
+  it("flags a data read that failed on the network", () => {
+    expect(
+      chatView({
+        key: hasKey,
+        profile: { ok: true, value: completedProfile() },
+        spend: { ok: false, failure: "network" },
+        origin: free,
+        opened: null,
+      }),
+    ).toEqual({ kind: "failed", message: dataFailureMessage("network"), network: true });
+  });
+
+  it("does not flag the key read failure", () => {
+    const view = chatView({
+      key: { ok: false, failure: "not_read", cause: { name: "Error", detail: null } },
+      profile: { ok: true, value: completedProfile() },
+      spend: null,
+      origin: free,
+      opened: null,
+    });
+    expect(view).not.toHaveProperty("network");
   });
 });

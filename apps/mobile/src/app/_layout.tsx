@@ -13,11 +13,15 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { Button } from "@/components/button";
 import { FailureMessage } from "@/components/failure-message";
+import { OfflineScreen } from "@/components/offline-screen";
 import { Screen } from "@/components/screen";
 import { HapticsProvider } from "@/hooks/use-haptics";
 import { OnboardingProvider, useOnboarding } from "@/hooks/use-onboarding";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { SessionProvider, useSession } from "@/hooks/use-session";
+import { useSignOut } from "@/hooks/use-sign-out";
 import { authFailureMessage } from "@/utils/auth-message";
+import { loadFailureView } from "@/utils/load-failure";
 import { appEntry } from "@/utils/onboarding-gate";
 import { isFontLoadSettled } from "@/utils/font-load";
 import { darkNavigationTheme } from "@/utils/navigation-theme";
@@ -39,6 +43,8 @@ const styles = StyleSheet.create({
 function RootNavigator({ fontsSettled }: { fontsSettled: boolean }) {
   const { state, retryRestore } = useSession();
   const { gate, userId } = useOnboarding();
+  const signOut = useSignOut();
+  const motion = useOfflineMotion();
   const launch = launchView(fontsSettled, state);
   const shown = launch.kind !== "waiting";
   const entry = appEntry(userId, gate);
@@ -54,6 +60,19 @@ function RootNavigator({ fontsSettled }: { fontsSettled: boolean }) {
   }
 
   if (launch.kind === "failed") {
+    // INFO: a restore that failed on the network draws the can't-connect screen; any other failure keeps its red text.
+    if (loadFailureView("launch", launch).kind === "offline_screen") {
+      return (
+        <OfflineScreen
+          retrying={launch.retrying}
+          onRetry={() => void retryRestore()}
+          onSignOut={() => void signOut.signOut()}
+          signingOut={signOut.running}
+          signOutFailure={signOut.failure}
+          motion={motion}
+        />
+      );
+    }
     return (
       <Screen>
         <View style={styles.content}>

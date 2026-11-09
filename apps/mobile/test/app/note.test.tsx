@@ -23,6 +23,7 @@ import { Alert, type AlertButton } from "react-native";
 import * as Reanimated from "react-native-reanimated";
 
 import { dataFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { fakeData, noteWith, resetFakeData } from "../helpers/fake-data";
 import { resetFakeKeys } from "../helpers/fake-keys";
@@ -202,6 +203,36 @@ describe("Note", () => {
     await renderAppAt(open, fakeSession());
     expect(await screen.findByText(dataFailureMessage("unavailable"))).toBeTruthy();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  it("draws the can't-connect card under the header when the read fails on the network", async () => {
+    fakeData.getNote.mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt(open, fakeSession());
+    expect(await screen.findByRole("header", { name: "Can't load this note" })).toBeTruthy();
+    expect(screen.getByText("Note")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete note" })).toBeNull();
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the note when the server is back", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof fakeData.getNote>>) => void;
+    fakeData.getNote.mockResolvedValueOnce({ ok: false, failure: "network" }).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await renderAppAt(open, fakeSession());
+    await fireEvent.press(await screen.findByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    await act(async () => finish({ ok: true, value: noteWith({ title: "Future forms" }) }));
+    expect(await screen.findByRole("header", { name: "Future forms" })).toBeTruthy();
+    expect(screen.queryByText(retryingLabel)).toBeNull();
   });
 
   it("starts a practice of five on the note", async () => {

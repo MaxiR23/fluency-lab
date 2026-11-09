@@ -16,6 +16,7 @@ import { ConnectAiCard } from "@/components/connect-ai-card";
 import { FailureMessage } from "@/components/failure-message";
 import { FeedbackSheet } from "@/components/feedback-sheet";
 import { IconButton } from "@/components/icon-button";
+import { OfflineCard } from "@/components/offline-card";
 import { ResultList } from "@/components/result-list";
 import { Screen } from "@/components/screen";
 import { ScoreRing } from "@/components/score-ring";
@@ -27,10 +28,12 @@ import { TextField } from "@/components/text-field";
 import { gapSlotStyle } from "@/components/text-style";
 import { colors, motion as tokens, shadow, size, spacing, strokeWidth } from "@/constants/theme";
 import { useHaptics } from "@/hooks/use-haptics";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { usePracticeMotion } from "@/hooks/use-practice-motion";
 import { usePracticeRun } from "@/hooks/use-practice-run";
 import { sendState } from "@/utils/chat-conversation";
 import { enterTransition, easing } from "@/utils/chat-transitions";
+import { loadFailureView } from "@/utils/load-failure";
 import { practiceOrigin } from "@/utils/practice-focus";
 import {
   continueBusy,
@@ -63,6 +66,7 @@ export default function PracticeRun() {
   const { view } = actions;
   const motion = usePracticeMotion();
   const { play } = useHaptics();
+  const offlineMotion = useOfflineMotion();
 
   const feedback = view.kind === "ready" ? view.run.feedback : null;
   const verdictKey = feedback === null ? null : feedback.itemId;
@@ -85,6 +89,22 @@ export default function PracticeRun() {
     );
   }
   if (view.kind === "failed") {
+    // INFO: a practice that could not be read on the network draws the can't-connect card under the header; any other failure keeps its red text.
+    const offline = loadFailureView("practice-run", view);
+    if (offline.kind === "offline_card") {
+      return (
+        <Screen edges={["left", "right"]}>
+          <ExerciseHeader onStop={actions.stop} progress={null} />
+          <OfflineCard
+            title={offline.title}
+            retrying={offline.retrying}
+            onRetry={() => void actions.retry()}
+            motion={offlineMotion}
+            placed
+          />
+        </Screen>
+      );
+    }
     return (
       <Screen>
         <View style={styles.failure}>

@@ -591,6 +591,18 @@ describe("textStyle", () => {
   });
 });
 
+describe("offlineTitle", () => {
+  it("draws the offline title bold at 22 with -0.22 letter spacing, centered", () => {
+    expect(textStyle("offlineTitle")).toEqual({
+      fontFamily: fontFamily.bold,
+      fontSize: fontSize.offlineTitle,
+      color: colors.text,
+      letterSpacing: letterSpacing.offlineTitle,
+      textAlign: "center",
+    });
+  });
+});
+
 describe("gapSlotStyle", () => {
   it("draws the empty gap 120 wide with its 2 point accent underline", () => {
     expect(gapSlotStyle()).toEqual({

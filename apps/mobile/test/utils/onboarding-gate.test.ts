@@ -93,7 +93,7 @@ describe("gateReducer", () => {
   });
 
   it("rechecks a failed gate on retry", () => {
-    const gate: OnboardingGate = { status: "failed", userId: "user-1", failure: "network" };
+    const gate: OnboardingGate = { status: "failed", userId: "user-1", failure: "unavailable" };
     expect(gateReducer(gate, { type: "check_started", userId: "user-1" })).toEqual({
       status: "checking",
       userId: "user-1",
@@ -159,5 +159,48 @@ describe("onboardingView", () => {
     expect(onboardingView("user-1", { status: "completed", userId: "user-1" })).toEqual({
       kind: "steps",
     });
+  });
+});
+
+describe("gate Try again", () => {
+  const network: OnboardingGate = { status: "failed", userId: "user-1", failure: "network" };
+
+  it("keeps a failed gate on the network as retrying when the check starts again", () => {
+    expect(gateReducer(network, { type: "check_started", userId: "user-1" })).toEqual({
+      status: "failed",
+      userId: "user-1",
+      failure: "network",
+      retrying: true,
+    });
+  });
+
+  it("checks again from loading after a failure that is not the network", () => {
+    const gate: OnboardingGate = { status: "failed", userId: "user-1", failure: "unauthorized" };
+    expect(gateReducer(gate, { type: "check_started", userId: "user-1" })).toEqual({
+      status: "checking",
+      userId: "user-1",
+    });
+  });
+
+  it("passes retrying to the onboarding view", () => {
+    const retrying = gateReducer(network, { type: "check_started", userId: "user-1" });
+    expect(onboardingView("user-1", retrying)).toEqual({
+      kind: "failed",
+      failure: "network",
+      retrying: true,
+    });
+    expect(onboardingView("user-1", network)).toEqual({ kind: "failed", failure: "network" });
+  });
+
+  it("still sends a retrying gate to onboarding", () => {
+    const retrying = gateReducer(network, { type: "check_started", userId: "user-1" });
+    expect(appEntry("user-1", retrying)).toBe("onboarding");
+  });
+
+  it("draws the profile when the retried read succeeds", () => {
+    const retrying = gateReducer(network, { type: "check_started", userId: "user-1" });
+    expect(
+      gateReducer(retrying, { type: "profile_read", userId: "user-1", outcome: completed }),
+    ).toEqual({ status: "completed", userId: "user-1" });
   });
 });

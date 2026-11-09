@@ -31,6 +31,7 @@ import { segmentedProgressBar } from "@/components/segmented-progress-style";
 import { gapSlotStyle, textStyle } from "@/components/text-style";
 
 import { dataFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import {
   answerGradeWith,
@@ -197,13 +198,45 @@ describe("Practice run", () => {
     expect(screen).toHavePathname("/api-key");
   });
 
-  it("draws the failure and reads again on Try again", async () => {
+  it("keeps the red failure and Try again when the read fails without the network", async () => {
+    withKey();
+    fakeData.getMonthSpend.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+    await renderAppAt(start, fakeSession());
+    expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
+    expect(screen.queryByText("Can't load this practice")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.queryByText(dataFailureMessage("unavailable"))).toBeNull();
+    expect(screen.getByText("Choose the answer")).toBeTruthy();
+  });
+
+  it("draws the can't-connect card under the header when the read fails on the network", async () => {
     withKey();
     fakeData.getMonthSpend.mockResolvedValueOnce({ ok: false, failure: "network" });
     await renderAppAt(start, fakeSession());
-    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
-    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByRole("button", { name: "Stop practice" })).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load this practice" })).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the exercise when the server is back", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof fakeData.getMonthSpend>>) => void;
+    withKey();
+    fakeData.getMonthSpend.mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt(start, fakeSession());
+    fakeData.getMonthSpend.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    await act(async () => finish({ ok: true, value: { monthStart: "2026-11-01", spentUsd: 0 } }));
+    expect(screen.queryByText(retryingLabel)).toBeNull();
     expect(screen.getByText("Choose the answer")).toBeTruthy();
   });
 

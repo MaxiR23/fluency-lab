@@ -20,6 +20,7 @@ import { act, renderHook, waitFor } from "@testing-library/react-native";
 
 import { useSummary } from "@/hooks/use-summary";
 import { completedProfile, fakeData, resetFakeData, summaryWith } from "../helpers/fake-data";
+import { failThenHold } from "../helpers/fail-then-hold";
 
 jest.mock("@/data", () => ({
   data: jest.requireActual<typeof import("../helpers/fake-data")>("../helpers/fake-data").fakeData,
@@ -80,5 +81,19 @@ describe("useSummary", () => {
 
     expect(result.current.state.kind).toBe("ready");
     expect(fakeData.getSessionSummary).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the network failure, retrying, while Try again reads again", async () => {
+    const reread = failThenHold(fakeData.getSessionSummary, { ok: false, failure: "network" });
+    const { result } = await renderHook(() => useSummary("session-1"));
+    await waitFor(() => expect(result.current.state.kind).toBe("failed"));
+    let pending: Promise<void> = Promise.resolve();
+    await act(async () => {
+      pending = result.current.retry();
+    });
+    expect(result.current.state).toEqual({ kind: "failed", failure: "network", retrying: true });
+    reread.release();
+    await act(async () => pending);
+    expect(result.current.state.kind).toBe("ready");
   });
 });

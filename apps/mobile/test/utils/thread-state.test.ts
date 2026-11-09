@@ -126,7 +126,7 @@ describe("threadView", () => {
         spend: spent,
         thread: opened(),
       }),
-    ).toEqual({ kind: "failed", message: dataFailureMessage("network") });
+    ).toEqual({ kind: "failed", message: dataFailureMessage("network"), network: true });
     expect(
       threadView({
         key: hasKey,
@@ -192,5 +192,28 @@ describe("the thread constants", () => {
     expect(threadTitle).toBe("Correction");
     expect(threadBackLabel).toBe("Back to the chat");
     expect(threadPlaceholder).toBe("Ask about this correction…");
+  });
+});
+
+describe("threadView network flag", () => {
+  it("flags a data read that failed on the network", () => {
+    expect(
+      threadView({
+        key: hasKey,
+        profile,
+        spend: spent,
+        thread: { ok: false, failure: "network" },
+      }),
+    ).toEqual({ kind: "failed", message: dataFailureMessage("network"), network: true });
+  });
+
+  it("does not flag the key read failure", () => {
+    const view = threadView({
+      key: { ok: false, failure: "not_read", cause: { name: "Error", detail: null } },
+      profile,
+      spend: spent,
+      thread: opened(),
+    });
+    expect(view).not.toHaveProperty("network");
   });
 });

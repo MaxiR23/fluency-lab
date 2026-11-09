@@ -77,7 +77,8 @@ export type TextVariant =
   | "resultTitle"
   | "row"
   | "noteLead"
-  | "cell";
+  | "cell"
+  | "offlineTitle";
 
 const variants: Record<TextVariant, TextStyle> = {
   title: {
@@ -434,6 +435,13 @@ const variants: Record<TextVariant, TextStyle> = {
     fontFamily: fontFamily.bold,
     fontSize: fontSize.sheetTitle,
     color: colors.text,
+  },
+  offlineTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.offlineTitle,
+    color: colors.text,
+    letterSpacing: letterSpacing.offlineTitle,
+    textAlign: "center",
   },
   score: {
     fontFamily: fontFamily.bold,

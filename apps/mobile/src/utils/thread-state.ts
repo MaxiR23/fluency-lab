@@ -3,14 +3,15 @@ import type { CorrectionThread, MonthSpend, Profile } from "@fluency-lab/shared"
 import type { FailureCause } from "@/auth/auth-port";
 import type { DataOutcome } from "@/data/data-port";
 import type { KeyPresenceOutcome } from "@/keys/key-port";
-import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
+import { keyReadFailureMessage } from "@/utils/data-message";
+import { dataFailedView } from "@/utils/load-failure";
 import { startThread, type ThreadConversation } from "@/utils/thread-conversation";
 
 export type ThreadScreenView =
   | { kind: "loading" }
   | { kind: "no_key" }
   | { kind: "ready"; conversation: ThreadConversation }
-  | { kind: "failed"; message: string; cause?: FailureCause };
+  | { kind: "failed"; message: string; cause?: FailureCause; network?: true; retrying?: true };
 
 export const threadTitle = "Correction";
 export const threadBackLabel = "Back to the chat";
@@ -39,12 +40,12 @@ export function threadView(input: {
   const { key, profile, spend, thread } = input;
   if (!key.ok) return { kind: "failed", message: keyReadFailureMessage, cause: key.cause };
   if (!key.value) return { kind: "no_key" };
-  if (!profile.ok) return { kind: "failed", message: dataFailureMessage(profile.failure) };
+  if (!profile.ok) return dataFailedView(profile.failure);
   if (spend !== null && !spend.ok) {
-    return { kind: "failed", message: dataFailureMessage(spend.failure) };
+    return dataFailedView(spend.failure);
   }
   if (thread !== null && !thread.ok) {
-    return { kind: "failed", message: dataFailureMessage(thread.failure) };
+    return dataFailedView(thread.failure);
   }
   if (spend === null || thread === null) return { kind: "loading" };
   // INFO: the database does not check what a thread hangs on; only a learner message that

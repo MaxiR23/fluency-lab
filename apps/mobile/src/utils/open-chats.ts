@@ -5,6 +5,7 @@ import type { DataFailure, DataOutcome } from "@/data/data-port";
 import type { PromptButton } from "@/utils/chat-state";
 import { shortRelativeTime } from "@/utils/relative-time";
 import { sessionIcon } from "@/utils/topic-icon";
+import { retryStarted } from "@/utils/load-failure";
 
 export type OpenChatRowView = {
   id: string;
@@ -30,7 +31,7 @@ export function openChatRow(open: ActiveSession, now: number): OpenChatRowView {
 
 export type OpenChatsState =
   | { kind: "loading" }
-  | { kind: "failed"; failure: DataFailure }
+  | { kind: "failed"; failure: DataFailure; retrying?: true }
   | { kind: "empty" }
   | {
       kind: "ready";
@@ -60,7 +61,7 @@ export function openChatsFromRead(
 export function openChatsReducer(state: OpenChatsState, event: OpenChatsEvent): OpenChatsState {
   switch (event.type) {
     case "load_started":
-      return initialOpenChats;
+      return retryStarted(state, initialOpenChats);
     case "loaded":
       return openChatsFromRead(event.outcome, event.loadedAt);
     case "title_saved": {

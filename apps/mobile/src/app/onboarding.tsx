@@ -6,13 +6,16 @@ import { Button } from "@/components/button";
 import { FailureMessage } from "@/components/failure-message";
 import { GoalStepFields } from "@/components/goal-step-fields";
 import { LevelStepFields } from "@/components/level-step-fields";
+import { OfflineScreen } from "@/components/offline-screen";
 import { Screen } from "@/components/screen";
 import { SignOutButton } from "@/components/sign-out-button";
 import { StepScreen } from "@/components/step-screen";
 import { TextLink } from "@/components/text-link";
 import { TopicStepFields } from "@/components/topic-step-fields";
 import { colors, spacing } from "@/constants/theme";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { useOnboarding } from "@/hooks/use-onboarding";
+import { useSignOut } from "@/hooks/use-sign-out";
 import { keys } from "@/keys";
 import type { FailureCause } from "@/auth/auth-port";
 import {
@@ -20,6 +23,7 @@ import {
   keyDeleteFailureMessage,
   keySaveFailureMessage,
 } from "@/utils/data-message";
+import { loadFailureView } from "@/utils/load-failure";
 import { onboardingView } from "@/utils/onboarding-gate";
 import {
   canContinue,
@@ -38,6 +42,8 @@ type SaveFailure = { message: string; cause?: FailureCause };
 export default function Onboarding() {
   const { gate, userId, retry } = useOnboarding();
   const view = onboardingView(userId, gate);
+  const signOut = useSignOut();
+  const motion = useOfflineMotion();
 
   if (view.kind === "loading") {
     return (
@@ -49,6 +55,20 @@ export default function Onboarding() {
     );
   }
   if (view.kind === "failed") {
+    // INFO: a profile check that failed on the network draws the can't-connect screen; any other failure keeps its red text.
+    const offline = loadFailureView("onboarding", view);
+    if (offline.kind === "offline_screen") {
+      return (
+        <OfflineScreen
+          retrying={offline.retrying}
+          onRetry={() => void retry()}
+          onSignOut={() => void signOut.signOut()}
+          signingOut={signOut.running}
+          signOutFailure={signOut.failure}
+          motion={motion}
+        />
+      );
+    }
     return (
       <Screen>
         <View style={styles.content}>

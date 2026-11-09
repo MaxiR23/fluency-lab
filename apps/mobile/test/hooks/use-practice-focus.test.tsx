@@ -27,6 +27,7 @@ import {
   newWordWith,
   resetFakeData,
 } from "../helpers/fake-data";
+import { failThenHold } from "../helpers/fail-then-hold";
 
 jest.mock("expo-router", () => ({ useIsFocused: jest.fn(() => true) }));
 jest.mock("@/utils/time-zone", () => ({ deviceTimeZone: jest.fn(() => "UTC") }));
@@ -129,5 +130,19 @@ describe("usePracticeFocus", () => {
     expect(fakeData.getProfile).not.toHaveBeenCalled();
     expect(result.current.state).toEqual({ kind: "loading" });
     await unmount();
+  });
+
+  it("keeps the network failure, retrying, while Try again reads again", async () => {
+    const reread = failThenHold(fakeData.getProfile, { ok: false, failure: "network" });
+    const { result } = await renderHook(() => usePracticeFocus());
+    await waitFor(() => expect(result.current.state.kind).toBe("failed"));
+    let pending: Promise<void> = Promise.resolve();
+    await act(async () => {
+      pending = result.current.retry();
+    });
+    expect(result.current.state).toEqual({ kind: "failed", failure: "network", retrying: true });
+    reread.release();
+    await act(async () => pending);
+    expect(result.current.state.kind).toBe("ready");
   });
 });

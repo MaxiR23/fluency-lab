@@ -168,6 +168,7 @@ describe("settingsFromReads", () => {
     ).toEqual({
       kind: "failed",
       message: "Could not reach the server. Check your connection and try again.",
+      network: true,
     });
   });
 
@@ -224,5 +225,66 @@ describe("keyStepParams", () => {
 
   it("falls back to claude without a provider", () => {
     expect(keyStepParams(profileWith({}), false).provider).toBe("claude");
+  });
+});
+
+describe("settingsReducer Try again", () => {
+  const network = {
+    kind: "failed",
+    message: "Could not reach the server. Check your connection and try again.",
+    network: true,
+  } as const;
+  const loaded = {
+    type: "loaded",
+    profile: { ok: true, value: completedProfile() },
+    spend: { ok: true, value: { monthStart: "2026-11-01", spentUsd: 0 } },
+    key: { ok: true, value: false },
+  } as const;
+
+  it("flags a data read that failed on the network", () => {
+    expect(settingsFromReads({ ok: false, failure: "network" }, loaded.spend, loaded.key)).toEqual(
+      network,
+    );
+  });
+
+  it("does not flag the key read failure", () => {
+    const state = settingsFromReads(loaded.profile, loaded.spend, {
+      ok: false,
+      failure: "not_read",
+      cause: { name: "Error", detail: null },
+    });
+    expect(state).toMatchObject({ kind: "failed", message: keyReadFailureMessage });
+    expect(state).not.toHaveProperty("network");
+  });
+
+  it("keeps a network failure on screen as retrying when Try again starts", () => {
+    expect(settingsReducer(network, { type: "load_started" })).toEqual({
+      ...network,
+      retrying: true,
+    });
+  });
+
+  it("goes back to loading when Try again starts after a failure that is not the network", () => {
+    const failed = settingsFromReads(
+      { ok: false, failure: "unavailable" },
+      loaded.spend,
+      loaded.key,
+    );
+    expect(settingsReducer(failed, { type: "load_started" })).toEqual(initialSettings);
+  });
+
+  it("draws the data when the retried read succeeds", () => {
+    const retrying = settingsReducer(network, { type: "load_started" });
+    expect(settingsReducer(retrying, loaded).kind).toBe("ready");
+  });
+
+  it("draws a fresh failure, not retrying, when the retried read fails again", () => {
+    const retrying = settingsReducer(network, { type: "load_started" });
+    const again = settingsReducer(retrying, {
+      ...loaded,
+      profile: { ok: false, failure: "network" },
+    });
+    expect(again).toEqual(network);
+    expect(again).not.toHaveProperty("retrying");
   });
 });

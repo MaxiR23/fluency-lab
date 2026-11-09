@@ -5,15 +5,18 @@ import { Avatar } from "@/components/avatar";
 import { BackButton } from "@/components/back-button";
 import { Button } from "@/components/button";
 import { FailureMessage } from "@/components/failure-message";
+import { OfflineCard } from "@/components/offline-card";
 import { ListGroup } from "@/components/list-group";
 import { ListRow } from "@/components/list-row";
 import { Screen } from "@/components/screen";
 import { StatCard } from "@/components/stat-card";
 import { Text } from "@/components/text";
 import { colors, spacing } from "@/constants/theme";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { useProfile } from "@/hooks/use-profile";
 import { useSignOut } from "@/hooks/use-sign-out";
 import { dataFailureMessage } from "@/utils/data-message";
+import { loadFailureView } from "@/utils/load-failure";
 import {
   deleteAccountButtons,
   deleteAccountPrompt,
@@ -30,6 +33,7 @@ function edit(field: EditField) {
 export default function Profile() {
   const { state, email, retry, deletion, deleteAccount } = useProfile();
   const signOut = useSignOut();
+  const motion = useOfflineMotion();
 
   if (state.kind === "loading") {
     return (
@@ -41,6 +45,28 @@ export default function Profile() {
     );
   }
   if (state.kind === "failed") {
+    // INFO: a profile that could not be read on the network draws the can't-connect card under the title; any other failure keeps its red text.
+    const offline = loadFailureView("profile", state);
+    if (offline.kind === "offline_card") {
+      return (
+        <Screen edges={["left", "right"]}>
+          <View style={styles.offline}>
+            <View style={styles.title}>
+              <BackButton onPress={() => router.back()} />
+              <Text variant="screenTitle" accessibilityRole="header">
+                Profile
+              </Text>
+            </View>
+            <OfflineCard
+              title={offline.title}
+              retrying={offline.retrying}
+              onRetry={() => void retry()}
+              motion={motion}
+            />
+          </View>
+        </Screen>
+      );
+    }
     return (
       <Screen>
         <View style={styles.failure}>
@@ -118,6 +144,12 @@ export default function Profile() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   failure: { padding: spacing.screenSide, gap: spacing.lg },
+  // INFO: offline-inline.html's card sits 8 under the title row with 20 at the sides.
+  offline: {
+    paddingTop: spacing.screenTopHeader,
+    paddingHorizontal: spacing.screenSide,
+    gap: spacing.sm,
+  },
   content: {
     paddingTop: spacing.screenTopHeader,
     paddingHorizontal: spacing.screenSide,
