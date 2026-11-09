@@ -12,12 +12,20 @@ import {
 
 export type ButtonVariant = "primary" | "secondary" | "deep" | "strong" | "miss";
 
-type ButtonState = { pressed?: boolean; disabled?: boolean };
+type ButtonState = { pressed?: boolean; disabled?: boolean; busy?: boolean };
 
 type Palette = { background: string; border: string; label: string };
 
 function palette(variant: ButtonVariant, state: ButtonState): Palette {
   if (variant === "primary" || variant === "deep" || variant === "strong") {
+    // INFO: offline-retrying.html: while a retry runs the button keeps a deep fill with a muted label.
+    if (state.busy) {
+      return {
+        background: colors.accentDeep,
+        border: colors.accentLine,
+        label: colors.textMuted,
+      };
+    }
     if (state.disabled) {
       return {
         background: colors.surface,
@@ -80,9 +88,15 @@ function palette(variant: ButtonVariant, state: ButtonState): Palette {
   };
 }
 
-function minHeight(options: { compact?: boolean; small?: boolean }): number {
+function minHeight(options: { compact?: boolean; small?: boolean; inline?: boolean }): number {
+  if (options.inline === true) return size.touch;
   if (options.small === true) return size.controlSmall;
   return options.compact === true ? size.controlCompact : size.control;
+}
+
+function paddingHorizontal(options: { small?: boolean; inline?: boolean }): number {
+  if (options.inline === true) return spacing.section;
+  return options.small === true ? spacing.md : spacing.lg;
 }
 
 function labelSize(options: { small?: boolean; large?: boolean }): number {
@@ -93,7 +107,7 @@ function labelSize(options: { small?: boolean; large?: boolean }): number {
 export function buttonStyle(
   variant: ButtonVariant = "primary",
   state: ButtonState = {},
-  options: { compact?: boolean; small?: boolean; large?: boolean } = {},
+  options: { compact?: boolean; small?: boolean; large?: boolean; inline?: boolean } = {},
 ): { container: ViewStyle; label: TextStyle } {
   const { background, border, label } = palette(variant, state);
   return {
@@ -103,9 +117,10 @@ export function buttonStyle(
       borderWidth: borderWidth.thin,
       borderRadius: variant === "strong" || options.large === true ? radius.pill : radius.control,
       minHeight: minHeight(options),
-      paddingHorizontal: options.small === true ? spacing.md : spacing.lg,
+      paddingHorizontal: paddingHorizontal(options),
       alignItems: "center",
       justifyContent: "center",
+      ...(state.busy === true ? { flexDirection: "row", gap: spacing.cluster } : {}),
     },
     label: {
       color: label,

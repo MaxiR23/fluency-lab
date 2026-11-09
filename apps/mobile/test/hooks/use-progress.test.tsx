@@ -22,6 +22,7 @@ import { useIsFocused } from "expo-router";
 
 import { useProgress } from "@/hooks/use-progress";
 import { fakeData, historyItemWith, newWordWith, resetFakeData } from "../helpers/fake-data";
+import { failThenHold } from "../helpers/fail-then-hold";
 
 jest.mock("expo-router", () => ({ useIsFocused: jest.fn(() => true) }));
 jest.mock("@/utils/time-zone", () => ({ deviceTimeZone: jest.fn(() => "America/Lima") }));
@@ -158,5 +159,19 @@ describe("useProgress", () => {
     await act(async () => result.current.retryMore());
     expect(fakeData.listHistory).toHaveBeenCalledTimes(3);
     expect(fakeData.listHistory).toHaveBeenLastCalledWith("America/Lima", 20);
+  });
+
+  it("keeps the network failure, retrying, while Try again reads again", async () => {
+    const reread = failThenHold(fakeData.listMistakes, { ok: false, failure: "network" });
+    const { result } = await renderHook(() => useProgress());
+    await waitFor(() => expect(result.current.state.kind).toBe("failed"));
+    let pending: Promise<void> = Promise.resolve();
+    await act(async () => {
+      pending = result.current.retry();
+    });
+    expect(result.current.state).toEqual({ kind: "failed", failure: "network", retrying: true });
+    reread.release();
+    await act(async () => pending);
+    expect(result.current.state.kind).toBe("ready");
   });
 });

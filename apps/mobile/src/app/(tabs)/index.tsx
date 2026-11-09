@@ -6,6 +6,7 @@ import { ActionCard } from "@/components/action-card";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import { FailureMessage } from "@/components/failure-message";
+import { OfflineCard } from "@/components/offline-card";
 import { IconCard } from "@/components/icon-card";
 import { Screen } from "@/components/screen";
 import { SectionHeader } from "@/components/section-header";
@@ -14,10 +15,12 @@ import { Text } from "@/components/text";
 import { WeekStrip } from "@/components/week-strip";
 import { colors, spacing } from "@/constants/theme";
 import { useHome } from "@/hooks/use-home";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { usePracticeMotion } from "@/hooks/use-practice-motion";
 import { useTabScreenPadding } from "@/hooks/use-tab-screen-padding";
 import { dataFailureMessage } from "@/utils/data-message";
 import { enterTransition } from "@/utils/chat-transitions";
+import { loadFailureView } from "@/utils/load-failure";
 import { avatarInitial, continueCard, greeting, seeAllLabel } from "@/utils/home";
 import { riseMotion } from "@/utils/practice-motion";
 
@@ -33,6 +36,7 @@ export default function Home() {
   const { state, retry } = useHome();
   const padding = useTabScreenPadding();
   const { home } = usePracticeMotion();
+  const motion = useOfflineMotion();
 
   if (state.kind === "loading") {
     return (
@@ -44,6 +48,27 @@ export default function Home() {
     );
   }
   if (state.kind === "failed") {
+    // INFO: a Home that could not be read on the network draws the can't-connect card under the heading; any other failure keeps its red text.
+    const offline = loadFailureView("home", state);
+    if (offline.kind === "offline_card") {
+      return (
+        <Screen edges={["left", "right"]}>
+          <ScrollView contentContainerStyle={[styles.content, padding]}>
+            <View style={styles.offline}>
+              <Text variant="heading" accessibilityRole="header">
+                Ready to practice?
+              </Text>
+              <OfflineCard
+                title={offline.title}
+                retrying={offline.retrying}
+                onRetry={() => void retry()}
+                motion={motion}
+              />
+            </View>
+          </ScrollView>
+        </Screen>
+      );
+    }
     return (
       <Screen>
         <View style={styles.failure}>
@@ -138,6 +163,8 @@ export default function Home() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   failure: { padding: spacing.screenSide, gap: spacing.lg },
+  // INFO: offline-inline.html's card sits 8 under the heading with 20 at the sides.
+  offline: { gap: spacing.sm, paddingHorizontal: spacing.screenSide },
   content: {
     paddingTop: spacing.screenTopShort,
     gap: spacing.hero,

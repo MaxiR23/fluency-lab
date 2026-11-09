@@ -20,6 +20,7 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 
 import { dataFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { completedProfile, fakeData, profileWith, resetFakeData } from "../helpers/fake-data";
 import { resetFakeKeys } from "../helpers/fake-keys";
@@ -91,16 +92,52 @@ describe("Edit profile", () => {
     expect(screen.getByLabelText("Name")).toBeTruthy();
   });
 
-  it("draws the failure and reads again", async () => {
+  it("keeps the red failure and Try again when the read fails without the network", async () => {
     const done = { ok: true, value: ada } as const;
     fakeData.getProfile
       .mockResolvedValueOnce(done)
       .mockResolvedValueOnce(done)
-      .mockResolvedValueOnce({ ok: false, failure: "network" })
+      .mockResolvedValueOnce({ ok: false, failure: "unavailable" })
       .mockResolvedValue(done);
     await renderAppAt({ pathname: "/edit-profile", params: { field: "name" } }, fakeSession());
-    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
+    expect(screen.queryByText("Can't load your profile")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByLabelText("Name")).toBeTruthy();
+  });
+
+  it("draws the can't-connect card under the header when the read fails on the network", async () => {
+    const done = { ok: true, value: ada } as const;
+    fakeData.getProfile
+      .mockResolvedValueOnce(done)
+      .mockResolvedValueOnce(done)
+      .mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt({ pathname: "/edit-profile", params: { field: "name" } }, fakeSession());
+    expect(screen.getByText("Your name")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Back" })).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load your profile" })).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the field when the server is back", async () => {
+    const done = { ok: true, value: ada } as const;
+    const pending = deferred<Awaited<ReturnType<typeof fakeData.getProfile>>>();
+    fakeData.getProfile
+      .mockResolvedValueOnce(done)
+      .mockResolvedValueOnce(done)
+      .mockResolvedValueOnce({ ok: false, failure: "network" })
+      .mockReturnValueOnce(pending.promise);
+    await renderAppAt({ pathname: "/edit-profile", params: { field: "name" } }, fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    await act(async () => pending.resolve(done));
+    expect(screen.queryByText(retryingLabel)).toBeNull();
     expect(screen.getByLabelText("Name")).toBeTruthy();
   });
 

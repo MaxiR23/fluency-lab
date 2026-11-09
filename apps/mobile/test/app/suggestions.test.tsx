@@ -20,6 +20,7 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 
 import { dataFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { fakeData, profileWith, resetFakeData } from "../helpers/fake-data";
 import { resetFakeKeys } from "../helpers/fake-keys";
@@ -87,17 +88,55 @@ describe("Suggestions", () => {
     expect(screen.queryByRole("button", { name: other?.title ?? "" })).toBeNull();
   });
 
-  it("draws the failure and reads again on Try again", async () => {
+  it("keeps the red failure and Try again when the read fails without the network", async () => {
     // INFO: the sign-in guard and Home read first; the third read is this screen's.
+    fakeData.getProfile
+      .mockResolvedValueOnce({ ok: true, value: beginner })
+      .mockResolvedValueOnce({ ok: true, value: beginner })
+      .mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+    await renderAppAt("/suggestions", fakeSession());
+    expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
+    expect(screen.queryByText("Can't load your suggestions")).toBeNull();
+    fakeData.getProfile.mockResolvedValue({ ok: true, value: beginner });
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.queryByText(dataFailureMessage("unavailable"))).toBeNull();
+    expect(
+      screen.getByRole("button", { name: allSuggestions(beginner)[0]?.title ?? "" }),
+    ).toBeTruthy();
+  });
+
+  it("draws the can't-connect card under the header when the read fails on the network", async () => {
     fakeData.getProfile
       .mockResolvedValueOnce({ ok: true, value: beginner })
       .mockResolvedValueOnce({ ok: true, value: beginner })
       .mockResolvedValueOnce({ ok: false, failure: "network" });
     await renderAppAt("/suggestions", fakeSession());
-    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
-    fakeData.getProfile.mockResolvedValue({ ok: true, value: beginner });
-    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByRole("header", { name: "Suggested for you" })).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load your suggestions" })).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the suggestions when the server is back", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof fakeData.getProfile>>) => void;
+    fakeData.getProfile
+      .mockResolvedValueOnce({ ok: true, value: beginner })
+      .mockResolvedValueOnce({ ok: true, value: beginner })
+      .mockResolvedValueOnce({ ok: false, failure: "network" })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+    await renderAppAt("/suggestions", fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    await act(async () => finish({ ok: true, value: beginner }));
+    expect(screen.queryByText(retryingLabel)).toBeNull();
     expect(
       screen.getByRole("button", { name: allSuggestions(beginner)[0]?.title ?? "" }),
     ).toBeTruthy();
@@ -130,7 +169,7 @@ describe("Suggestions", () => {
       .mockResolvedValueOnce({ ok: true, value: beginner })
       .mockResolvedValueOnce({ ok: false, failure: "network" });
     await renderAppAt("/suggestions", fakeSession());
-    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load your suggestions" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Start a free chat" })).toBeTruthy();
   });
 });

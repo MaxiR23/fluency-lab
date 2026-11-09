@@ -219,3 +219,43 @@ describe("deletionReducer", () => {
     expect(deletionReducer(failed, { type: "started" }).failure).toBeNull();
   });
 });
+
+describe("profileReducer Try again", () => {
+  const network = { kind: "failed", failure: "network" } as const;
+
+  it("keeps a network failure on screen as retrying when Try again starts", () => {
+    expect(profileReducer(network, { type: "load_started" })).toEqual({
+      kind: "failed",
+      failure: "network",
+      retrying: true,
+    });
+  });
+
+  it("goes back to loading when Try again starts after a failure that is not the network", () => {
+    expect(
+      profileReducer({ kind: "failed", failure: "unavailable" }, { type: "load_started" }),
+    ).toEqual(initialProfile);
+  });
+
+  it("draws the data when the retried read succeeds", () => {
+    const retrying = profileReducer(network, { type: "load_started" });
+    expect(
+      profileReducer(retrying, {
+        type: "loaded",
+        profile: { ok: true, value: completedProfile() },
+        stats: { ok: true, value: stats },
+      }).kind,
+    ).toBe("ready");
+  });
+
+  it("draws a fresh failure, not retrying, when the retried read fails again", () => {
+    const retrying = profileReducer(network, { type: "load_started" });
+    const again = profileReducer(retrying, {
+      type: "loaded",
+      profile: { ok: false, failure: "network" },
+      stats: { ok: true, value: stats },
+    });
+    expect(again).toEqual({ kind: "failed", failure: "network" });
+    expect(again).not.toHaveProperty("retrying");
+  });
+});

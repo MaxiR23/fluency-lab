@@ -18,6 +18,7 @@ import type { ChatOrigin } from "@/utils/chat-opening";
 import { chatView, contextRefresh, threadsRefresh, type ChatView } from "@/utils/chat-state";
 import { hasText } from "@/utils/has-text";
 import { deviceTimeZone } from "@/utils/time-zone";
+import { retryStarted } from "@/utils/load-failure";
 
 async function readChat(origin: ChatOrigin): Promise<ChatView> {
   const [key, profile] = await Promise.all([keys.hasApiKey(), data.getProfile()]);
@@ -225,7 +226,7 @@ export function useChat(chatOrigin: ChatOrigin): {
   async function retry(): Promise<void> {
     const conversation = current.current;
     if (conversation === null) {
-      setView({ kind: "loading" });
+      setView((current) => retryStarted<ChatView>(current, { kind: "loading" }));
       show(await readChat(origin));
       return;
     }

@@ -9,12 +9,13 @@ import {
 
 import type { DataFailure, DataOutcome } from "@/data/data-port";
 import { firstOf, type Param } from "@/utils/chat-opening";
+import { retryStarted } from "@/utils/load-failure";
 
 export type SummaryFrom = "chat" | "history";
 
 export type SummaryState =
   | { kind: "loading" }
-  | { kind: "failed"; failure: DataFailure }
+  | { kind: "failed"; failure: DataFailure; retrying?: true }
   | { kind: "ready"; profile: Profile; summary: SessionSummary };
 
 export type SummaryEvent =
@@ -37,10 +38,10 @@ export function summaryFromReads(
   return { kind: "ready", profile: profile.value, summary: summary.value };
 }
 
-export function summaryReducer(_state: SummaryState, event: SummaryEvent): SummaryState {
+export function summaryReducer(state: SummaryState, event: SummaryEvent): SummaryState {
   switch (event.type) {
     case "load_started":
-      return { kind: "loading" };
+      return retryStarted(state, { kind: "loading" });
     case "loaded":
       return summaryFromReads(event.profile, event.summary);
   }

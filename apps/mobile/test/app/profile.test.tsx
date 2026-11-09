@@ -27,6 +27,7 @@ import type { Profile } from "@fluency-lab/shared";
 
 import { authFailureMessage } from "@/utils/auth-message";
 import { dataFailureMessage, keyDeleteFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { greeting } from "@/utils/home";
 import { emitSession, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { fakeData, profileWith, resetFakeData } from "../helpers/fake-data";
@@ -156,13 +157,45 @@ describe("Profile", () => {
     expect(screen.getByText("4 selected")).toBeTruthy();
   });
 
-  it("draws the failure and reads again on Try again", async () => {
-    fakeData.getProfileStats.mockResolvedValueOnce({ ok: false, failure: "network" });
+  it("keeps the red failure and Try again when the read fails without the network", async () => {
+    fakeData.getProfileStats.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
     await renderAppAt("/profile", fakeSession());
-    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
+    expect(screen.queryByText("Can't load your profile")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
     expect(screen.getByText("Maxi")).toBeTruthy();
+    expect(screen.queryByText(dataFailureMessage("unavailable"))).toBeNull();
+  });
+
+  it("draws the can't-connect card under the header when the read fails on the network", async () => {
+    fakeData.getProfileStats.mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt("/profile", fakeSession());
+    expect(screen.getByRole("header", { name: "Profile" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back to Home" })).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load your profile" })).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the profile when the server is back", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof fakeData.getProfileStats>>) => void;
+    fakeData.getProfileStats
+      .mockResolvedValueOnce({ ok: false, failure: "network" })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+    await renderAppAt("/profile", fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    await act(async () => finish({ ok: true, value: { sessions: 1, dayStreak: 1, newWords: 1 } }));
+    expect(screen.queryByText(retryingLabel)).toBeNull();
+    expect(screen.getByText("Maxi")).toBeTruthy();
   });
 
   it("opens the level, goals and topics edits", async () => {

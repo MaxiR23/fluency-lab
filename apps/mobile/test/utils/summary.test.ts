@@ -55,7 +55,7 @@ describe("summaryFromReads, summaryReducer and initialSummary", () => {
   });
 
   it("goes back to loading on load_started and folds the reads on loaded", () => {
-    const failed = { kind: "failed", failure: "network" } as const;
+    const failed = { kind: "failed", failure: "unavailable" } as const;
     expect(summaryReducer(failed, { type: "load_started" })).toEqual({ kind: "loading" });
     expect(
       summaryReducer(
@@ -184,5 +184,45 @@ describe("practiceAgainHref", () => {
 
   it("opens a free chat for a topic outside the catalog", () => {
     expect(practiceAgainHref(summaryWith({}, { topicId: "cooking" }).session)).toBe("/chat");
+  });
+});
+
+describe("summaryReducer Try again", () => {
+  const network = { kind: "failed", failure: "network" } as const;
+
+  it("keeps a network failure on screen as retrying when Try again starts", () => {
+    expect(summaryReducer(network, { type: "load_started" })).toEqual({
+      kind: "failed",
+      failure: "network",
+      retrying: true,
+    });
+  });
+
+  it("goes back to loading when Try again starts after a failure that is not the network", () => {
+    expect(
+      summaryReducer({ kind: "failed", failure: "unavailable" }, { type: "load_started" }),
+    ).toEqual({ kind: "loading" });
+  });
+
+  it("draws the data when the retried read succeeds", () => {
+    const retrying = summaryReducer(network, { type: "load_started" });
+    expect(
+      summaryReducer(retrying, {
+        type: "loaded",
+        profile: { ok: true, value: profile },
+        summary: { ok: true, value: summary },
+      }).kind,
+    ).toBe("ready");
+  });
+
+  it("draws a fresh failure, not retrying, when the retried read fails again", () => {
+    const retrying = summaryReducer(network, { type: "load_started" });
+    const again = summaryReducer(retrying, {
+      type: "loaded",
+      profile: { ok: false, failure: "network" },
+      summary: { ok: true, value: summary },
+    });
+    expect(again).toEqual({ kind: "failed", failure: "network" });
+    expect(again).not.toHaveProperty("retrying");
   });
 });

@@ -4,6 +4,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 
 import { Button } from "@/components/button";
 import { FailureMessage } from "@/components/failure-message";
+import { OfflineCard } from "@/components/offline-card";
 import { ListGroup } from "@/components/list-group";
 import { ListRow } from "@/components/list-row";
 import { Screen } from "@/components/screen";
@@ -12,10 +13,12 @@ import { Text } from "@/components/text";
 import { ToggleSwitch } from "@/components/toggle-switch";
 import { colors, spacing } from "@/constants/theme";
 import { useHaptics } from "@/hooks/use-haptics";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { useSettings } from "@/hooks/use-settings";
 import { useTabScreenPadding } from "@/hooks/use-tab-screen-padding";
 import { appVersion } from "@/utils/app-version";
 import { hapticsFailureMessage, hapticsSwitchOn } from "@/utils/haptics-setting";
+import { loadFailureView } from "@/utils/load-failure";
 import {
   formatUsd,
   keyLabel,
@@ -39,6 +42,7 @@ export default function Settings() {
   const { state, retry } = useSettings();
   const { setting, setEnabled } = useHaptics();
   const padding = useTabScreenPadding();
+  const motion = useOfflineMotion();
 
   if (state.kind === "loading") {
     return (
@@ -50,6 +54,25 @@ export default function Settings() {
     );
   }
   if (state.kind === "failed") {
+    // INFO: settings that could not be read on the network draw the can't-connect card under the heading; any other failure keeps its red text.
+    const offline = loadFailureView("settings", state);
+    if (offline.kind === "offline_card") {
+      return (
+        <Screen edges={["left", "right"]}>
+          <ScrollView contentContainerStyle={[styles.content, padding, styles.offline]}>
+            <Text variant="heading" accessibilityRole="header">
+              Settings
+            </Text>
+            <OfflineCard
+              title={offline.title}
+              retrying={offline.retrying}
+              onRetry={() => void retry()}
+              motion={motion}
+            />
+          </ScrollView>
+        </Screen>
+      );
+    }
     return (
       <Screen>
         <View style={styles.failure}>
@@ -123,4 +146,6 @@ const styles = StyleSheet.create({
     gap: spacing.pageGap,
   },
   app: { gap: spacing.sm },
+  // INFO: offline-inline.html's card sits 8 under the heading.
+  offline: { gap: spacing.sm },
 });

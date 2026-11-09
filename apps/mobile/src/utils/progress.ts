@@ -15,6 +15,7 @@ import type { DataFailure, DataOutcome } from "@/data/data-port";
 import { shortDate } from "@/utils/calendar";
 import { noteDate, noteIcon, noteSubtitle } from "@/utils/note";
 import { sessionIcon } from "@/utils/topic-icon";
+import { retryStarted } from "@/utils/load-failure";
 
 export type ProgressSection = "history" | "mistakes" | "words" | "notes";
 
@@ -34,7 +35,7 @@ export type ProgressList<T> = {
 
 export type ProgressState =
   | { kind: "loading" }
-  | { kind: "failed"; failure: DataFailure }
+  | { kind: "failed"; failure: DataFailure; retrying?: true }
   | {
       kind: "ready";
       month: MonthProgress;
@@ -152,7 +153,7 @@ function loadMore(state: ProgressState, event: MoreLoaded): ProgressState {
 export function progressReducer(state: ProgressState, event: ProgressEvent): ProgressState {
   switch (event.type) {
     case "load_started":
-      return initialProgress;
+      return retryStarted(state, initialProgress);
     case "loaded":
       return progressFromReads(
         event.month,

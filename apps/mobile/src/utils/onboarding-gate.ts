@@ -1,13 +1,14 @@
 import type { Profile } from "@fluency-lab/shared";
 
 import type { DataFailure, DataOutcome } from "@/data/data-port";
+import { isNetworkFailure } from "@/utils/load-failure";
 
 export type OnboardingGate =
   | { status: "signed_out" }
   | { status: "checking"; userId: string }
   | { status: "pending"; userId: string }
   | { status: "completed"; userId: string }
-  | { status: "failed"; userId: string; failure: DataFailure };
+  | { status: "failed"; userId: string; failure: DataFailure; retrying?: true };
 
 export type GateEvent =
   | { type: "user_changed"; userId: string | null }
@@ -34,7 +35,11 @@ export function gateReducer(gate: OnboardingGate, event: GateEvent): OnboardingG
         ? { status: "signed_out" }
         : { status: "checking", userId: event.userId };
     case "check_started":
-      return isGateOf(gate, event.userId) ? { status: "checking", userId: event.userId } : gate;
+      if (!isGateOf(gate, event.userId)) return gate;
+      // INFO: a gate that failed on the network stays on screen while the check runs again, so the view
+      // can draw its retrying state; any other state checks again from loading.
+      if (gate.status === "failed" && isNetworkFailure(gate)) return { ...gate, retrying: true };
+      return { status: "checking", userId: event.userId };
     case "profile_read":
       // INFO: a read that finishes after the user changed must not touch the new gate.
       return isGateOf(gate, event.userId) ? gateFromProfile(event.userId, event.outcome) : gate;
@@ -50,7 +55,9 @@ export function appEntry(
 }
 
 export type OnboardingView =
-  { kind: "loading" } | { kind: "failed"; failure: DataFailure } | { kind: "steps" };
+  | { kind: "loading" }
+  | { kind: "failed"; failure: DataFailure; retrying?: true }
+  | { kind: "steps" };
 
 export function onboardingView(userId: string | null, gate: OnboardingGate): OnboardingView {
   if (gate.status === "signed_out" || gate.userId !== userId) return { kind: "loading" };
@@ -58,7 +65,9 @@ export function onboardingView(userId: string | null, gate: OnboardingGate): Onb
     case "checking":
       return { kind: "loading" };
     case "failed":
-      return { kind: "failed", failure: gate.failure };
+      return gate.retrying === true
+        ? { kind: "failed", failure: gate.failure, retrying: true }
+        : { kind: "failed", failure: gate.failure };
     case "pending":
     case "completed":
       return { kind: "steps" };

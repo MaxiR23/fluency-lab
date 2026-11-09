@@ -254,3 +254,45 @@ describe("focusFromReads and focusReducer", () => {
     expect(state.kind === "ready" && state.model.suggestedLabel).toBe("Suggested for Intermediate");
   });
 });
+
+describe("focusReducer Try again", () => {
+  const network = { kind: "failed", failure: "network" } as const;
+
+  it("keeps a network failure on screen as retrying when Try again starts", () => {
+    expect(focusReducer(network, { type: "load_started" })).toEqual({
+      kind: "failed",
+      failure: "network",
+      retrying: true,
+    });
+  });
+
+  it("goes back to loading when Try again starts after a failure that is not the network", () => {
+    expect(
+      focusReducer({ kind: "failed", failure: "unavailable" }, { type: "load_started" }),
+    ).toEqual(initialFocus);
+  });
+
+  it("draws the data when the retried read succeeds", () => {
+    const retrying = focusReducer(network, { type: "load_started" });
+    expect(
+      focusReducer(retrying, {
+        type: "loaded",
+        profile: { ok: true, value: completedProfile() },
+        mistakes: { ok: true, value: none },
+        words: { ok: true, value: none },
+      }).kind,
+    ).toBe("ready");
+  });
+
+  it("draws a fresh failure, not retrying, when the retried read fails again", () => {
+    const retrying = focusReducer(network, { type: "load_started" });
+    const again = focusReducer(retrying, {
+      type: "loaded",
+      profile: { ok: false, failure: "network" },
+      mistakes: { ok: true, value: none },
+      words: { ok: true, value: none },
+    });
+    expect(again).toEqual({ kind: "failed", failure: "network" });
+    expect(again).not.toHaveProperty("retrying");
+  });
+});

@@ -22,6 +22,7 @@ import {
   type PracticeScreenView,
 } from "@/utils/practice-run-state";
 import { deviceTimeZone } from "@/utils/time-zone";
+import { retryStarted } from "@/utils/load-failure";
 
 async function readRun(origin: PracticeOrigin | null): Promise<PracticeScreenView> {
   const language = deviceLanguage();
@@ -296,7 +297,7 @@ export function usePracticeRun(origin: PracticeOrigin | null): {
   async function retry(): Promise<void> {
     const state = current.current;
     if (state === null) {
-      setView({ kind: "loading" });
+      setView((current) => retryStarted<PracticeScreenView>(current, { kind: "loading" }));
       show(await readRun(fixed));
       await run();
       return;

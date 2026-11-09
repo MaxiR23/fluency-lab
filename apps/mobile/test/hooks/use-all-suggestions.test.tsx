@@ -19,6 +19,7 @@ import { act, renderHook, waitFor } from "@testing-library/react-native";
 
 import { useAllSuggestions } from "@/hooks/use-all-suggestions";
 import { completedProfile, fakeData, profileWith, resetFakeData } from "../helpers/fake-data";
+import { failThenHold } from "../helpers/fail-then-hold";
 
 jest.mock("@/data", () => ({
   data: jest.requireActual<typeof import("../helpers/fake-data")>("../helpers/fake-data").fakeData,
@@ -66,5 +67,19 @@ describe("useAllSuggestions", () => {
     await unmount();
     await act(async () => finish({ ok: true, value: completedProfile() }));
     expect(result.current.view).toEqual({ kind: "loading" });
+  });
+
+  it("keeps the network failure, retrying, while Try again reads again", async () => {
+    const reread = failThenHold(fakeData.getProfile, { ok: false, failure: "network" });
+    const { result } = await renderHook(() => useAllSuggestions());
+    await waitFor(() => expect(result.current.view.kind).toBe("failed"));
+    let pending: Promise<void> = Promise.resolve();
+    await act(async () => {
+      pending = result.current.retry();
+    });
+    expect(result.current.view).toEqual({ kind: "failed", failure: "network", retrying: true });
+    reread.release();
+    await act(async () => pending);
+    expect(result.current.view.kind).toBe("ready");
   });
 });

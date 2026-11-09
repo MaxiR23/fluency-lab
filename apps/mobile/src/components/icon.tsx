@@ -37,7 +37,9 @@ export type IconName =
   | "words"
   | "table"
   | "list"
-  | "trashPlain";
+  | "trashPlain"
+  | "cloudOff"
+  | "arc";
 
 // INFO: shapes the source draws as a circle or a rect are written as path data,
 // so Icon only draws Path.
@@ -134,6 +136,9 @@ const paths: Record<IconName, readonly string[]> = {
   list: ["M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"],
   // INFO: the note screen's trash is a different drawing from the rounded trash of chats-open.html.
   trashPlain: ["M3 6h18", "M8 6V4h8v2", "M19 6l-1 14H6L5 6"],
+  // INFO: offline.html's crossed cloud and offline-retrying.html's spinner arc, copied from the designs.
+  cloudOff: ["M17.5 19H8a5 5 0 1 1 1.2-9.86A6 6 0 0 1 20.5 12.5", "M3 3l18 18"],
+  arc: ["M12 3a9 9 0 1 0 9 9"],
 };
 
 export function Icon({

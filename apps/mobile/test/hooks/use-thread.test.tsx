@@ -36,6 +36,7 @@ import {
   threadWith,
 } from "../helpers/fake-data";
 import { fakeKeys, resetFakeKeys } from "../helpers/fake-keys";
+import { failThenHold } from "../helpers/fail-then-hold";
 
 jest.mock("expo-router", () => ({
   useIsFocused: jest.fn(() => true),
@@ -170,6 +171,7 @@ describe("useThread", () => {
         expect(spend.result.current.view).toEqual({
           kind: "failed",
           message: dataFailureMessage("network"),
+          network: true,
         }),
       );
       fakeData.getProfile.mockResolvedValue({ ok: false, failure: "unavailable" });
@@ -196,6 +198,26 @@ describe("useThread", () => {
       await waitFor(() => expect(result.current.view.kind).toBe("failed"));
       withKey();
       await act(async () => result.current.retry());
+      expect(result.current.view.kind).toBe("ready");
+    });
+
+    it("keeps the network failure, retrying, while Try again reads again", async () => {
+      withKey();
+      const reread = failThenHold(fakeData.getProfile, { ok: false, failure: "network" });
+      const { result } = await renderHook(() => useThread("message-1"));
+      await waitFor(() => expect(result.current.view.kind).toBe("failed"));
+      let pending: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pending = result.current.retry();
+      });
+      expect(result.current.view).toEqual({
+        kind: "failed",
+        message: "Could not reach the server. Check your connection and try again.",
+        network: true,
+        retrying: true,
+      });
+      reread.release();
+      await act(async () => pending);
       expect(result.current.view.kind).toBe("ready");
     });
   });

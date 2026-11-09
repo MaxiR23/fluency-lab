@@ -16,6 +16,7 @@ import {
 } from "@/utils/thread-conversation";
 import { threadNotFoundMessage, threadView, type ThreadScreenView } from "@/utils/thread-state";
 import { deviceTimeZone } from "@/utils/time-zone";
+import { retryStarted } from "@/utils/load-failure";
 
 async function readThread(messageId: string): Promise<ThreadScreenView> {
   const [key, profile] = await Promise.all([keys.hasApiKey(), data.getProfile()]);
@@ -146,7 +147,7 @@ export function useThread(messageId: string | null): {
     const thread = current.current;
     if (thread === null) {
       if (messageId === null) return;
-      setView({ kind: "loading" });
+      setView((current) => retryStarted<ThreadScreenView>(current, { kind: "loading" }));
       show(await readThread(messageId));
       return;
     }

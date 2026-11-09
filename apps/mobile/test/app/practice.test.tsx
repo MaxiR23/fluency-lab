@@ -20,6 +20,7 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 
 import { dataFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import {
   fakeData,
@@ -94,15 +95,50 @@ describe("Practice", () => {
     expect(screen.queryByTestId("practice-loading")).toBeNull();
   });
 
-  it("draws the failure and reads again on Try again", async () => {
+  it("keeps the red failure and Try again when the read fails without the network", async () => {
+    fakeData.listMistakes
+      .mockResolvedValueOnce({ ok: true, value: { items: [], nextOffset: null } })
+      .mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+    await renderAppAt("/practice", fakeSession());
+    expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
+    expect(screen.queryByText("Can't load your practice")).toBeNull();
+    fakeData.listMistakes.mockResolvedValue({ ok: true, value: { items: [], nextOffset: null } });
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.queryByText(dataFailureMessage("unavailable"))).toBeNull();
+    expect(screen.getByRole("button", { name: "Start practice" })).toBeTruthy();
+  });
+
+  it("draws the can't-connect card under the header when the read fails on the network", async () => {
     fakeData.listMistakes
       .mockResolvedValueOnce({ ok: true, value: { items: [], nextOffset: null } })
       .mockResolvedValueOnce({ ok: false, failure: "network" });
     await renderAppAt("/practice", fakeSession());
-    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
-    fakeData.listMistakes.mockResolvedValue({ ok: true, value: { items: [], nextOffset: null } });
-    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByRole("header", { name: "Practice" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back to Home" })).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load your practice" })).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the practice when the server is back", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof fakeData.listMistakes>>) => void;
+    fakeData.listMistakes
+      .mockResolvedValueOnce({ ok: true, value: { items: [], nextOffset: null } })
+      .mockResolvedValueOnce({ ok: false, failure: "network" })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+    await renderAppAt("/practice", fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    await act(async () => finish({ ok: true, value: { items: [], nextOffset: null } }));
+    expect(screen.queryByText(retryingLabel)).toBeNull();
     expect(screen.getByRole("button", { name: "Start practice" })).toBeTruthy();
   });
 

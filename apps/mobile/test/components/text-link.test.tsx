@@ -61,4 +61,12 @@ describe("TextLink", () => {
       textStyle("captionLinkStrong"),
     );
   });
+
+  it("draws the muted action variant as a link", async () => {
+    await render(<TextLink label="Sign out" variant="actionMuted" />);
+    expect(screen.getByRole("link", { name: "Sign out" })).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByText("Sign out").props.style)).toEqual(
+      textStyle("actionMuted"),
+    );
+  });
 });

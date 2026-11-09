@@ -43,6 +43,7 @@ import { fireGestureHandler, getByGestureTestId } from "react-native-gesture-han
 import { composerMaxHeight } from "@/components/chat-composer-style";
 import { radius, size } from "@/constants/theme";
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { fakeAi, noteWith, resetFakeAi, tutorReplyWith } from "../helpers/fake-ai";
 import {
@@ -207,7 +208,7 @@ describe("Chat", () => {
 
   it("draws the no-key state: header, card, locked input and Send", async () => {
     await renderAppAt("/chat", fakeSession());
-    expect(screen.getByRole("header", { name: "Free chat" })).toBeTruthy();
+    expect(screen.getByText("Free chat")).toBeTruthy();
     expect(screen.getByText("No AI connected")).toBeTruthy();
     expect(screen.getByText("Connect your AI to start")).toBeTruthy();
     expect(
@@ -967,11 +968,67 @@ describe("Chat", () => {
     expect(fakeKeys.hasApiKey).toHaveBeenCalledTimes(2);
   });
 
-  it("draws the profile failure when a key is saved and the server cannot be reached", async () => {
+  it("keeps the red failure and Try again when the profile read fails without the network", async () => {
     fakeKeys.hasApiKey.mockResolvedValue({ ok: true, value: true });
-    fakeData.getProfile.mockResolvedValue({ ok: false, failure: "network" });
+    // INFO: the sign-in guard and Home read the profile first; the third read is the chat's.
+    fakeData.getProfile
+      .mockResolvedValueOnce({ ok: true, value: completedProfile() })
+      .mockResolvedValueOnce({ ok: true, value: completedProfile() })
+      .mockResolvedValue({ ok: false, failure: "unavailable" });
     await renderAppAt("/chat", fakeSession());
-    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
+    expect(screen.queryByText("Can't load this chat")).toBeNull();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  it("draws the can't-connect card under the header when a key is saved and the server cannot be reached", async () => {
+    fakeKeys.hasApiKey.mockResolvedValue({ ok: true, value: true });
+    fakeData.getProfile
+      .mockResolvedValueOnce({ ok: true, value: completedProfile() })
+      .mockResolvedValueOnce({ ok: true, value: completedProfile() })
+      .mockResolvedValue({ ok: false, failure: "network" });
+    await renderAppAt("/chat", fakeSession());
+    expect(screen.getByText("Free chat")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back to Home" })).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load this chat" })).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+    expect(screen.queryByText("No AI connected")).toBeNull();
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the chat when the server is back", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof fakeData.getProfile>>) => void;
+    fakeKeys.hasApiKey.mockResolvedValue({ ok: true, value: true });
+    fakeData.getProfile
+      .mockResolvedValueOnce({ ok: true, value: completedProfile() })
+      .mockResolvedValueOnce({ ok: true, value: completedProfile() })
+      .mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt("/chat", fakeSession());
+    fakeData.getProfile.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load this chat" })).toBeTruthy();
+    withKey();
+    await act(async () =>
+      finish({
+        ok: true,
+        value: profileWith({
+          provider: "claude",
+          displayName: "Ada",
+          onboardingCompletedAt: "2026-11-05T10:00:00Z",
+        }),
+      }),
+    );
+    expect(screen.queryByText(retryingLabel)).toBeNull();
+    expect(screen.getByText("Free chat · Claude")).toBeTruthy();
   });
 
   it("goes back from Back to Home", async () => {

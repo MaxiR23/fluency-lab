@@ -8,15 +8,18 @@ import { Button } from "@/components/button";
 import { ChatHeader } from "@/components/chat-header";
 import { Chip } from "@/components/chip";
 import { FailureMessage } from "@/components/failure-message";
+import { OfflineCard } from "@/components/offline-card";
 import { Screen } from "@/components/screen";
 import { SectionHeader } from "@/components/section-header";
 import { SegmentedControl } from "@/components/segmented-control";
 import { Text } from "@/components/text";
 import { colors, shadow, spacing } from "@/constants/theme";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { usePracticeFocus } from "@/hooks/use-practice-focus";
 import { usePracticeMotion } from "@/hooks/use-practice-motion";
 import { enterTransition } from "@/utils/chat-transitions";
 import { dataFailureMessage } from "@/utils/data-message";
+import { loadFailureView } from "@/utils/load-failure";
 import { practiceParams } from "@/utils/practice-focus";
 import { riseMotion } from "@/utils/practice-motion";
 
@@ -28,6 +31,8 @@ const COUNT_OPTIONS = PRACTICE_TARGETS.map((target) => ({
 export default function Practice() {
   const { state, choice, target, select, setTarget, retry } = usePracticeFocus();
   const { focus } = usePracticeMotion();
+  const motion = useOfflineMotion();
+  const offline = state.kind === "failed" ? loadFailureView("practice", state) : null;
 
   // INFO: edges left and right only: the header's own top padding clears the safe area.
   return (
@@ -38,7 +43,16 @@ export default function Practice() {
           <ActivityIndicator color={colors.accent} testID="practice-loading" />
         </View>
       ) : null}
-      {state.kind === "failed" ? (
+      {state.kind === "failed" && offline !== null && offline.kind === "offline_card" ? (
+        <OfflineCard
+          title={offline.title}
+          retrying={offline.retrying}
+          onRetry={() => void retry()}
+          motion={motion}
+          placed
+        />
+      ) : null}
+      {state.kind === "failed" && offline !== null && offline.kind === "message" ? (
         <View style={styles.failure}>
           <FailureMessage message={dataFailureMessage(state.failure)} />
           <Button variant="deep" label="Try again" onPress={() => void retry()} />

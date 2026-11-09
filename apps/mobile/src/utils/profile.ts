@@ -7,12 +7,13 @@ import type { PromptButton } from "@/utils/chat-state";
 import { avatarInitial } from "@/utils/home";
 import { goalOptions, levelOptions } from "@/utils/onboarding-options";
 import { selectedCountLabel } from "@/utils/onboarding-form";
+import { retryStarted } from "@/utils/load-failure";
 
 const NOT_SET = "Not set";
 
 export type ProfileState =
   | { kind: "loading" }
-  | { kind: "failed"; failure: DataFailure }
+  | { kind: "failed"; failure: DataFailure; retrying?: true }
   | { kind: "ready"; profile: Profile; stats: ProfileStats };
 
 export type ProfileEvent =
@@ -30,10 +31,10 @@ export function profileFromReads(
   return { kind: "ready", profile: profile.value, stats: stats.value };
 }
 
-export function profileReducer(_state: ProfileState, event: ProfileEvent): ProfileState {
+export function profileReducer(state: ProfileState, event: ProfileEvent): ProfileState {
   switch (event.type) {
     case "load_started":
-      return initialProfile;
+      return retryStarted(state, initialProfile);
     case "loaded":
       return profileFromReads(event.profile, event.stats);
   }

@@ -204,9 +204,9 @@ describe("homeFromReads", () => {
 
 describe("homeReducer", () => {
   it("goes back to loading on load_started", () => {
-    expect(homeReducer({ kind: "failed", failure: "network" }, { type: "load_started" })).toEqual(
-      initialHome,
-    );
+    expect(
+      homeReducer({ kind: "failed", failure: "unavailable" }, { type: "load_started" }),
+    ).toEqual(initialHome);
   });
 
   it("becomes the state of the reads on loaded", () => {
@@ -229,5 +229,53 @@ describe("homeReducer", () => {
       today: todayCard({ today: null, mistakes: none, level: null }),
       loadedAt,
     });
+  });
+});
+
+describe("homeReducer Try again", () => {
+  const network = { kind: "failed", failure: "network" } as const;
+
+  it("keeps a network failure on screen as retrying when Try again starts", () => {
+    expect(homeReducer(network, { type: "load_started" })).toEqual({
+      kind: "failed",
+      failure: "network",
+      retrying: true,
+    });
+  });
+
+  it("goes back to loading when Try again starts after a failure that is not the network", () => {
+    expect(
+      homeReducer({ kind: "failed", failure: "unavailable" }, { type: "load_started" }),
+    ).toEqual(initialHome);
+  });
+
+  it("draws the data when the retried read succeeds", () => {
+    const retrying = homeReducer(network, { type: "load_started" });
+    expect(
+      homeReducer(retrying, {
+        type: "loaded",
+        profile: okProfile,
+        open: okOpen,
+        week: okWeek,
+        today: noRun,
+        mistakes: noMistakes,
+        loadedAt,
+      }).kind,
+    ).toBe("ready");
+  });
+
+  it("draws a fresh failure, not retrying, when the retried read fails again", () => {
+    const retrying = homeReducer(network, { type: "load_started" });
+    const again = homeReducer(retrying, {
+      type: "loaded",
+      profile: { ok: false, failure: "network" },
+      open: okOpen,
+      week: okWeek,
+      today: noRun,
+      mistakes: noMistakes,
+      loadedAt,
+    });
+    expect(again).toEqual({ kind: "failed", failure: "network" });
+    expect(again).not.toHaveProperty("retrying");
   });
 });

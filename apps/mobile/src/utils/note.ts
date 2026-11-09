@@ -4,6 +4,7 @@ import type { DataFailure, DataOutcome } from "@/data/data-port";
 import { shortDate } from "@/utils/calendar";
 import { firstOf, type Param } from "@/utils/chat-opening";
 import type { PromptButton } from "@/utils/chat-state";
+import { retryStarted } from "@/utils/load-failure";
 
 const PREVIEW_LINES = 3;
 
@@ -11,7 +12,7 @@ export type NotePreviewLine = { lead: string | null; text: string };
 
 export type NoteState =
   | { kind: "loading" }
-  | { kind: "failed"; failure: DataFailure }
+  | { kind: "failed"; failure: DataFailure; retrying?: true }
   | { kind: "ready"; note: StudyNote; deleting: boolean; deleteFailure: DataFailure | null }
   | { kind: "deleted" };
 
@@ -80,7 +81,7 @@ export function initialNote(noteId: string | null): NoteState {
 export function noteReducer(state: NoteState, event: NoteEvent): NoteState {
   switch (event.type) {
     case "load_started":
-      return { kind: "loading" };
+      return retryStarted(state, { kind: "loading" });
     case "loaded":
       return event.note.ok
         ? { kind: "ready", note: event.note.value, deleting: false, deleteFailure: null }

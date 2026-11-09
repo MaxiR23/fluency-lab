@@ -233,3 +233,43 @@ describe("openChatsReducer with a saved title", () => {
     expect(openChatsReducer(failed, { type: "title_saved", session: renamed })).toBe(failed);
   });
 });
+
+describe("openChatsReducer Try again", () => {
+  const network = { kind: "failed", failure: "network" } as const;
+
+  it("keeps a network failure on screen as retrying when Try again starts", () => {
+    expect(openChatsReducer(network, { type: "load_started" })).toEqual({
+      kind: "failed",
+      failure: "network",
+      retrying: true,
+    });
+  });
+
+  it("goes back to loading when Try again starts after a failure that is not the network", () => {
+    expect(
+      openChatsReducer({ kind: "failed", failure: "unavailable" }, { type: "load_started" }),
+    ).toEqual(initialOpenChats);
+  });
+
+  it("draws the data when the retried read succeeds", () => {
+    const retrying = openChatsReducer(network, { type: "load_started" });
+    expect(
+      openChatsReducer(retrying, {
+        type: "loaded",
+        outcome: { ok: true, value: [first] },
+        loadedAt,
+      }).kind,
+    ).toBe("ready");
+  });
+
+  it("draws a fresh failure, not retrying, when the retried read fails again", () => {
+    const retrying = openChatsReducer(network, { type: "load_started" });
+    const again = openChatsReducer(retrying, {
+      type: "loaded",
+      outcome: { ok: false, failure: "network" },
+      loadedAt,
+    });
+    expect(again).toEqual({ kind: "failed", failure: "network" });
+    expect(again).not.toHaveProperty("retrying");
+  });
+});

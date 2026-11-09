@@ -8,6 +8,7 @@ import { ChatHeader } from "@/components/chat-header";
 import { ChatNotices } from "@/components/chat-notices";
 import { ConnectAiCard } from "@/components/connect-ai-card";
 import { FailureMessage } from "@/components/failure-message";
+import { OfflineCard } from "@/components/offline-card";
 import { MessageList } from "@/components/message-list";
 import { RenameSheet } from "@/components/rename-sheet";
 import { ReplyPreview } from "@/components/reply-preview";
@@ -16,6 +17,7 @@ import { colors, spacing } from "@/constants/theme";
 import { useChat } from "@/hooks/use-chat";
 import { useChatMotion } from "@/hooks/use-chat-motion";
 import { useHaptics } from "@/hooks/use-haptics";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { useRename } from "@/hooks/use-rename";
 import { busy, sendState } from "@/utils/chat-conversation";
 import { chatItems } from "@/utils/chat-items";
@@ -31,6 +33,7 @@ import {
   originTitle,
 } from "@/utils/chat-state";
 import { enterTransition } from "@/utils/chat-transitions";
+import { loadFailureView } from "@/utils/load-failure";
 import { renameSheetView } from "@/utils/rename-sheet";
 import { threadHref } from "@/utils/thread-state";
 
@@ -57,6 +60,7 @@ export default function Chat() {
   const rename = useRename(renamed);
   const sheet = renameSheetView(rename.sheet);
   const { play } = useHaptics();
+  const offlineMotion = useOfflineMotion();
 
   if (view.kind === "loading") {
     return (
@@ -68,6 +72,22 @@ export default function Chat() {
     );
   }
   if (view.kind === "failed") {
+    // INFO: a chat that could not be read on the network draws the can't-connect card under the header; any other failure keeps its red text.
+    const offline = loadFailureView("chat", view);
+    if (offline.kind === "offline_card") {
+      return (
+        <Screen edges={["left", "right"]}>
+          <ChatHeader title={originTitle(origin)} onBack={() => router.back()} />
+          <OfflineCard
+            title={offline.title}
+            retrying={offline.retrying}
+            onRetry={() => void retry()}
+            motion={offlineMotion}
+            placed
+          />
+        </Screen>
+      );
+    }
     return (
       <Screen>
         <View style={styles.content}>

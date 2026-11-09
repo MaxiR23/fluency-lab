@@ -45,6 +45,7 @@ import {
   resetFakeData,
 } from "../helpers/fake-data";
 import { fakeKeys, resetFakeKeys } from "../helpers/fake-keys";
+import { failThenHold } from "../helpers/fail-then-hold";
 
 jest.mock("expo-router", () => ({
   useIsFocused: jest.fn(() => true),
@@ -214,6 +215,26 @@ describe("usePracticeRun", () => {
     await waitFor(() =>
       expect(result.current.view).toEqual({ kind: "failed", message: practiceNotFoundMessage }),
     );
+  });
+
+  it("keeps the network failure, retrying, while Try again reads again", async () => {
+    withKey();
+    const reread = failThenHold(fakeData.getProfile, { ok: false, failure: "network" });
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(result.current.view.kind).toBe("failed"));
+    let pending: Promise<void> = Promise.resolve();
+    await act(async () => {
+      pending = result.current.retry();
+    });
+    expect(result.current.view).toEqual({
+      kind: "failed",
+      message: "Could not reach the server. Check your connection and try again.",
+      network: true,
+      retrying: true,
+    });
+    reread.release();
+    await act(async () => pending);
+    expect(result.current.view.kind).toBe("ready");
   });
 
   it("fails when the run cannot be created and retries without asking twice", async () => {

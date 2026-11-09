@@ -330,3 +330,33 @@ describe("practiceNotice", () => {
     expect(practiceNotice(ready(0, "openai"))?.kind).toBe("unsupported");
   });
 });
+
+describe("practiceRunView network flag", () => {
+  it("flags a data read that failed on the network", () => {
+    const failed = { ok: false, failure: "network" } as const;
+    for (const input of [
+      { ...base, profile: failed },
+      { ...base, spend: failed },
+      { ...base, recent: failed },
+      { ...base, mistakes: failed },
+      { ...base, origin: { kind: "resume", runId: "run-1" } as const, opened: failed },
+    ]) {
+      expect(practiceRunView(input)).toMatchObject({ kind: "failed", network: true });
+    }
+  });
+
+  it("does not flag the key read failure or a run that was not found", () => {
+    const view = practiceRunView({
+      ...base,
+      key: { ok: false, failure: "not_read", cause: { name: "KeyRead", detail: null } },
+    });
+    expect(view).not.toHaveProperty("network");
+    expect(
+      practiceRunView({
+        ...base,
+        origin: { kind: "resume", runId: "run-1" },
+        opened: { ok: false, failure: "not_found" },
+      }),
+    ).not.toHaveProperty("network");
+  });
+});

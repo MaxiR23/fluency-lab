@@ -5,7 +5,8 @@
 // Tested:
 // - The splash stays until the fonts settle and the session loads
 // - The stack renders only after that, with the guarded screens
-// - The launch failure with Try again when the session cannot be restored, and the retry
+// - The can't-connect screen when the session cannot be restored on the network, its retrying state, Sign out and the retry
+// - The red failure with Try again for a restore failure that is not the network
 // - The faces are loaded under the names the theme uses
 // - The root view background is set to the background token when the module loads
 // - The tree is wrapped in a ThemeProvider with the token dark theme
@@ -29,6 +30,8 @@ import type { ReactNode } from "react";
 
 import RootLayout from "@/app/_layout";
 import { colors, fontFamily } from "@/constants/theme";
+import { authFailureMessage } from "@/utils/auth-message";
+import { offlineScreenTitle, retryingLabel } from "@/utils/load-failure";
 import { darkNavigationTheme } from "@/utils/navigation-theme";
 import { RESTORE_TIMEOUT_MS } from "@/utils/session-state";
 import { emitSession, fakeAuth, fakeSession, resetFakeAuth } from "../helpers/fake-auth";
@@ -167,46 +170,100 @@ describe("RootLayout", () => {
       jest.useRealTimers();
     });
 
-    it("draws the failure with Try again and hides the splash when the restore fails", async () => {
+    it("draws the can't-connect screen and hides the splash when the restore fails on the network", async () => {
       jest.mocked(useFonts).mockReturnValue([true, null]);
       fakeAuth.currentSession.mockResolvedValue({ ok: false, failure: "network" });
       await render(<RootLayout />);
-      expect(screen.getByText(unreachable)).toBeTruthy();
+      expect(screen.getByRole("header", { name: offlineScreenTitle })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Sign out" })).toBeTruthy();
+      expect(screen.queryByText(unreachable)).toBeNull();
+      expect(screen.queryByText(authFailureMessage("network"))).toBeNull();
       expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
       expect(Stack).not.toHaveBeenCalled();
     });
 
-    it("draws the failure when the restore does not settle before the deadline, never a blank screen", async () => {
+    it("draws the can't-connect screen when the restore does not settle before the deadline, never a blank screen", async () => {
       jest.useFakeTimers();
       jest.mocked(useFonts).mockReturnValue([true, null]);
       await render(<RootLayout />);
       await act(async () => {
         await jest.advanceTimersByTimeAsync(RESTORE_TIMEOUT_MS);
       });
-      expect(screen.getByText(unreachable)).toBeTruthy();
+      expect(screen.getByRole("header", { name: offlineScreenTitle })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+      expect(screen.queryByText(authFailureMessage("network"))).toBeNull();
       expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
       expect(Stack).not.toHaveBeenCalled();
     });
 
-    it("renders the stack after Try again restores the session", async () => {
+    it("keeps the red failure for a restore failure that is not the network", async () => {
+      jest.mocked(useFonts).mockReturnValue([true, null]);
+      fakeAuth.currentSession.mockResolvedValue({ ok: false, failure: "unknown" });
+      await render(<RootLayout />);
+      expect(screen.getByText(authFailureMessage("unknown"))).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+      expect(screen.queryByText(offlineScreenTitle)).toBeNull();
+      expect(Stack).not.toHaveBeenCalled();
+    });
+
+    it("shows Trying again\u2026 while Try again reads, then renders the stack when the server is back", async () => {
       jest.mocked(useFonts).mockReturnValue([true, null]);
       fakeAuth.currentSession.mockResolvedValueOnce({ ok: false, failure: "network" });
       await render(<RootLayout />);
-      fakeAuth.currentSession.mockResolvedValueOnce({ ok: true, value: null });
+      let back!: (value: Awaited<ReturnType<typeof fakeAuth.currentSession>>) => void;
+      fakeAuth.currentSession.mockReturnValueOnce(
+        new Promise((resolve) => {
+          back = resolve;
+        }),
+      );
       await act(async () => {
         fireEvent.press(screen.getByRole("button", { name: "Try again" }));
       });
+      expect(
+        screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+      ).toBeTruthy();
+      expect(screen.getByText(retryingLabel)).toBeTruthy();
+      expect(screen.getByRole("header", { name: offlineScreenTitle })).toBeTruthy();
+      expect(Stack).not.toHaveBeenCalled();
+      await act(async () => back({ ok: true, value: null }));
       expect(Stack).toHaveBeenCalled();
       expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
+    });
+
+    it("signs out from the can't-connect screen and lands on sign-in", async () => {
+      jest.mocked(useFonts).mockReturnValue([true, null]);
+      fakeAuth.currentSession.mockResolvedValue({ ok: false, failure: "network" });
+      fakeAuth.signOut.mockResolvedValue({ ok: true, value: null });
+      await render(<RootLayout />);
+      await act(async () => {
+        fireEvent.press(screen.getByRole("link", { name: "Sign out" }));
+      });
+      expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+      await act(async () => emitSession(null));
+      expect(Stack).toHaveBeenCalled();
+      expect(screen.queryByText(offlineScreenTitle)).toBeNull();
+    });
+
+    it("draws the sign-out failure above Try again and keeps the screen", async () => {
+      jest.mocked(useFonts).mockReturnValue([true, null]);
+      fakeAuth.currentSession.mockResolvedValue({ ok: false, failure: "network" });
+      fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "network" });
+      await render(<RootLayout />);
+      await act(async () => {
+        fireEvent.press(screen.getByRole("link", { name: "Sign out" }));
+      });
+      expect(screen.getByRole("alert")).toBeTruthy();
+      expect(screen.getByText(authFailureMessage("network"))).toBeTruthy();
+      expect(screen.getByRole("header", { name: offlineScreenTitle })).toBeTruthy();
+      expect(Stack).not.toHaveBeenCalled();
     });
 
     it("keeps the splash while the fonts load even when the restore failed", async () => {
       jest.mocked(useFonts).mockReturnValue([false, null]);
       fakeAuth.currentSession.mockResolvedValue({ ok: false, failure: "network" });
       await render(<RootLayout />);
-      expect(screen.queryByText(unreachable)).toBeNull();
+      expect(screen.queryByText(offlineScreenTitle)).toBeNull();
       expect(SplashScreen.hide).not.toHaveBeenCalled();
     });
   });

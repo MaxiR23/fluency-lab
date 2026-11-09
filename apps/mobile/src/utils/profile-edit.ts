@@ -5,6 +5,7 @@ import type { DataFailure, DataOutcome } from "@/data/data-port";
 import { nameError } from "@/utils/auth-form";
 import { canContinue, monthlyLimitError, parseMonthlyLimit, toggle } from "@/utils/onboarding-form";
 import { DEFAULT_MONTHLY_LIMIT, stepTitles } from "@/utils/onboarding-options";
+import { retryStarted } from "@/utils/load-failure";
 
 export type EditField = "name" | "limit" | "provider" | "level" | "goals" | "topics";
 
@@ -146,7 +147,7 @@ export function editUpdate(field: EditField, draft: EditDraft): ProfileUpdate | 
 
 export type EditState =
   | { kind: "loading" }
-  | { kind: "failed"; failure: DataFailure }
+  | { kind: "failed"; failure: DataFailure; retrying?: true }
   | {
       kind: "ready";
       draft: EditDraft;
@@ -169,7 +170,7 @@ export const initialEditState: EditState = { kind: "loading" };
 export function editStateReducer(state: EditState, event: EditEvent): EditState {
   switch (event.type) {
     case "load_started":
-      return initialEditState;
+      return retryStarted(state, initialEditState);
     case "loaded":
       return event.profile.ok
         ? {

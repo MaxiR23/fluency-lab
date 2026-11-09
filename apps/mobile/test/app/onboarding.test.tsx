@@ -3,7 +3,7 @@
 // Tests for the onboarding route and the routing around it.
 //
 // Tested:
-// - The profile check states: loading, failure with Try again, unauthorized
+// - The profile check states: loading, the can't-connect screen with its retrying state, the red failure with Try again, unauthorized
 // - Sign out from the check failure: success, failure message, busy state
 // - Who lands on onboarding and who goes to Home
 // - Each of the four steps, their rules and the Back link
@@ -22,6 +22,7 @@ import type { ProfileUpdate } from "@fluency-lab/shared";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 
 import { authFailureMessage } from "@/utils/auth-message";
+import { offlineScreenBody, offlineScreenTitle, retryingLabel } from "@/utils/load-failure";
 import { apiKeyNote, monthlyLimitNote } from "@/utils/onboarding-options";
 import {
   dataFailureMessage,
@@ -122,15 +123,44 @@ describe("Onboarding profile check", () => {
     await act(async () => pending.resolve({ ok: true, value: profileWith({}) }));
   });
 
-  it("draws the failure and reads again on Try again", async () => {
+  it("draws the can't-connect screen and reads again on Try again", async () => {
     fakeData.getProfile.mockResolvedValueOnce({ ok: false, failure: "network" });
     fakeData.getProfile.mockResolvedValueOnce({ ok: true, value: profileWith({}) });
     await renderApp("/onboarding", fakeSession());
-    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByRole("header", { name: offlineScreenTitle })).toBeTruthy();
+    expect(screen.getByText(offlineScreenBody)).toBeTruthy();
+    expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
     expect(screen.queryByText("Step 1 of 4")).toBeNull();
     await press("Try again");
     expect(screen.getByText("Step 1 of 4")).toBeTruthy();
     expect(fakeData.getProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then the steps when the server is back", async () => {
+    fakeData.getProfile.mockResolvedValueOnce({ ok: false, failure: "network" });
+    const pending = deferred<Awaited<ReturnType<typeof fakeData.getProfile>>>();
+    fakeData.getProfile.mockReturnValueOnce(pending.promise);
+    await renderApp("/onboarding", fakeSession());
+    await press("Try again");
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    expect(screen.getByRole("header", { name: offlineScreenTitle })).toBeTruthy();
+    await act(async () => pending.resolve({ ok: true, value: profileWith({}) }));
+    expect(screen.getByText("Step 1 of 4")).toBeTruthy();
+    expect(screen.queryByText(offlineScreenTitle)).toBeNull();
+  });
+
+  it("keeps the red failure and Try again when the read fails without the network", async () => {
+    fakeData.getProfile.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
+    fakeData.getProfile.mockResolvedValueOnce({ ok: true, value: profileWith({}) });
+    await renderApp("/onboarding", fakeSession());
+    expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
+    expect(screen.queryByText(offlineScreenTitle)).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    await press("Try again");
+    expect(screen.getByText("Step 1 of 4")).toBeTruthy();
   });
 
   it("draws the unauthorized message when the profile read is unauthorized", async () => {
@@ -152,18 +182,41 @@ describe("Onboarding profile check", () => {
   });
 
   it("shows the sign out failure and keeps Try again and Sign out", async () => {
-    fakeData.getProfile.mockResolvedValue({ ok: false, failure: "network" });
+    fakeData.getProfile.mockResolvedValue({ ok: false, failure: "unauthorized" });
     fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "unknown" });
     await renderApp("/onboarding", fakeSession());
     await press("Sign out");
     expect(screen.getByText(authFailureMessage("unknown"))).toBeTruthy();
-    expect(screen.getByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByText(dataFailureMessage("unauthorized"))).toBeTruthy();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
   });
 
-  it("shows Sign out busy and disabled while the request runs", async () => {
+  it("shows the sign out failure on the can't-connect screen and keeps Try again and Sign out", async () => {
     fakeData.getProfile.mockResolvedValue({ ok: false, failure: "network" });
+    fakeAuth.signOut.mockResolvedValue({ ok: false, failure: "unknown" });
+    await renderApp("/onboarding", fakeSession());
+    await fireEvent.press(screen.getByRole("link", { name: "Sign out" }));
+    expect(screen.getByText(authFailureMessage("unknown"))).toBeTruthy();
+    expect(screen.getByRole("header", { name: offlineScreenTitle })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Sign out" })).toBeTruthy();
+  });
+
+  it("signs out from the can't-connect screen and lands on Login", async () => {
+    fakeData.getProfile.mockResolvedValue({ ok: false, failure: "network" });
+    fakeAuth.signOut.mockImplementation(async () => {
+      emitSession(null);
+      return { ok: true, value: null };
+    });
+    await renderApp("/onboarding", fakeSession());
+    await fireEvent.press(screen.getByRole("link", { name: "Sign out" }));
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(screen).toHavePathname("/sign-in");
+  });
+
+  it("shows Sign out busy and disabled while the request runs", async () => {
+    fakeData.getProfile.mockResolvedValue({ ok: false, failure: "unavailable" });
     const pending = deferred<{ ok: false; failure: "network" }>();
     fakeAuth.signOut.mockReturnValue(pending.promise);
     await renderApp("/onboarding", fakeSession());

@@ -5,6 +5,7 @@ import { BackButton } from "@/components/back-button";
 import { Button } from "@/components/button";
 import { DoneBadge } from "@/components/done-badge";
 import { FailureMessage } from "@/components/failure-message";
+import { OfflineCard } from "@/components/offline-card";
 import { ReviewCard } from "@/components/review-card";
 import { Screen } from "@/components/screen";
 import { SectionHeader } from "@/components/section-header";
@@ -13,8 +14,10 @@ import { Tag } from "@/components/tag";
 import { Text } from "@/components/text";
 import { TextLink } from "@/components/text-link";
 import { colors, size, spacing } from "@/constants/theme";
+import { useOfflineMotion } from "@/hooks/use-offline-motion";
 import { useSummary } from "@/hooks/use-summary";
 import { dataFailureMessage } from "@/utils/data-message";
+import { loadFailureView } from "@/utils/load-failure";
 import {
   noCorrectionsText,
   practiceAgainHref,
@@ -30,6 +33,7 @@ export default function Summary() {
       useLocalSearchParams<{ session?: string | string[]; from?: string | string[] }>(),
     );
   const { state, retry } = useSummary(sessionId);
+  const motion = useOfflineMotion();
 
   if (state.kind === "loading") {
     return (
@@ -41,6 +45,27 @@ export default function Summary() {
     );
   }
   if (state.kind === "failed") {
+    // INFO: a summary that could not be read on the network draws the can't-connect card in place of the content; any other failure keeps its red text.
+    const offline = loadFailureView("summary", state);
+    if (offline.kind === "offline_card") {
+      return (
+        <Screen edges={["left", "right"]}>
+          <View style={[styles.offline, from === "history" ? styles.contentWithBack : null]}>
+            {from === "history" ? (
+              <View style={styles.back}>
+                <BackButton label="Back to Progress" onPress={() => router.back()} />
+              </View>
+            ) : null}
+            <OfflineCard
+              title={offline.title}
+              retrying={offline.retrying}
+              onRetry={() => void retry()}
+              motion={motion}
+            />
+          </View>
+        </Screen>
+      );
+    }
     return (
       <Screen>
         <View style={styles.failure}>
@@ -130,6 +155,12 @@ const styles = StyleSheet.create({
     gap: spacing.pageGap,
   },
   contentWithBack: { paddingTop: spacing.screenTopHeader },
+  // INFO: offline-inline.html's card sits 8 under the back row with 20 at the sides; the top clears the safe area like the content.
+  offline: {
+    paddingTop: spacing.screenTop,
+    paddingHorizontal: spacing.screenSide,
+    gap: spacing.sm,
+  },
   back: { flexDirection: "row", marginHorizontal: -spacing.group },
   header: { alignItems: "center", gap: spacing.group },
   centered: { textAlign: "center" },

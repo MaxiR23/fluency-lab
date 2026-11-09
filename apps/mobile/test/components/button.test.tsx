@@ -114,4 +114,42 @@ describe("Button", () => {
     const style = StyleSheet.flatten(screen.getByRole("button").props.style);
     expect(style.minHeight).toBe(size.controlSmall);
   });
+
+  it("draws the busy label beside the spinner while busy", async () => {
+    await render(<Button label="Try again" busy={{ label: "Trying again\u2026", spin: 900 }} />);
+    expect(screen.getByText("Trying again\u2026")).toBeTruthy();
+    expect(screen.queryByText("Try again")).toBeNull();
+    expect(screen.getByTestId("arc-spinner", { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it("keeps its name while busy", async () => {
+    await render(<Button label="Try again" busy={{ label: "Trying again\u2026", spin: null }} />);
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  it("reports itself busy and disabled while busy", async () => {
+    await render(<Button label="Try again" busy={{ label: "Trying again\u2026", spin: null }} />);
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+  });
+
+  it("does not call onPress while busy", async () => {
+    const onPress = jest.fn();
+    await render(
+      <Button
+        label="Try again"
+        busy={{ label: "Trying again\u2026", spin: null }}
+        onPress={onPress}
+      />,
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it("draws the inline height when inline", async () => {
+    await render(<Button label="Try again" variant="strong" inline />);
+    const style = StyleSheet.flatten(screen.getByRole("button").props.style);
+    expect(style.minHeight).toBe(size.touch);
+  });
 });

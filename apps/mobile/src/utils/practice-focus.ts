@@ -17,6 +17,7 @@ import {
 import type { DataFailure, DataOutcome } from "@/data/data-port";
 import { firstOf, type Param } from "@/utils/chat-opening";
 import { levelOptions } from "@/utils/onboarding-options";
+import { retryStarted } from "@/utils/load-failure";
 
 export type FocusChoice =
   { kind: "mistakes" } | { kind: "words" } | { kind: "topic"; topicId: GrammarTopicId };
@@ -149,7 +150,7 @@ export function practiceOrigin(params: {
 
 export type FocusState =
   | { kind: "loading" }
-  | { kind: "failed"; failure: DataFailure }
+  | { kind: "failed"; failure: DataFailure; retrying?: true }
   | { kind: "ready"; model: FocusModel };
 
 export type FocusEvent =
@@ -181,10 +182,10 @@ export function focusFromReads(
   };
 }
 
-export function focusReducer(_state: FocusState, event: FocusEvent): FocusState {
+export function focusReducer(state: FocusState, event: FocusEvent): FocusState {
   switch (event.type) {
     case "load_started":
-      return initialFocus;
+      return retryStarted(state, initialFocus);
     case "loaded":
       return focusFromReads(event.profile, event.mistakes, event.words);
   }

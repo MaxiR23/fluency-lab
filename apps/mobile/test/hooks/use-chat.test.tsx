@@ -46,6 +46,7 @@ import {
   tutorReplyWith,
 } from "../helpers/fake-ai";
 import { fakeData, noteWith as storedNote, profileWith, resetFakeData } from "../helpers/fake-data";
+import { failThenHold } from "../helpers/fail-then-hold";
 import { fakeKeys, resetFakeKeys } from "../helpers/fake-keys";
 
 jest.mock("expo-router", () => ({
@@ -213,6 +214,7 @@ describe("useChat", () => {
         expect(result.current.view).toEqual({
           kind: "failed",
           message: dataFailureMessage("network"),
+          network: true,
         }),
       );
     });
@@ -269,6 +271,26 @@ describe("useChat", () => {
       await act(async () => result.current.retry());
       expect(result.current.view.kind).toBe("ready");
       expect(fakeKeys.hasApiKey).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the network failure, retrying, while Try again reads again", async () => {
+      withKey();
+      const reread = failThenHold(fakeData.getProfile, { ok: false, failure: "network" });
+      const { result } = await renderHook(() => useChat(free));
+      await waitFor(() => expect(result.current.view.kind).toBe("failed"));
+      let pending: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pending = result.current.retry();
+      });
+      expect(result.current.view).toEqual({
+        kind: "failed",
+        message: "Could not reach the server. Check your connection and try again.",
+        network: true,
+        retrying: true,
+      });
+      reread.release();
+      await act(async () => pending);
+      expect(result.current.view.kind).toBe("ready");
     });
 
     it("drops a read that ends after unmount", async () => {

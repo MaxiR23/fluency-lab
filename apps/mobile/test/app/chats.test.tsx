@@ -23,6 +23,7 @@ import { act, fireEvent, screen } from "@testing-library/react-native";
 import { Alert, type AlertButton } from "react-native";
 
 import { dataFailureMessage } from "@/utils/data-message";
+import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import { activeSessionWith, fakeData, resetFakeData } from "../helpers/fake-data";
 import { resetFakeKeys } from "../helpers/fake-keys";
@@ -127,6 +128,41 @@ describe("Open chats", () => {
     expect(screen.getByText(dataFailureMessage("unavailable"))).toBeTruthy();
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
     expect(screen.queryByText(dataFailureMessage("unavailable"))).toBeNull();
+    expect(screen.getByRole("button", { name: "Weekend plans" })).toBeTruthy();
+  });
+
+  it("draws the can't-connect card under the header when the read fails on the network", async () => {
+    fakeData.listOpenSessions
+      .mockResolvedValueOnce({ ok: true, value: [] })
+      .mockResolvedValueOnce({ ok: false, failure: "network" });
+    await renderAppAt("/chats", fakeSession());
+    expect(screen.getByRole("header", { name: "Open chats" })).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load your chats" })).toBeTruthy();
+    expect(screen.getByText(offlineCardBody)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.queryByText(dataFailureMessage("network"))).toBeNull();
+    expect(screen.queryByText(/Pick up where you left off/)).toBeNull();
+  });
+
+  it("shows Trying again\u2026 while Try again reads, then draws the chats when the server is back", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof fakeData.listOpenSessions>>) => void;
+    fakeData.listOpenSessions
+      .mockResolvedValueOnce({ ok: true, value: [] })
+      .mockResolvedValueOnce({ ok: false, failure: "network" })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+    await renderAppAt("/chats", fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("button", { name: "Try again", busy: true, disabled: true }),
+    ).toBeTruthy();
+    expect(screen.getByText(retryingLabel)).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Can't load your chats" })).toBeTruthy();
+    await act(async () => finish({ ok: true, value: [weekend] }));
+    expect(screen.queryByText(retryingLabel)).toBeNull();
     expect(screen.getByRole("button", { name: "Weekend plans" })).toBeTruthy();
   });
 

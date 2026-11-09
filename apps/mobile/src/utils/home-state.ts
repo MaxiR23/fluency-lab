@@ -8,10 +8,11 @@ import type {
 
 import type { DataFailure, DataOutcome } from "@/data/data-port";
 import { todayCard, type TodayCard } from "@/utils/today-practice";
+import { retryStarted } from "@/utils/load-failure";
 
 export type HomeState =
   | { kind: "loading" }
-  | { kind: "failed"; failure: DataFailure }
+  | { kind: "failed"; failure: DataFailure; retrying?: true }
   | {
       kind: "ready";
       profile: Profile;
@@ -64,10 +65,10 @@ export function homeFromReads(
   };
 }
 
-export function homeReducer(_state: HomeState, event: HomeEvent): HomeState {
+export function homeReducer(state: HomeState, event: HomeEvent): HomeState {
   switch (event.type) {
     case "load_started":
-      return initialHome;
+      return retryStarted(state, initialHome);
     case "loaded":
       return homeFromReads(
         event.profile,
