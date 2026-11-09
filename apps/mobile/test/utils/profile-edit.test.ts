@@ -4,7 +4,7 @@
 //
 // Tested:
 // - editField reads the route param; editTitle names the screen
-// - editDraft and editDraftReducer
+// - editDraft and editDraftReducer; editDraft drops a topic outside the catalog
 // - canSaveEdit, editErrors and editUpdate for every field
 // - editStateReducer
 //
@@ -85,6 +85,12 @@ describe("editDraft", () => {
       goals: ["work"],
       topics: ["food", "music", "travel"],
     });
+  });
+
+  it("keeps only the catalog topics, so saving them is accepted", () => {
+    const draft = editDraft(profileWith({ topics: ["food", "cooking", "music", "travel"] }));
+    expect(draft.topics).toEqual(["food", "music", "travel"]);
+    expect(profileUpdateSchema.safeParse(editUpdate("topics", draft)).success).toBe(true);
   });
 
   it("falls back to an empty name, the default limit and claude", () => {

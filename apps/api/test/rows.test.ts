@@ -3,7 +3,7 @@
 // Tests for the mapping of database rows to the API contract.
 //
 // Tested:
-// - toProfile, toSession and toMessage rename snake_case rows and reject bad rows; toSession and toPracticeRun keep a topic outside the catalogs
+// - toProfile, toSession and toMessage rename snake_case rows and reject bad rows; toProfile, toSession and toPracticeRun keep a topic outside the catalogs
 // - toOpenSession reads a session row with its newest embedded message
 // - toSessionStart reads the start time of a session row
 // - toFinishedRun reads the finish time of a run and whether an item was missed
@@ -99,6 +99,13 @@ function without(row: Record<string, unknown>, key: string): Record<string, unkn
 }
 
 describe("toProfile", () => {
+  it("keeps a profile topic outside the catalog", () => {
+    expect(toProfile({ ...profileRow, topics: ["food", "cooking"] })?.topics).toEqual([
+      "food",
+      "cooking",
+    ]);
+  });
+
   it("maps a profile row to the contract", () => {
     expect(toProfile(profileRow)).toEqual({
       id,

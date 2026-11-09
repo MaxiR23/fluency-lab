@@ -3,7 +3,7 @@
 // Tests that the SQL migrations and the shared value lists agree.
 //
 // Tested:
-// - Every topic id, level, goal, provider, session status and message role of
+// - Every level, goal, provider, session status and message role of
 //   packages/shared appears quoted in the migrations
 // - Every practice focus and practice kind appears quoted too
 // - Row level security is enabled on profiles, sessions, messages, thread_messages,
@@ -28,7 +28,6 @@ import {
   PRACTICE_KINDS,
   PROVIDERS,
   SESSION_STATUSES,
-  TOPIC_IDS,
 } from "@fluency-lab/shared";
 import { describe, expect, it } from "vitest";
 
@@ -45,10 +44,6 @@ function missing(values: readonly string[]): string[] {
 describe("migrations", () => {
   it("has at least one migration", () => {
     expect(sql.trim()).not.toBe("");
-  });
-
-  it("lists every topic id of the catalog, which the profiles topics check still holds", () => {
-    expect(missing(TOPIC_IDS)).toEqual([]);
   });
 
   it("lists every level, goal and provider", () => {

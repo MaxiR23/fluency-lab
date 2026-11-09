@@ -19,7 +19,6 @@ import {
   type StudyNoteCreate,
   type StudyNoteDraft,
   type TokenUsage,
-  type TopicId,
 } from "@fluency-lab/shared";
 
 import type { TutorReply, TutorRequest } from "@/ai/ai-port";
@@ -76,7 +75,7 @@ export type Learner = {
   displayName: string | null;
   level: Level | null;
   goals: readonly Goal[];
-  topics: readonly TopicId[];
+  topics: readonly string[];
 };
 
 export type Phase = "idle" | "creating" | "asking" | "saving" | "ending";

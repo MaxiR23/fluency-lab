@@ -214,12 +214,14 @@ export const sessionIdParamSchema = z.object({ id: z.uuid() });
 
 export const messageIdParamSchema = z.object({ id: z.uuid() });
 
+// INFO: the read side takes any topic id: the database no longer checks it, and
+// the app draws an unknown one with its fallback. profileUpdateSchema keeps the catalog enum.
 export const profileSchema = z.object({
   id: z.string(),
   displayName: z.string().nullable(),
   level: z.enum(LEVELS).nullable(),
   goals: z.array(z.enum(GOALS)),
-  topics: z.array(z.enum(TOPIC_IDS)),
+  topics: z.array(z.string()),
   provider: z.enum(PROVIDERS).nullable(),
   monthlyLimitUsd: z.number().nullable(),
   onboardingCompletedAt: z.string().nullable(),

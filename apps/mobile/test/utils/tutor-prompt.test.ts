@@ -5,6 +5,7 @@
 // Tested:
 // - tutorPrompt includes each rule, the level, the learner, the topic and the opening line
 // - tutorPrompt explains a quoted reply and tells the tutor not to correct the quote
+// - tutorPrompt names a topic outside the catalog by its raw id
 // - tutorPrompt asks for a rule label on each correction
 // - tutorPrompt asks for a note only when the learner asks for a table, a summary or a study note
 // - tutorPrompt requires originals copied exactly from the learner's last message
@@ -149,6 +150,12 @@ describe("tutorPrompt", () => {
     expect(prompt).toContain("The learner's name is Ada.");
     expect(prompt).toContain("Their goals: Work, Travel.");
     expect(prompt).toContain("They are interested in: Food, Music.");
+  });
+
+  it("names a topic outside the catalog by its raw id", () => {
+    expect(tutorPrompt({ ...input, topics: ["food", "cooking"] })).toContain(
+      "They are interested in: Food, cooking.",
+    );
   });
 
   it("names the starter topic and draws the opening line", () => {

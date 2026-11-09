@@ -1,3 +1,4 @@
+import { catalogTopicIds } from "@fluency-lab/shared";
 import type { Goal, Level, Profile, ProfileUpdate, Provider, TopicId } from "@fluency-lab/shared";
 
 import type { DataFailure, DataOutcome } from "@/data/data-port";
@@ -51,7 +52,7 @@ export function editDraft(profile: Profile): EditDraft {
     provider: profile.provider ?? "claude",
     level: profile.level,
     goals: profile.goals,
-    topics: profile.topics,
+    topics: catalogTopicIds(profile.topics),
   };
 }
 

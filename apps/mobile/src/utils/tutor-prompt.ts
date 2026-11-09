@@ -1,4 +1,4 @@
-import { goalLabel, topicLabel, type Goal, type Level, type TopicId } from "@fluency-lab/shared";
+import { goalLabel, topicLabel, type Goal, type Level } from "@fluency-lab/shared";
 
 export const RULE_ENGLISH_ONLY =
   "You are an English tutor. This conversation is English practice only. Any everyday topic is fine, always in English, at the learner's level.";
@@ -31,7 +31,7 @@ export type TutorPromptInput = {
   displayName: string | null;
   level: Level | null;
   goals: readonly Goal[];
-  topics: readonly TopicId[];
+  topics: readonly string[];
   // INFO: null is a free chat.
   topicTitle: string | null;
   openingLine: string | null;
