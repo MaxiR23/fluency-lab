@@ -15,6 +15,7 @@ import {
   supabaseAuthOptions,
   withRequestDeadline,
 } from "@/auth/supabase-auth";
+import { appleSignInConfigured } from "@/utils/apple-sign-in";
 import { metroHost } from "@/utils/api-env";
 import { readSupabaseEnv } from "@/utils/supabase-env";
 
@@ -47,3 +48,6 @@ export const apple: ApplePort = createExpoApple({
       encoding: Crypto.CryptoEncoding.HEX,
     }),
 });
+
+// INFO: app.config.ts embeds extra.appleSignIn at build time; a personal build sets it false.
+export const appleSignIn: boolean = appleSignInConfigured(Constants.expoConfig);

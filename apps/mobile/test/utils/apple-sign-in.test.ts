@@ -6,6 +6,7 @@
 // - The nonce: raw value and its SHA-256 hex
 // - Which part of Apple's full name becomes the profile name
 // - When the Apple button shows
+// - Whether the build has Apple sign in on, from the app config
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -16,7 +17,12 @@
 
 import { describe, expect, it, jest } from "@jest/globals";
 
-import { appleProfileName, createAppleNonce, showsAppleSignIn } from "@/utils/apple-sign-in";
+import {
+  appleProfileName,
+  appleSignInConfigured,
+  createAppleNonce,
+  showsAppleSignIn,
+} from "@/utils/apple-sign-in";
 
 const sha256OfAbc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 const sha256OfEmpty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
@@ -128,26 +134,60 @@ describe("showsAppleSignIn", () => {
   const available = { ok: true, value: true } as const;
 
   it("is true on iOS when available", () => {
-    expect(showsAppleSignIn("ios", available)).toBe(true);
+    expect(showsAppleSignIn("ios", available, true)).toBe(true);
   });
 
   it("is false on iOS while the check has not returned", () => {
-    expect(showsAppleSignIn("ios", undefined)).toBe(false);
+    expect(showsAppleSignIn("ios", undefined, true)).toBe(false);
   });
 
   it("is false on iOS when not available", () => {
-    expect(showsAppleSignIn("ios", { ok: true, value: false })).toBe(false);
+    expect(showsAppleSignIn("ios", { ok: true, value: false }, true)).toBe(false);
   });
 
   it("is false on iOS when the check failed", () => {
-    expect(showsAppleSignIn("ios", { ok: false, failure: "apple_request_failed" })).toBe(false);
+    expect(showsAppleSignIn("ios", { ok: false, failure: "apple_request_failed" }, true)).toBe(
+      false,
+    );
   });
 
   it("is false on Android even when the check says available", () => {
-    expect(showsAppleSignIn("android", available)).toBe(false);
+    expect(showsAppleSignIn("android", available, true)).toBe(false);
   });
 
   it("is false on web even when the check says available", () => {
-    expect(showsAppleSignIn("web", available)).toBe(false);
+    expect(showsAppleSignIn("web", available, true)).toBe(false);
+  });
+
+  it("is false on iOS when the build has Apple sign in off, even when available", () => {
+    expect(showsAppleSignIn("ios", available, false)).toBe(false);
+  });
+
+  it("is false when off and the check has not returned", () => {
+    expect(showsAppleSignIn("ios", undefined, false)).toBe(false);
+  });
+});
+
+describe("appleSignInConfigured", () => {
+  it("is true when the config sets appleSignIn to true", () => {
+    expect(appleSignInConfigured({ extra: { appleSignIn: true } })).toBe(true);
+  });
+
+  it("is false when the config sets appleSignIn to false", () => {
+    expect(appleSignInConfigured({ extra: { appleSignIn: false } })).toBe(false);
+  });
+
+  it("is false without a config", () => {
+    expect(appleSignInConfigured(null)).toBe(false);
+  });
+
+  it("is false without extra or without the key", () => {
+    expect(appleSignInConfigured({})).toBe(false);
+    expect(appleSignInConfigured({ extra: {} })).toBe(false);
+  });
+
+  it("is false for a truthy value that is not true", () => {
+    expect(appleSignInConfigured({ extra: { appleSignIn: "true" } })).toBe(false);
+    expect(appleSignInConfigured({ extra: { appleSignIn: 1 } })).toBe(false);
   });
 });

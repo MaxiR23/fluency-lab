@@ -7,6 +7,7 @@
 // - The digest returns what expo-crypto gives
 // - The Supabase url takes Metro's host in development; the env url is used as is without it
 // - The client gets the request deadline fetch
+// - The Apple sign in flag read from the app config
 //
 // What is covered:
 // - The one place that selects the algorithm and the encoding, which no other test reaches
@@ -26,7 +27,7 @@ const mockDigest =
   jest.fn<(algorithm: string, value: string, options: object) => Promise<string>>();
 const mockCreateClient = jest.fn<(url: string, key: string, options: object) => object>();
 const mockDeadlineFetch = jest.fn();
-let mockExpoConfig: { hostUri?: string } | null = null;
+let mockExpoConfig: { hostUri?: string; extra?: Record<string, unknown> } | null = null;
 const mockCreateExpoApple =
   jest.fn<(options: { sha256Hex: (value: string) => Promise<string> }) => object>();
 
@@ -72,6 +73,13 @@ function loadAuth() {
   const call = mockCreateClient.mock.calls[0];
   if (call === undefined) throw new Error("the client was not created");
   return call;
+}
+
+function loadAppleSignIn(): boolean {
+  process.env.EXPO_PUBLIC_SUPABASE_URL = "http://localhost:54321";
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY = generatedSecret("publishable");
+  Object.defineProperty(globalThis, "localStorage", { value: {}, configurable: true });
+  return jest.requireActual<typeof import("@/auth")>("@/auth").appleSignIn;
 }
 
 function loadSha256Hex() {
@@ -131,5 +139,20 @@ describe("auth wiring", () => {
     mockDigest.mockResolvedValue("ab12");
     const sha256Hex = loadSha256Hex();
     await expect(sha256Hex("raw-nonce")).resolves.toBe("ab12");
+  });
+
+  it("turns Apple sign in on when the app config says so", () => {
+    mockExpoConfig = { extra: { appleSignIn: true } };
+    expect(loadAppleSignIn()).toBe(true);
+  });
+
+  it("turns Apple sign in off when the app config says false", () => {
+    mockExpoConfig = { extra: { appleSignIn: false } };
+    expect(loadAppleSignIn()).toBe(false);
+  });
+
+  it("turns Apple sign in off without an app config", () => {
+    mockExpoConfig = null;
+    expect(loadAppleSignIn()).toBe(false);
   });
 });

@@ -4,7 +4,7 @@
 //
 // Tested:
 // - The approved Login texts and placeholders
-// - The Apple button, its divider, and when both are hidden
+// - The Apple button, its divider, and when both are hidden (unavailable, failed check, Android, a build without Apple sign in)
 // - Apple sign in: success, cancel, each failure, and the name that failed to save
 // - Both sign in paths disable each other while one runs
 // - Validation, the request, its busy state and each failure message
@@ -35,6 +35,8 @@ import { setDev } from "../helpers/set-dev";
 
 const savedDev = __DEV__;
 
+let mockAppleSignIn = true;
+
 jest.mock("expo-font", () => ({ useFonts: jest.fn(() => [true, null]) }));
 jest.mock("expo-splash-screen", () => ({
   preventAutoHideAsync: jest.fn(),
@@ -54,7 +56,13 @@ jest.mock("@/keys", () => ({
 }));
 jest.mock("@/auth", () => {
   const fake = jest.requireActual<typeof import("../helpers/fake-auth")>("../helpers/fake-auth");
-  return { auth: fake.fakeAuth, apple: fake.fakeApple };
+  return {
+    auth: fake.fakeAuth,
+    apple: fake.fakeApple,
+    get appleSignIn() {
+      return mockAppleSignIn;
+    },
+  };
 });
 
 const email = "name@email.com";
@@ -109,6 +117,7 @@ const causeLine =
 
 describe("Login screen", () => {
   beforeEach(() => {
+    mockAppleSignIn = true;
     resetFakeAuth();
     resetFakeData();
     resetFakeKeys();
@@ -165,6 +174,17 @@ describe("Login screen", () => {
     expect(screen.queryByText("or")).toBeNull();
     expect(screen.queryByTestId("apple-button")).toBeNull();
     expect(screen.getByText("Welcome back")).toBeTruthy();
+  });
+
+  it("hides the divider and the Apple button in a build without Apple sign in, even when available", async () => {
+    mockAppleSignIn = false;
+    appleAvailable();
+    await renderApp("/sign-in", null);
+    expect(screen.queryByTestId("apple-button")).toBeNull();
+    expect(screen.queryByTestId("sign-in-providers")).toBeNull();
+    expect(screen.queryByText("or")).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(screen.getByLabelText("Email")).toBeTruthy();
   });
 
   it("does not show the Apple button on Android even when the check says available", async () => {

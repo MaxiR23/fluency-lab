@@ -25,9 +25,20 @@ export function appleProfileName(fullName: AppleFullName | null): ProfileName | 
   return { fullName: parts.join(" "), givenName, familyName };
 }
 
+type ConfigExtra = { extra?: Record<string, unknown> } | null;
+
+// INFO: app.config.ts sets extra.appleSignIn; only a literal true turns the button on,
+// so a config with it false (the personal build sets extra.appleSignIn to false) hides it.
+export function appleSignInConfigured(config: ConfigExtra): boolean {
+  return config?.extra?.appleSignIn === true;
+}
+
 export function showsAppleSignIn(
   os: string,
   availability: AuthOutcome<boolean> | undefined,
+  enabled: boolean,
 ): boolean {
-  return os === "ios" && availability !== undefined && availability.ok && availability.value;
+  return (
+    enabled && os === "ios" && availability !== undefined && availability.ok && availability.value
+  );
 }
