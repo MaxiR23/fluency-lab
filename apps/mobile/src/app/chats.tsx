@@ -5,10 +5,13 @@ import { BackButton } from "@/components/back-button";
 import { Button } from "@/components/button";
 import { FailureMessage } from "@/components/failure-message";
 import { OpenChatRow } from "@/components/open-chat-row";
+import { RenameSheet } from "@/components/rename-sheet";
 import { Screen } from "@/components/screen";
 import { Text } from "@/components/text";
 import { colors, spacing } from "@/constants/theme";
+import { useChatMotion } from "@/hooks/use-chat-motion";
 import { useOpenChats } from "@/hooks/use-open-chats";
+import { useRename } from "@/hooks/use-rename";
 import { dataFailureMessage } from "@/utils/data-message";
 import {
   deletePromptButtons,
@@ -16,9 +19,13 @@ import {
   deletePromptTitle,
   openChatRow,
 } from "@/utils/open-chats";
+import { renameSheetView } from "@/utils/rename-sheet";
 
 export default function Chats() {
-  const { state, retry, end, remove } = useOpenChats();
+  const { state, retry, end, remove, titled } = useOpenChats();
+  const motion = useChatMotion();
+  const rename = useRename(titled);
+  const sheet = renameSheetView(rename.sheet);
 
   return (
     <Screen edges={["left", "right"]}>
@@ -55,6 +62,7 @@ export default function Chats() {
                   onPress={() =>
                     router.push({ pathname: "/chat", params: { session: open.session.id } })
                   }
+                  onRename={() => rename.open(open.session.id, open.session.title)}
                   onEnd={() => void end(open.session.id)}
                   onDelete={(close) =>
                     Alert.alert(
@@ -69,6 +77,15 @@ export default function Chats() {
           ) : null}
         </View>
       </ScrollView>
+      {sheet === null ? null : (
+        <RenameSheet
+          view={sheet}
+          onChangeText={rename.change}
+          onCancel={rename.cancel}
+          onSave={() => void rename.save()}
+          motion={motion.sheet}
+        />
+      )}
     </Screen>
   );
 }

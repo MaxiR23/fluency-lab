@@ -17,6 +17,7 @@ import type {
   RecentPrompt,
   Session,
   SessionContext,
+  SessionTitleUpdate,
   ThreadMessage,
   ThreadMessageCreate,
   ThreadReplies,
@@ -103,6 +104,12 @@ export type UserStore = {
   setSessionContext(
     sessionId: string,
     context: SessionContext,
+  ): Promise<StoreOutcome<Session | null>>;
+  // INFO: null means the session is not visible to the caller (missing or another user's).
+  // A skipped auto title is not null: the session comes back with the title it keeps.
+  setSessionTitle(
+    sessionId: string,
+    input: SessionTitleUpdate,
   ): Promise<StoreOutcome<Session | null>>;
   endSession(sessionId: string): Promise<StoreOutcome<Session | null>>;
   listSessionStarts(since: string): Promise<StoreOutcome<string[]>>;

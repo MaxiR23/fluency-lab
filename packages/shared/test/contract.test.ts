@@ -15,6 +15,7 @@
 // - The practice schemas: the run to create, the items, the answer, the new target, the reads and the tutor payloads
 // - The study note schemas: both shapes, their limits, the create body, the stored note, the page and the loose payload
 // - The recent prompts query and response
+// - The session title: titleSource on a session and the title update body
 // - The thread schemas: the stored correction with its withdrawn flag, the thread rows, the withdraw body, the reply counts and the thread reply payload
 // - The profile, session and run read schemas accept a topic id outside the catalogs; the create and update schemas reject it
 //
@@ -30,6 +31,7 @@ import {
   contextSummarySchema,
   sessionContextSchema,
   sessionSchema,
+  sessionTitleUpdateSchema,
   accountDeletedSchema,
   activeSessionResponseSchema,
   correctionSchema,
@@ -111,6 +113,7 @@ const session = {
   summary: null,
   contextSummary: null,
   contextThroughId: null,
+  titleSource: "default",
   costUsd: 0,
   createdAt: stamp,
   updatedAt: stamp,
@@ -589,6 +592,14 @@ describe("tutorReplySchema", () => {
       newWords: [],
     };
     expect(tutorReplySchema.parse(body)).toEqual(body);
+  });
+
+  it("takes an optional title", () => {
+    const base = { reply: "Nice!", corrections: [], explanation: "", newWords: [] };
+    expect(tutorReplySchema.parse({ ...base, title: "Ramen spots in Tokyo" }).title).toBe(
+      "Ramen spots in Tokyo",
+    );
+    expect(tutorReplySchema.parse(base).title).toBeUndefined();
   });
 
   it("rejects a missing field and a wrong type", () => {
@@ -1252,6 +1263,50 @@ describe("session context", () => {
   it("rejects a session without the context fields", () => {
     const { contextSummary: _s, contextThroughId: _t, ...bare } = session;
     expect(sessionSchema.safeParse(bare).success).toBe(false);
+  });
+});
+
+describe("session title", () => {
+  it("requires titleSource on a session and reads each source", () => {
+    const { titleSource: _t, ...bare } = session;
+    expect(sessionSchema.safeParse(bare).success).toBe(false);
+    for (const titleSource of ["default", "auto", "user"]) {
+      expect(sessionSchema.parse({ ...session, titleSource }).titleSource).toBe(titleSource);
+    }
+    expect(sessionSchema.safeParse({ ...session, titleSource: "other" }).success).toBe(false);
+  });
+});
+
+describe("sessionTitleUpdateSchema", () => {
+  it("accepts an auto or a user title and trims it", () => {
+    expect(sessionTitleUpdateSchema.parse({ title: "  Ramen  ", source: "auto" })).toEqual({
+      title: "Ramen",
+      source: "auto",
+    });
+    expect(sessionTitleUpdateSchema.parse({ title: "Ramen", source: "user" }).source).toBe("user");
+  });
+
+  it("accepts a title of exactly 60 characters", () => {
+    const title = "a".repeat(60);
+    expect(sessionTitleUpdateSchema.parse({ title, source: "user" }).title).toBe(title);
+  });
+
+  it("rejects an empty, blank or 61 character title", () => {
+    for (const title of ["", "   ", "a".repeat(61)]) {
+      expect(sessionTitleUpdateSchema.safeParse({ title, source: "user" }).success).toBe(false);
+    }
+  });
+
+  it("rejects the default source, an unknown source and an unknown key", () => {
+    expect(sessionTitleUpdateSchema.safeParse({ title: "Ramen", source: "default" }).success).toBe(
+      false,
+    );
+    expect(sessionTitleUpdateSchema.safeParse({ title: "Ramen", source: "other" }).success).toBe(
+      false,
+    );
+    expect(
+      sessionTitleUpdateSchema.safeParse({ title: "Ramen", source: "user", extra: 1 }).success,
+    ).toBe(false);
   });
 });
 

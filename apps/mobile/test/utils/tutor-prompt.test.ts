@@ -29,6 +29,8 @@ import {
   RULE_NO_KEY,
   RULE_OTHER_LANGUAGE,
   RULE_REPLY_QUOTE,
+  TITLE_GUIDE,
+  TITLE_SKIP,
   tutorPrompt,
   type TutorPromptInput,
 } from "@/utils/tutor-prompt";
@@ -40,6 +42,7 @@ const input: TutorPromptInput = {
   topics: ["food", "music"],
   topicTitle: "The app you use most",
   openingLine: "Which app do you open most every day?",
+  askTitle: false,
 };
 
 describe("tutorPrompt", () => {
@@ -74,6 +77,19 @@ describe("tutorPrompt", () => {
     expect(NOTE_GUIDE).toContain(NOTE_SHAPE);
   });
 
+  it("asks for a title of at most six English words when askTitle is on", () => {
+    const prompt = tutorPrompt({ ...input, askTitle: true });
+    expect(prompt).toContain(TITLE_GUIDE);
+    expect(prompt).not.toContain(TITLE_SKIP);
+    expect(TITLE_GUIDE).toContain("at most six words");
+  });
+
+  it("tells the tutor to leave title out when askTitle is off", () => {
+    const prompt = tutorPrompt(input);
+    expect(prompt).toContain(TITLE_SKIP);
+    expect(prompt).not.toContain(TITLE_GUIDE);
+  });
+
   it("includes the English-only rule", () => {
     expect(tutorPrompt(input)).toContain(RULE_ENGLISH_ONLY);
   });
@@ -100,6 +116,7 @@ describe("tutorPrompt", () => {
         topics: [],
         topicTitle: null,
         openingLine: null,
+        askTitle: false,
       }),
     ).toContain(RULE_REPLY_QUOTE);
     expect(RULE_REPLY_QUOTE).toContain('"> "');
@@ -115,6 +132,10 @@ describe("tutorPrompt", () => {
   });
 
   it("states the rules in the exact words", () => {
+    expect(TITLE_GUIDE).toBe(
+      'Also fill title: a name for this chat in English, at most six words, naming what it is about, like "Ramen spots in Tokyo", without quotes or a final period.',
+    );
+    expect(TITLE_SKIP).toBe("Leave title out.");
     expect(RULE_NO_KEY).toBe("Never ask for or mention an API key.");
     expect(RULE_OTHER_LANGUAGE).toBe(
       "If the learner writes in Spanish or another language, answer in English and help them say it in English.",
@@ -182,6 +203,7 @@ describe("tutorPrompt", () => {
       topics: [],
       topicTitle: null,
       openingLine: null,
+      askTitle: false,
     });
     expect(prompt).not.toContain("name is");
     expect(prompt).not.toContain("Their goals");

@@ -8,7 +8,7 @@
 // deleteAccount with success, so a signed in user lands on Home, and getSessionSummary with an
 // empty ended session (Summary reads it). Progress reads all five of getMonthProgress, listHistory,
 // listMistakes, listWords and listNotes: zeros and empty pages. Thread reads openThread: a thread with no
-// messages on a learner message with two corrections. Home also reads getTodayPractice: no run today. Practice also reads listRecentPrompts: none. setSessionContext answers the default session with the summary and the point it was given.
+// messages on a learner message with two corrections. Home also reads getTodayPractice: no run today. Practice also reads listRecentPrompts: none. setSessionContext answers the default session with the summary and the point it was given. setSessionTitle answers the default session of that id with the title and source it was given.
 
 import { jest } from "@jest/globals";
 import type {
@@ -42,6 +42,7 @@ export const fakeData = {
   addMessage: jest.fn<DataPort["addMessage"]>(),
   addUsage: jest.fn<DataPort["addUsage"]>(),
   setSessionContext: jest.fn<DataPort["setSessionContext"]>(),
+  setSessionTitle: jest.fn<DataPort["setSessionTitle"]>(),
   endSession: jest.fn<DataPort["endSession"]>(),
   createNote: jest.fn<DataPort["createNote"]>(),
   getNote: jest.fn<DataPort["getNote"]>(),
@@ -104,6 +105,7 @@ export function activeSessionWith(
       summary: null,
       contextSummary: null,
       contextThroughId: null,
+      titleSource: "default",
       costUsd: 0,
       createdAt: "2026-11-05T09:00:00Z",
       updatedAt: "2026-11-05T09:30:00Z",
@@ -140,6 +142,7 @@ export function summaryWith(
       summary: null,
       contextSummary: null,
       contextThroughId: null,
+      titleSource: "default",
       costUsd: 0,
       createdAt: "2026-11-05T09:00:00Z",
       updatedAt: "2026-11-05T09:30:00Z",
@@ -165,6 +168,7 @@ export function historyItemWith(
       summary: null,
       contextSummary: null,
       contextThroughId: null,
+      titleSource: "default",
       costUsd: 0,
       createdAt: "2026-11-05T09:00:00Z",
       updatedAt: "2026-11-05T09:30:00Z",
@@ -206,6 +210,7 @@ export function threadWith(
       summary: null,
       contextSummary: null,
       contextThroughId: null,
+      titleSource: "default",
       costUsd: 0,
       createdAt: "2026-11-05T09:00:00Z",
       updatedAt: "2026-11-05T09:30:00Z",
@@ -325,6 +330,14 @@ export function resetFakeData(): void {
       ...activeSessionWith({ id: "session-1" }).session,
       contextSummary: input.summary,
       contextThroughId: input.throughId,
+    },
+  }));
+  fakeData.setSessionTitle.mockImplementation(async (sessionId, input) => ({
+    ok: true,
+    value: {
+      ...activeSessionWith({ id: sessionId }).session,
+      title: input.title,
+      titleSource: input.source,
     },
   }));
   fakeData.getProfile.mockResolvedValue({ ok: true, value: completedProfile() });

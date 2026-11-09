@@ -11,6 +11,7 @@
 // - getStats calls profile_stats with the caller's token; deleteAccount deletes the caller through the admin API with the secret key and never the caller's token
 // - getMonthProgress, listEndedSessions, listMistakeGroups and listNewWords call their progress_* function with the caller's token
 // - getThread, addThreadMessage, withdrawCorrections, listThreadCounts and listThreadWords read and write the thread table and its functions with the caller's token, and getSessionWithMessages never reads thread rows
+// - setSessionTitle calls set_session_title with the caller's token
 // - createNote, getNote, deleteNote, listNotes and listSessionNotes read and write study_notes with the caller's token
 // - Each store call: success, expected empty, 401, transport failure, bad row
 //
@@ -54,6 +55,7 @@ const sessionRow = {
   summary: null,
   context_summary: null,
   context_through_id: null,
+  title_source: "default",
   cost_usd: 0,
   created_at: stamp,
   updated_at: stamp,
@@ -728,6 +730,63 @@ describe("addSessionCost", () => {
   });
 });
 
+describe("setSessionTitle", () => {
+  it("sets the title through set_session_title and returns the session", async () => {
+    const { user, requests } = setup([
+      ok([{ ...sessionRow, title: "Ramen spots in Tokyo", title_source: "auto" }]),
+    ]);
+
+    const outcome = await user.setSessionTitle(sessionId, {
+      title: "Ramen spots in Tokyo",
+      source: "auto",
+    });
+
+    expect(outcome).toMatchObject({
+      ok: true,
+      value: { id: sessionId, title: "Ramen spots in Tokyo", titleSource: "auto" },
+    });
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url.pathname).toBe("/rest/v1/rpc/set_session_title");
+    expect(JSON.parse(requests[0].body ?? "null")).toEqual({
+      session_id: sessionId,
+      new_title: "Ramen spots in Tokyo",
+      source: "auto",
+    });
+  });
+
+  it("returns null when the session is not visible", async () => {
+    const { user } = setup([ok([])]);
+    expect(await user.setSessionTitle(sessionId, { title: "Ramen", source: "user" })).toEqual({
+      ok: true,
+      value: null,
+    });
+  });
+
+  it("returns unauthorized on a 401", async () => {
+    const { user } = setup([failure(401)]);
+    expect(await user.setSessionTitle(sessionId, { title: "Ramen", source: "user" })).toEqual({
+      ok: false,
+      failure: "unauthorized",
+    });
+  });
+
+  it("returns unavailable when fetch rejects", async () => {
+    const { user } = setup([new TypeError("network down")]);
+    expect(await user.setSessionTitle(sessionId, { title: "Ramen", source: "user" })).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("returns unavailable for a row of the wrong shape", async () => {
+    const { user } = setup([ok([{ id }])]);
+    expect(await user.setSessionTitle(sessionId, { title: "Ramen", source: "user" })).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+});
+
 describe("endSession", () => {
   it("sets the status to ended and returns the session", async () => {
     const { user, requests } = setup([ok([{ ...sessionRow, status: "ended" }])]);
@@ -1297,6 +1356,7 @@ describe("listEndedSessions", () => {
             summary: null,
             contextSummary: null,
             contextThroughId: null,
+            titleSource: "default",
             costUsd: 0,
             createdAt: stamp,
             updatedAt: stamp,

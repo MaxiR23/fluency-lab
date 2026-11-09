@@ -10,16 +10,35 @@ import type { OpenChatRowView } from "@/utils/open-chats";
 function Actions({
   row,
   methods,
+  onRename,
   onEnd,
   onDelete,
 }: {
   row: OpenChatRowView;
   methods: SwipeableMethods;
+  onRename: () => void;
   onEnd: () => void;
   onDelete: (close: () => void) => void;
 }) {
   return (
     <View style={styles.actions}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Rename ${row.title}`}
+        onPress={() => {
+          methods.close();
+          onRename();
+        }}
+        style={[styles.action, styles.rename]}
+      >
+        <Icon
+          name="pen"
+          color={colors.text}
+          size={size.iconCard}
+          strokeWidth={strokeWidth.action}
+        />
+        <Text variant="swipeAction">Rename</Text>
+      </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`End ${row.title}`}
@@ -55,11 +74,14 @@ function Actions({
 export function OpenChatRow({
   row,
   onPress,
+  onRename,
   onEnd,
   onDelete,
 }: {
   row: OpenChatRowView;
   onPress: () => void;
+  // INFO: the row closes itself first, then the screen opens the rename sheet.
+  onRename: () => void;
   onEnd: () => void;
   // INFO: receives close, so a cancelled delete slides the row back.
   onDelete: (close: () => void) => void;
@@ -69,7 +91,13 @@ export function OpenChatRow({
       containerStyle={styles.swipe}
       overshootRight={false}
       renderRightActions={(_progress, _translation, methods) => (
-        <Actions row={row} methods={methods} onEnd={onEnd} onDelete={onDelete} />
+        <Actions
+          row={row}
+          methods={methods}
+          onRename={onRename}
+          onEnd={onEnd}
+          onDelete={onDelete}
+        />
       )}
     >
       <SessionCard
@@ -77,6 +105,7 @@ export function OpenChatRow({
         time={row.time}
         detail={row.preview}
         icon={row.icon}
+        tag={row.tag}
         onPress={onPress}
       />
     </Swipeable>
@@ -94,6 +123,7 @@ const styles = StyleSheet.create({
     borderWidth: borderWidth.thin,
     borderRadius: radius.control,
   },
+  rename: { backgroundColor: colors.surface, borderColor: colors.border },
   end: { backgroundColor: colors.accentLine, borderColor: colors.accentPressed },
   remove: { backgroundColor: colors.errorSoft, borderColor: colors.errorLine },
 });

@@ -19,6 +19,8 @@ export type TutorReply = {
   newWords: string[];
   // INFO: null when the tutor made no note, which is the usual case.
   note: StudyNoteDraft | null;
+  // INFO: null when the tutor gave no usable title, or none was asked.
+  title: string | null;
   model: ModelId;
   usage: TokenUsage;
 };

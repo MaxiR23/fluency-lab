@@ -12,7 +12,7 @@ import {
   spacing,
 } from "@/constants/theme";
 
-export type TextFieldLook = "form" | "answer";
+export type TextFieldLook = "form" | "answer" | "sheet";
 export type TextFieldTone = "idle" | "right" | "miss";
 
 // INFO: the answer look is the typed answer of exercise-not-quite.html: raised surface, 56 high,
@@ -29,6 +29,24 @@ export function textFieldStyle({
   input: TextStyle;
   error: TextStyle;
 } {
+  // INFO: the rename sheet's title field (chat-rename.html): raised and accent, as it opens focused.
+  if (look === "sheet") {
+    return {
+      input: {
+        backgroundColor: colors.surfaceRaised,
+        borderColor: colors.accent,
+        borderWidth: borderWidth.thin,
+        borderRadius: radius.control,
+        minHeight: size.control,
+        paddingVertical: 0,
+        paddingHorizontal: spacing.hero,
+        color: colors.text,
+        fontFamily: fontFamily.regular,
+        fontSize: fontSize.option,
+      },
+      error: textStyle("error"),
+    };
+  }
   if (look === "answer") {
     return {
       input: {

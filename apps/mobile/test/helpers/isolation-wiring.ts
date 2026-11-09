@@ -31,6 +31,7 @@ const sessionBody = {
   summary: null,
   contextSummary: null,
   contextThroughId: null,
+  titleSource: "default",
   costUsd: 0,
   createdAt: stamp,
   updatedAt: stamp,
@@ -177,6 +178,7 @@ export function providerSuccess(): Response {
             corrections: [],
             explanation: "",
             newWords: [],
+            title: "Ramen spots in Tokyo",
           }),
         },
       ],
@@ -248,6 +250,9 @@ function apiAnswer(method: string, pathname: string): Response {
   }
   if (pathname === "/sessions" && method === "POST") return json(sessionBody, 201);
   if (pathname.endsWith("/messages") && method === "POST") return json(messageBody, 201);
+  if (pathname.endsWith("/title") && method === "PATCH") {
+    return json({ ...sessionBody, title: "Ramen spots in Tokyo", titleSource: "auto" });
+  }
   if (pathname.endsWith("/usage") || pathname.endsWith("/context")) return json(sessionBody);
   return json({ error: "not_found" }, 404);
 }

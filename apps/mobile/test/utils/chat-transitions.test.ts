@@ -5,6 +5,7 @@
 // Tested:
 // - enterTransition, fadeInTransition, fadeOutTransition give a Reanimated animation, or none
 // - enterTransition applies the optional delay and curve of a motion
+// - titleOutTransition and titleInTransition build the header's title swap; renameSheetTransition raises the rename sheet
 //
 // What is covered:
 // - Normal case, reduce motion (no motion), edges
@@ -14,10 +15,17 @@
 // SEE: apps/mobile/src/utils/chat-transitions.ts
 
 import { describe, expect, it } from "@jest/globals";
-import { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
+import { FadeIn, FadeInDown, FadeOut, Keyframe, SlideInDown } from "react-native-reanimated";
 
 import { chatMotion } from "@/utils/chat-motion";
-import { enterTransition, fadeInTransition, fadeOutTransition } from "@/utils/chat-transitions";
+import {
+  enterTransition,
+  fadeInTransition,
+  fadeOutTransition,
+  renameSheetTransition,
+  titleInTransition,
+  titleOutTransition,
+} from "@/utils/chat-transitions";
 
 describe("enterTransition", () => {
   it("builds the enter animation from below", () => {
@@ -62,5 +70,31 @@ describe("fadeOutTransition", () => {
 
   it("builds no fade out with reduce motion on", () => {
     expect(fadeOutTransition(chatMotion(true).fade)).toBeUndefined();
+  });
+});
+
+describe("the title swap", () => {
+  it("builds the title's swap out and swap in", () => {
+    const { titleSwap } = chatMotion(false);
+    expect(titleOutTransition(titleSwap)).toBeInstanceOf(Keyframe);
+    expect(titleInTransition(titleSwap)).toBeInstanceOf(Keyframe);
+  });
+
+  it("builds no title swap with reduce motion on", () => {
+    const { titleSwap } = chatMotion(true);
+    expect(titleOutTransition(titleSwap)).toBeUndefined();
+    expect(titleInTransition(titleSwap)).toBeUndefined();
+  });
+});
+
+describe("renameSheetTransition", () => {
+  it("raises the rename sheet over 700 ms", () => {
+    const built = renameSheetTransition(chatMotion(false).sheet);
+    expect(built).toBeInstanceOf(SlideInDown);
+    expect(built?.getDuration()).toBe(700);
+  });
+
+  it("builds no sheet motion with reduce motion on", () => {
+    expect(renameSheetTransition(chatMotion(true).sheet)).toBeUndefined();
   });
 });

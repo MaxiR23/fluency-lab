@@ -29,6 +29,7 @@ export const colors = {
   progressTrack: "rgba(255,255,255,0.08)",
   accentHalo: "rgba(109,165,192,0.15)",
   quoteSurface: "rgba(0,0,0,0.35)",
+  scrim: "rgba(0,0,0,0.6)",
   accentRing: "rgba(109,165,192,0.25)",
   accentChipLine: "rgba(109,165,192,0.3)",
   miss: "#C77D44",
@@ -90,6 +91,7 @@ export const radius = {
   noteIcon: 10,
   badgeLarge: 16,
   segment: 3,
+  grabber: 3,
   sheet: 28,
   picker: 22,
 } as const;
@@ -110,6 +112,8 @@ export const size = {
   avatar: 44,
   touch: 44,
   swipeAction: 66,
+  grabberWidth: 40,
+  grabberHeight: 5,
   suggestionCard: 200,
   heroArtWidth: 56,
   heroArtHeight: 48,
@@ -333,6 +337,9 @@ export const gradient = {
 // note-in-chat.html runs 5 s: the tutor row's enter goes from 10% to 24% (700) with the 12 point rise
 // (motion.enterOffset), and the saved line starts at 30%, which is 1000 after the enter starts, and
 // takes 400 from scale .8 (30% to 38%), both with ease-out (motion.easeOut).
+// chat-title.html runs 5 s: swapOut goes from 30% to 40% (500) and swapIn from 38% to 50% (600,
+// starting 400 after the out), both 6 points with ease-out. chat-rename.html runs 5 s: the sheet
+// rises from 10% to 24% (700) on cubic-bezier(.2,.8,.2,1), motion.sheet.
 // home-perfect-day.html: the flick runs 1.2 s in four ease-in-out steps of 300 from the base
 // (transform-origin 50% 95%).
 export const motion = {
@@ -397,6 +404,8 @@ export const motion = {
     savedDuration: 400,
     savedScale: 0.8,
   },
+  title: { swapOut: 500, swapInDelay: 400, swapIn: 600, swapOffset: 6 },
+  rename: { sheetDuration: 700 },
   flame: {
     cycle: 1200,
     scaleX: [0.94, 1.04, 0.97, 1],

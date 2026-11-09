@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The title, the provider line, Back (with its own label when given) and the optional End action
+// - The title as a Rename chat button with the pencil when onRename is given, disabled with renameDisabled
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -17,7 +18,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { StyleSheet, processColor } from "react-native";
 
 import { ChatHeader } from "@/components/chat-header";
-import { borderWidth, colors, radius, size } from "@/constants/theme";
+import { borderWidth, colors, radius, size, spacing } from "@/constants/theme";
 
 describe("ChatHeader", () => {
   it("draws the title as a header and the subtitle line", async () => {
@@ -159,5 +160,71 @@ describe("ChatHeader", () => {
     await render(<ChatHeader title="Note" onBack={() => {}} />);
     expect(screen.queryByRole("button", { name: "Delete note" })).toBeNull();
     expect(screen.getAllByRole("button")).toHaveLength(1);
+  });
+
+  it("draws the title and subtitle in a Rename chat button with the pencil when onRename is given", async () => {
+    await render(
+      <ChatHeader
+        title="Ramen spots in Tokyo"
+        subtitle="Free chat · Claude"
+        onBack={() => {}}
+        onRename={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Rename chat: Ramen spots in Tokyo" })).toBeTruthy();
+    expect(screen.getByText("Free chat · Claude")).toBeTruthy();
+    expect(screen.getByTestId("icon-pen", { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it("calls onRename when the title is pressed", async () => {
+    const onRename = jest.fn();
+    await render(
+      <ChatHeader
+        title="Free chat"
+        subtitle="Free chat · Claude"
+        onBack={() => {}}
+        onRename={onRename}
+      />,
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Rename chat: Free chat" }));
+    expect(onRename).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the rename button with renameDisabled", async () => {
+    const onRename = jest.fn();
+    await render(
+      <ChatHeader title="Free chat" onBack={() => {}} onRename={onRename} renameDisabled />,
+    );
+    const button = screen.getByRole("button", { name: "Rename chat: Free chat", disabled: true });
+    await fireEvent.press(button);
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it("keeps the title a header with no pencil without onRename", async () => {
+    await render(<ChatHeader title="Free chat" subtitle="Claude" onBack={() => {}} />);
+    expect(screen.getByRole("header", { name: "Free chat" })).toBeTruthy();
+    expect(screen.queryByTestId("icon-pen", { includeHiddenElements: true })).toBeNull();
+  });
+
+  it("draws the rename block 44 high with the pencil 6 after the title", async () => {
+    await render(
+      <ChatHeader title="Free chat" subtitle="Claude" onBack={() => {}} onRename={() => {}} />,
+    );
+    const button = screen.getByRole("button", { name: "Rename chat: Free chat" });
+    expect(StyleSheet.flatten(button.props.style)).toMatchObject({
+      minHeight: size.touch,
+      gap: spacing.tight,
+    });
+    const row = screen.getByTestId("chat-title-row");
+    expect(StyleSheet.flatten(row.props.style)).toMatchObject({ gap: spacing.stack });
+    const drawn = JSON.stringify(screen.toJSON());
+    const stroke = `"stroke":{"type":0,"payload":${String(processColor(colors.textMuted))}}`;
+    expect(drawn).toContain(stroke);
+    expect(drawn).toContain(`"width":${size.iconCheck}`);
+  });
+
+  it("truncates the title to one line", async () => {
+    await render(<ChatHeader title="A very long title" onBack={() => {}} onRename={() => {}} />);
+    expect(screen.getByText("A very long title").props.numberOfLines).toBe(1);
   });
 });

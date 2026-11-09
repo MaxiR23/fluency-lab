@@ -4,6 +4,7 @@
 //
 // Tested:
 // - The input border and the error message color follow the error state
+// - The sheet look of the rename sheet: raised, accent border, 16 point text
 //
 // What is covered:
 // - Normal case, edges
@@ -25,6 +26,23 @@ import {
   size,
   spacing,
 } from "@/constants/theme";
+
+describe("textFieldStyle sheet look", () => {
+  it("draws the sheet field raised with the accent border", () => {
+    const { input } = textFieldStyle({ hasError: false, look: "sheet" });
+    expect(input).toMatchObject({
+      backgroundColor: colors.surfaceRaised,
+      borderColor: colors.accent,
+      borderWidth: borderWidth.thin,
+      borderRadius: radius.control,
+      minHeight: size.control,
+      paddingVertical: 0,
+      paddingHorizontal: spacing.hero,
+      color: colors.text,
+      fontSize: fontSize.option,
+    });
+  });
+});
 
 describe("textFieldStyle", () => {
   it("uses the border color when there is no error", () => {

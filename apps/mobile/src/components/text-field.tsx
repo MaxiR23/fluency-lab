@@ -61,7 +61,7 @@ export function TextField({
   }));
   return (
     <View style={styles.container}>
-      {look === "form" ? <Text variant="label">{label}</Text> : null}
+      {look !== "answer" ? <Text variant="label">{label}</Text> : null}
       <AnimatedTextInput
         accessibilityLabel={label}
         placeholderTextColor={colors.textPlaceholder}

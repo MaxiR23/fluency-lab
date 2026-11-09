@@ -3,7 +3,7 @@ import type { ViewStyle } from "react-native";
 import type { TextVariant } from "@/components/text-style";
 import { borderWidth, colors, radius, size, spacing } from "@/constants/theme";
 
-export type TagVariant = "tint" | "outline" | "word" | "count" | "withdrawn" | "rule";
+export type TagVariant = "tint" | "outline" | "word" | "count" | "withdrawn" | "rule" | "type";
 
 export function tagStyle(variant: TagVariant = "tint"): { box: ViewStyle; label: TextVariant } {
   if (variant === "word") {
@@ -57,6 +57,19 @@ export function tagStyle(variant: TagVariant = "tint"): { box: ViewStyle; label:
         paddingVertical: spacing.xs,
       },
       label: "tabActive",
+    };
+  }
+  // INFO: the type tag of chats-open-titles.html: 2 points of vertical padding, where the tint tag has 3.
+  if (variant === "type") {
+    return {
+      box: {
+        backgroundColor: colors.accentTag,
+        borderRadius: radius.pill,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.tight,
+        flexShrink: 0,
+      },
+      label: "tag",
     };
   }
   return {

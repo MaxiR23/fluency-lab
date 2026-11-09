@@ -10,7 +10,7 @@
 //   when the signing keys cannot be loaded
 // - GET/PUT /profile, GET/POST /sessions, GET /sessions/open, DELETE /sessions/:id, GET /sessions/week, GET /sessions/spend,
 //   GET /profile/stats, GET /progress/month, /progress/history, /progress/mistakes and /progress/words, DELETE /account,
-//   GET/POST /sessions/:id/messages, GET/POST /messages/:id/thread, POST /messages/:id/withdraw, GET /sessions/:id/summary, POST /sessions/:id/usage, PATCH /sessions/:id/context and POST /sessions/:id/end:
+//   GET/POST /sessions/:id/messages, GET/POST /messages/:id/thread, POST /messages/:id/withdraw, GET /sessions/:id/summary, POST /sessions/:id/usage, PATCH /sessions/:id/context, PATCH /sessions/:id/title and POST /sessions/:id/end:
 //   401 without a valid token, 400 on invalid input, 404, 503, and the typed client
 // - GET /sessions/:id/messages carries the thread reply counts
 // - GET /sessions/:id/summary counts the messages and collects the corrections and new words, the session's thread words included
@@ -257,6 +257,7 @@ const session: Session = {
   summary: null,
   contextSummary: null,
   contextThroughId: null,
+  titleSource: "default",
   costUsd: 0,
   createdAt: stamp,
   updatedAt: stamp,
@@ -391,6 +392,12 @@ const routes: { name: string; path: string; method: string; body?: unknown }[] =
     path: `/sessions/${sessionId}/context`,
     method: "PATCH",
     body: { summary: "The learner lives in Lisbon.", throughId: sessionId },
+  },
+  {
+    name: "PATCH /sessions/:id/title",
+    path: `/sessions/${sessionId}/title`,
+    method: "PATCH",
+    body: { title: "Ramen spots in Tokyo", source: "auto" },
   },
   { name: "POST /sessions/:id/end", path: `/sessions/${sessionId}/end`, method: "POST" },
   { name: "GET /practice/today", path: "/practice/today?tz=UTC", method: "GET" },
@@ -1644,6 +1651,64 @@ describe("PATCH /sessions/:id/context", () => {
   it("responds 503 when the store is unavailable", async () => {
     fake.user.setSessionContext.mockResolvedValue({ ok: false, failure: "unavailable" });
     expect((await save(sessionId, { summary: "Lisbon.", throughId })).status).toBe(503);
+  });
+});
+
+describe("PATCH /sessions/:id/title", () => {
+  async function save(id: string, body: unknown) {
+    return app.request(`/sessions/${id}/title`, {
+      method: "PATCH",
+      headers: { ...(await authed()), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("responds 200 with the session and saves the trimmed title with its source", async () => {
+    const saved = { ...session, title: "Ramen spots in Tokyo", titleSource: "auto" as const };
+    fake.user.setSessionTitle.mockResolvedValue({ ok: true, value: saved });
+
+    const res = await save(sessionId, { title: "  Ramen spots in Tokyo  ", source: "auto" });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(saved);
+    expect(fake.user.setSessionTitle).toHaveBeenCalledWith(sessionId, {
+      title: "Ramen spots in Tokyo",
+      source: "auto",
+    });
+  });
+
+  it("responds 400 for an id that is not a uuid", async () => {
+    expect((await save("abc", { title: "Ramen", source: "user" })).status).toBe(400);
+    expect(fake.user.setSessionTitle).not.toHaveBeenCalled();
+  });
+
+  it("responds 400 for an empty title, one over 60 characters, the default source, an unknown source or an unknown key", async () => {
+    const bodies = [
+      { title: "  ", source: "user" },
+      { title: "a".repeat(61), source: "user" },
+      { title: "Ramen", source: "default" },
+      { title: "Ramen", source: "other" },
+      { title: "Ramen", source: "user", apiKey: "x" },
+    ];
+    for (const body of bodies) {
+      expect((await save(sessionId, body)).status).toBe(400);
+    }
+    expect(fake.user.setSessionTitle).not.toHaveBeenCalled();
+  });
+
+  it("responds 404 when the session is not visible", async () => {
+    fake.user.setSessionTitle.mockResolvedValue({ ok: true, value: null });
+    expect((await save(sessionId, { title: "Ramen", source: "user" })).status).toBe(404);
+  });
+
+  it("responds 401 when the store answers unauthorized", async () => {
+    fake.user.setSessionTitle.mockResolvedValue({ ok: false, failure: "unauthorized" });
+    expect((await save(sessionId, { title: "Ramen", source: "user" })).status).toBe(401);
+  });
+
+  it("responds 503 when the store is unavailable", async () => {
+    fake.user.setSessionTitle.mockResolvedValue({ ok: false, failure: "unavailable" });
+    expect((await save(sessionId, { title: "Ramen", source: "user" })).status).toBe(503);
   });
 });
 

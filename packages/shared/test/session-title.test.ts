@@ -6,6 +6,7 @@
 // - A topic session is titled with the topic label
 // - A free chat is titled "Free chat"
 // - A topic outside the catalog is titled with its raw id
+// - A session title is capped at 60 characters
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -15,7 +16,7 @@
 // SEE: packages/shared/src/session-title.ts
 
 import { describe, expect, it } from "vitest";
-import { sessionTitle } from "../src/session-title";
+import { SESSION_TITLE_MAX, sessionTitle } from "../src/session-title";
 import { TOPICS } from "../src/topics";
 
 describe("sessionTitle", () => {
@@ -33,5 +34,11 @@ describe("sessionTitle", () => {
 
   it("titles every catalog topic with its own label", () => {
     for (const topic of TOPICS) expect(sessionTitle(topic.id)).toBe(topic.label);
+  });
+});
+
+describe("SESSION_TITLE_MAX", () => {
+  it("caps a session title at 60 characters", () => {
+    expect(SESSION_TITLE_MAX).toBe(60);
   });
 });

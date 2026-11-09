@@ -9,25 +9,29 @@ import { ChatNotices } from "@/components/chat-notices";
 import { ConnectAiCard } from "@/components/connect-ai-card";
 import { FailureMessage } from "@/components/failure-message";
 import { MessageList } from "@/components/message-list";
+import { RenameSheet } from "@/components/rename-sheet";
 import { ReplyPreview } from "@/components/reply-preview";
 import { Screen } from "@/components/screen";
 import { colors, spacing } from "@/constants/theme";
 import { useChat } from "@/hooks/use-chat";
 import { useChatMotion } from "@/hooks/use-chat-motion";
 import { useHaptics } from "@/hooks/use-haptics";
+import { useRename } from "@/hooks/use-rename";
 import { busy, sendState } from "@/utils/chat-conversation";
 import { chatItems } from "@/utils/chat-items";
 import { chatOrigin } from "@/utils/chat-opening";
 import { replyPreview } from "@/utils/chat-reply";
 import {
   chatNotice,
+  chatSubtitle,
+  chatTopicId,
   endPromptButtons,
   endPromptTitle,
   noKeyProviderLine,
   originTitle,
-  providerLine,
 } from "@/utils/chat-state";
 import { enterTransition } from "@/utils/chat-transitions";
+import { renameSheetView } from "@/utils/rename-sheet";
 import { threadHref } from "@/utils/thread-state";
 
 export default function Chat() {
@@ -37,9 +41,21 @@ export default function Chat() {
     topic?: string | string[];
   }>();
   const origin = chatOrigin(params);
-  const { view, setDraft, startReply, cancelReply, send, retry, end, openNote, updateKey } =
-    useChat(origin);
+  const {
+    view,
+    setDraft,
+    startReply,
+    cancelReply,
+    send,
+    retry,
+    end,
+    openNote,
+    renamed,
+    updateKey,
+  } = useChat(origin);
   const motion = useChatMotion();
+  const rename = useRename(renamed);
+  const sheet = renameSheetView(rename.sheet);
   const { play } = useHaptics();
 
   if (view.kind === "loading") {
@@ -62,6 +78,7 @@ export default function Chat() {
     );
   }
   const conversation = view.kind === "ready" ? view.conversation : null;
+  const session = conversation === null ? null : conversation.session;
   const notice = conversation === null ? null : chatNotice(conversation);
   const locked = conversation === null ? true : sendState(conversation).locked;
   const waiting = conversation === null ? false : busy(conversation);
@@ -72,7 +89,11 @@ export default function Chat() {
       <View style={styles.fill}>
         <ChatHeader
           title={conversation === null ? originTitle(origin) : conversation.title}
-          subtitle={conversation === null ? noKeyProviderLine : providerLine(conversation.provider)}
+          subtitle={
+            conversation === null
+              ? noKeyProviderLine
+              : chatSubtitle(chatTopicId(conversation), conversation.provider)
+          }
           onBack={() => router.back()}
           onEnd={
             conversation === null
@@ -85,6 +106,13 @@ export default function Chat() {
                   )
           }
           endDisabled={waiting}
+          onRename={
+            conversation === null || session === null
+              ? undefined
+              : () => rename.open(session.id, conversation.title)
+          }
+          renameDisabled={waiting}
+          titleSwap={motion.titleSwap}
         />
         {conversation === null ? (
           <View style={styles.center}>
@@ -126,6 +154,15 @@ export default function Chat() {
             replying={preview !== null}
           />
         </ChatFooter>
+        {sheet === null ? null : (
+          <RenameSheet
+            view={sheet}
+            onChangeText={rename.change}
+            onCancel={rename.cancel}
+            onSave={() => void rename.save()}
+            motion={motion.sheet}
+          />
+        )}
       </View>
     </Screen>
   );

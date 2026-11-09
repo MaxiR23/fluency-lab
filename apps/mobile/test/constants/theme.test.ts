@@ -11,6 +11,7 @@
 // - The reply tokens of chat-reply.html and chat-reply-sent.html
 // - The medium face and the withdrawn badge height of the correction thread
 // - The perfect day tokens of home-perfect-day.html: the flame colors, gradients, size, glow and flick
+// - The title and rename tokens of chat-title.html and chat-rename.html: the scrim, the grabber and the swap and sheet timings
 // - The practice tokens of the five design files: the muted orange, the rings, the prompt type and the motion timings
 //
 // What is covered:
@@ -580,6 +581,18 @@ describe("theme", () => {
     expect(motion.note.savedDelay).toBe(Math.round((0.3 - 0.1) * 5000));
     expect(motion.note.savedDuration).toBe(Math.round((0.38 - 0.3) * 5000));
     expect(motion.note.savedScale).toBe(0.8);
+  });
+
+  it("holds the title and rename tokens of chat-title.html and chat-rename.html", () => {
+    expect(colors.scrim).toBe("rgba(0,0,0,0.6)");
+    expect(size.grabberWidth).toBe(40);
+    expect(size.grabberHeight).toBe(5);
+    expect(radius.grabber).toBe(3);
+    expect(motion.title.swapOut).toBe(Math.round((0.4 - 0.3) * 5000));
+    expect(motion.title.swapInDelay).toBe(Math.round((0.38 - 0.3) * 5000));
+    expect(motion.title.swapIn).toBe(Math.round((0.5 - 0.38) * 5000));
+    expect(motion.title.swapOffset).toBe(6);
+    expect(motion.rename.sheetDuration).toBe(Math.round((0.24 - 0.1) * 5000));
   });
 
   it("holds the perfect day tokens of home-perfect-day.html", () => {

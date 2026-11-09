@@ -14,6 +14,7 @@
 // - A resumed session reads each message's note; threads_refreshed refreshes it
 // - threads_refreshed updates those two on the saved messages and touches nothing else
 // - A long chat: one summary step before the ask, its usage and context writes, and a failed summary that never blocks the reply
+// - An automatic title: queued after the reply's writes only while the session has its default title, saved, dropped on failure, and a rename from the sheet
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -46,7 +47,7 @@ import {
   type ConversationEvent,
 } from "@/utils/chat-conversation";
 import { freeChatGreeting, topicGreeting } from "@/utils/chat-opening";
-import { tutorPrompt } from "@/utils/tutor-prompt";
+import { TITLE_GUIDE, TITLE_SKIP, tutorPrompt } from "@/utils/tutor-prompt";
 
 const starter = STARTERS[0];
 
@@ -71,6 +72,7 @@ const session: Session = {
   summary: null,
   contextSummary: null,
   contextThroughId: null,
+  titleSource: "default",
   costUsd: 0,
   createdAt: "2026-11-05T09:00:00Z",
   updatedAt: "2026-11-05T09:00:00Z",
@@ -82,6 +84,7 @@ const reply: TutorReply = {
   explanation: "Use the present perfect.",
   newWords: ["definitely"],
   note: null,
+  title: null,
   model: TUTOR_MODEL,
   usage: {
     inputTokens: 700,
@@ -148,6 +151,7 @@ function play(
       const w = step.write;
       if (w.kind === "note") steps.push(`write note: ${w.input.title}`);
       else if (w.kind === "context") steps.push("write context");
+      else if (w.kind === "title") steps.push(`write title: ${w.input.title}`);
       else
         steps.push(w.kind === "usage" ? "write usage" : `write ${w.input.role}: ${w.input.text}`);
       event =
@@ -583,6 +587,7 @@ describe("a first turn", () => {
         topics: ["food"],
         topicTitle: starter.title,
         openingLine: starter.opener,
+        askTitle: true,
       }),
     );
   });
@@ -1443,5 +1448,115 @@ describe("summarizing older turns", () => {
     const payload = JSON.parse(step.request.turns[0].text);
     expect(payload.previousSummary).toBe("Lives in Lisbon.");
     expect(payload.messages[0].text).toBe("t19");
+  });
+});
+
+describe("an automatic title", () => {
+  const titled: TutorReply = { ...reply, title: "Ramen spots in Tokyo" };
+  const afterReply = (c: Conversation, r: TutorReply = titled) =>
+    apply(
+      typed(c, "I like ramen"),
+      { type: "session_created", session },
+      { type: "write_done" },
+      { type: "reply_received", reply: r },
+    );
+
+  it("queues an auto title write after the reply's writes when the session has its default title", () => {
+    const c = afterReply(free());
+    expect(c.writes.map((w) => w.kind)).toEqual(["message", "message", "usage", "title"]);
+    expect(c.writes.at(-1)).toEqual({
+      kind: "title",
+      input: { title: "Ramen spots in Tokyo", source: "auto" },
+    });
+  });
+
+  it("queues no title write when the reply has no title", () => {
+    const c = afterReply(free(), reply);
+    expect(c.writes.some((w) => w.kind === "title")).toBe(false);
+  });
+
+  it("queues no title write when the session already has an automatic or a user title", () => {
+    for (const titleSource of ["auto", "user"] as const) {
+      const c = apply(
+        typed(free(), "I like ramen"),
+        { type: "session_created", session: { ...session, titleSource } },
+        { type: "write_done" },
+        { type: "reply_received", reply: titled },
+      );
+      expect(c.writes.some((w) => w.kind === "title")).toBe(false);
+    }
+  });
+
+  it("takes the saved session and its title from a title write", () => {
+    const saved: Session = { ...session, title: "Ramen spots in Tokyo", titleSource: "auto" };
+    const queued = afterReply(free());
+    const done = apply(
+      queued,
+      { type: "write_done" },
+      { type: "write_done" },
+      { type: "write_done" },
+      { type: "write_done", session: saved },
+    );
+    expect(done.session).toEqual(saved);
+    expect(done.title).toBe("Ramen spots in Tokyo");
+    expect(done.phase).toBe("idle");
+  });
+
+  it("drops a failed title write and goes on", () => {
+    const queued = apply(
+      afterReply(free()),
+      { type: "write_done" },
+      { type: "write_done" },
+      { type: "write_done" },
+    );
+    const dropped = conversationReducer(queued, { type: "title_dropped" });
+    expect(dropped.writes).toEqual([]);
+    expect(dropped.phase).toBe("idle");
+    expect(dropped.session?.titleSource).toBe("default");
+  });
+
+  it("ignores title_dropped when the first write is not a title", () => {
+    const queued = afterReply(free());
+    expect(conversationReducer(queued, { type: "title_dropped" })).toBe(queued);
+  });
+
+  it("takes a renamed session and its title", () => {
+    const renamed: Session = { ...session, title: "My trip", titleSource: "user" };
+    const c = apply(
+      typed(free(), "Hi"),
+      { type: "session_created", session },
+      { type: "session_renamed", session: renamed },
+    );
+    expect(c.session).toEqual(renamed);
+    expect(c.title).toBe("My trip");
+  });
+
+  it("ignores a renamed session of another id", () => {
+    const c = apply(typed(free(), "Hi"), { type: "session_created", session });
+    const other: Session = { ...session, id: "s2", title: "Other", titleSource: "user" };
+    expect(conversationReducer(c, { type: "session_renamed", session: other })).toBe(c);
+  });
+
+  it("asks for a title on the first ask of a new chat", () => {
+    const c = apply(
+      typed(free(), "Hello"),
+      { type: "session_created", session },
+      { type: "write_done" },
+    );
+    const step = nextStep(c);
+    if (step.kind !== "ask") throw new Error("expected ask");
+    expect(step.request.system).toContain(TITLE_GUIDE);
+  });
+
+  it("does not ask for a title once the session has one", () => {
+    const c = apply(
+      typed(free(), "Hello"),
+      { type: "session_created", session: { ...session, titleSource: "user" } },
+      { type: "write_done" },
+    );
+    const step = nextStep(c);
+    if (step.kind !== "ask") throw new Error("expected ask");
+    expect(step.request.system).toContain(TITLE_SKIP);
+    expect(step.request.system).not.toContain(TITLE_GUIDE);
   });
 });

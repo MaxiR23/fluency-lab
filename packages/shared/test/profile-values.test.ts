@@ -29,6 +29,7 @@ import {
   PRACTICE_TARGETS,
   PROVIDERS,
   SESSION_STATUSES,
+  TITLE_SOURCES,
   goalLabel,
 } from "../src/profile-values";
 
@@ -65,6 +66,10 @@ describe("profile values", () => {
     expect(PRACTICE_FOCUSES).toEqual(["mistakes", "words", "topic", "note"]);
     expect(PRACTICE_KINDS).toEqual(["choose", "fix", "gap", "translate"]);
     expect(PRACTICE_TARGETS).toEqual([5, 10, 15]);
+  });
+
+  it("lists the three title sources in order", () => {
+    expect(TITLE_SOURCES).toEqual(["default", "auto", "user"]);
   });
 
   it("lists the two note kinds", () => {

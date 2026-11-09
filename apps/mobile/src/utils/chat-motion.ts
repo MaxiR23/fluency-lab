@@ -11,6 +11,13 @@ export type PressMotion = { duration: number; scale: number };
 export type SavedMotion = { delay: number; duration: number; scale: number };
 export type DotPhases = { rise: number; fall: number; rest: number };
 export type DotMotion = DotPhases & { stagger: number; lift: number; restOpacity: number };
+export type TitleSwapMotion = {
+  outDuration: number;
+  inDelay: number;
+  inDuration: number;
+  offset: number;
+};
+export type SheetMotion = { duration: number; curve: readonly [number, number, number, number] };
 export type ChatMotion = {
   enter: EnterMotion | null;
   fade: FadeMotion | null;
@@ -20,6 +27,8 @@ export type ChatMotion = {
   swipeBack: FadeMotion | null;
   noteEnter: EnterMotion | null;
   saved: SavedMotion | null;
+  titleSwap: TitleSwapMotion | null;
+  sheet: SheetMotion | null;
 };
 
 export function chatMotion(reduceMotion: boolean): ChatMotion {
@@ -33,6 +42,8 @@ export function chatMotion(reduceMotion: boolean): ChatMotion {
       swipeBack: null,
       noteEnter: null,
       saved: null,
+      titleSwap: null,
+      sheet: null,
     };
   return {
     enter: { duration: motion.enterDuration, offset: motion.enterOffset },
@@ -53,6 +64,14 @@ export function chatMotion(reduceMotion: boolean): ChatMotion {
       duration: motion.note.savedDuration,
       scale: motion.note.savedScale,
     },
+    // INFO: the header's title swap of chat-title.html and the rename sheet's rise of chat-rename.html.
+    titleSwap: {
+      outDuration: motion.title.swapOut,
+      inDelay: motion.title.swapInDelay,
+      inDuration: motion.title.swapIn,
+      offset: motion.title.swapOffset,
+    },
+    sheet: { duration: motion.rename.sheetDuration, curve: motion.sheet },
   };
 }
 

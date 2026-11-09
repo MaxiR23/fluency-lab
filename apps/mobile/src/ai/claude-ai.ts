@@ -22,6 +22,7 @@ import { DEADLINE, withinDeadline } from "@/utils/deadline";
 import { toAnswerGrade } from "@/utils/practice-grade";
 import { toPracticeRound } from "@/utils/practice-round";
 import { providerMessages } from "@/utils/provider-messages";
+import { toChatTitle } from "@/utils/chat-title";
 import { toStudyNote } from "@/utils/study-note";
 import { toThreadReply } from "@/utils/thread-reply";
 import { toTutorReply } from "@/utils/tutor-reply";
@@ -65,7 +66,9 @@ export const CONTEXT_SUMMARY_JSON_SCHEMA = {
 
 // INFO: no minLength, maxLength, minimum, maximum or minItems: the provider does not
 // support them in structured outputs. Limits (the 80 characters of rule included) are applied by toTutorReply.
-// note is the only optional property: it is filled only on request.
+// note and title are the only optional properties: note is filled only on request, title only
+// while the chat has its default title. The 6 words and 60 characters of title are asked in the
+// prompt and applied by toChatTitle.
 export const TUTOR_REPLY_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -88,6 +91,7 @@ export const TUTOR_REPLY_JSON_SCHEMA = {
     explanation: { type: "string" },
     newWords: { type: "array", items: { type: "string" } },
     note: STUDY_NOTE_JSON_SCHEMA,
+    title: { type: "string" },
   },
 } as const;
 
@@ -322,7 +326,9 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
         if (reply === null) return null;
         // INFO: a malformed note is dropped and the paid reply is kept.
         const note = payload.data.note === undefined ? null : toStudyNote(payload.data.note);
-        return { ...reply, note };
+        // INFO: a malformed title is dropped and the paid reply is kept.
+        const title = payload.data.title === undefined ? null : toChatTitle(payload.data.title);
+        return { ...reply, note, title };
       }),
     replyInThread: (request) =>
       ask(request, THREAD_REPLY_JSON_SCHEMA, MAX_TOKENS, (value) => {

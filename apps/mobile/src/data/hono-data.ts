@@ -139,6 +139,11 @@ export function createHonoData(config: HonoDataConfig): DataPort {
           client.sessions[":id"].context.$patch({ param: { id: sessionId }, json: input }),
         sessionSchema,
       ),
+    setSessionTitle: (sessionId, input) =>
+      call(
+        (client) => client.sessions[":id"].title.$patch({ param: { id: sessionId }, json: input }),
+        sessionSchema,
+      ),
     endSession: (sessionId) =>
       call(
         (client) => client.sessions[":id"].end.$post({ param: { id: sessionId } }),

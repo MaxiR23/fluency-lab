@@ -4,6 +4,7 @@
 //
 // Tested:
 // - chatView, originTitle, providerLine, noKeyProviderLine, canSend
+// - chatSubtitle and chatTopicId: the header's type and tutor line
 // - endPromptTitle, endPromptButtons
 // - chatNotice accepts any state that has the context fields; threadsRefresh turns a session read into an event
 //
@@ -16,7 +17,14 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { STARTERS, type MonthSpend, type SessionWithMessages } from "@fluency-lab/shared";
+import {
+  STARTERS,
+  type MonthSpend,
+  type Session,
+  type SessionWithMessages,
+} from "@fluency-lab/shared";
+
+import type { ChatOrigin } from "@/utils/chat-opening";
 
 import { conversationReducer, startConversation } from "@/utils/chat-conversation";
 import { limitReachedMessage, spendWarningText } from "@/utils/spend-limit";
@@ -25,6 +33,8 @@ import {
   MAX_MESSAGE_LENGTH,
   canSend,
   chatNotice,
+  chatSubtitle,
+  chatTopicId,
   chatView,
   contextRefresh,
   endPromptButtons,
@@ -39,6 +49,24 @@ import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message"
 import { completedProfile, profileWith } from "../helpers/fake-data";
 
 const free = { kind: "free" } as const;
+function sessionOf(topicId: string | null): Session {
+  return {
+    id: "s1",
+    topicId,
+    title: "T",
+    status: "active",
+    summary: null,
+    contextSummary: null,
+    contextThroughId: null,
+    titleSource: "default",
+    costUsd: 0,
+    createdAt: "2026-11-05T09:00:00Z",
+    updatedAt: "2026-11-05T09:00:00Z",
+  };
+}
+function conversationOf(origin: ChatOrigin) {
+  return { session: null, origin };
+}
 const hasKey = { ok: true, value: true } as const;
 const spent = (spentUsd: number): { ok: true; value: MonthSpend } => ({
   ok: true,
@@ -58,6 +86,7 @@ const opened = (
       summary: null,
       contextSummary: null,
       contextThroughId: null,
+      titleSource: "default",
       costUsd: 0,
       createdAt: "2026-11-05T09:00:00Z",
       updatedAt: "2026-11-05T09:00:00Z",
@@ -355,6 +384,35 @@ describe("threadsRefresh", () => {
       type: "context_failed",
       failure: { source: "data", failure: "network" },
     });
+  });
+});
+
+describe("chatSubtitle", () => {
+  it("draws the subtitle as the type and the tutor", () => {
+    expect(chatSubtitle(null, "claude")).toBe("Free chat · Claude");
+    expect(chatSubtitle("food", "claude")).toBe("Food · Claude");
+  });
+
+  it("names the tutor Tutor when there is no provider", () => {
+    expect(chatSubtitle(null, null)).toBe("Free chat · Tutor");
+  });
+});
+
+describe("chatTopicId", () => {
+  const base = conversationOf(free);
+
+  it("takes the topic from the session, else from the origin", () => {
+    const session = { ...sessionOf("food"), id: "s1" };
+    expect(chatTopicId({ session, origin: { kind: "topic", topicId: "music" } })).toBe("food");
+    expect(chatTopicId({ session: null, origin: { kind: "topic", topicId: "music" } })).toBe(
+      "music",
+    );
+    expect(chatTopicId({ session: null, origin: { kind: "starter", starter: STARTERS[0] } })).toBe(
+      STARTERS[0].topicId,
+    );
+    expect(chatTopicId({ session: null, origin: free })).toBeNull();
+    expect(chatTopicId({ session: null, origin: { kind: "resume", sessionId: "s1" } })).toBeNull();
+    expect(chatTopicId({ session: sessionOf(null), origin: base.origin })).toBeNull();
   });
 });
 

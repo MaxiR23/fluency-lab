@@ -1,4 +1,4 @@
-import type { ActiveSession } from "@fluency-lab/shared";
+import { sessionTitle, type ActiveSession, type Session } from "@fluency-lab/shared";
 
 import type { IconName } from "@/components/icon";
 import type { DataFailure, DataOutcome } from "@/data/data-port";
@@ -9,6 +9,8 @@ import { sessionIcon } from "@/utils/topic-icon";
 export type OpenChatRowView = {
   id: string;
   title: string;
+  // INFO: the chat's type: the topic label, or Free chat.
+  tag: string;
   time: string | null;
   preview: string | null;
   icon: IconName;
@@ -19,6 +21,7 @@ export function openChatRow(open: ActiveSession, now: number): OpenChatRowView {
   return {
     id: open.session.id,
     title: open.session.title,
+    tag: sessionTitle(open.session.topicId),
     time: shortRelativeTime(open.lastMessage?.createdAt ?? open.session.updatedAt, now),
     preview: text === "" ? null : text,
     icon: sessionIcon(open.session.topicId),
@@ -39,7 +42,9 @@ export type OpenChatsState =
 export type OpenChatsEvent =
   | { type: "load_started" }
   | { type: "loaded"; outcome: DataOutcome<ActiveSession[]>; loadedAt: number }
-  | { type: "action_done"; sessionId: string; outcome: DataOutcome<unknown> };
+  | { type: "action_done"; sessionId: string; outcome: DataOutcome<unknown> }
+  // INFO: the owner renamed a chat from the sheet; the row keeps its place and its last message.
+  | { type: "title_saved"; session: Session };
 
 export const initialOpenChats: OpenChatsState = { kind: "loading" };
 
@@ -58,6 +63,17 @@ export function openChatsReducer(state: OpenChatsState, event: OpenChatsEvent): 
       return initialOpenChats;
     case "loaded":
       return openChatsFromRead(event.outcome, event.loadedAt);
+    case "title_saved": {
+      if (state.kind !== "ready") return state;
+      const { session } = event;
+      if (!state.sessions.some((open) => open.session.id === session.id)) return state;
+      return {
+        ...state,
+        sessions: state.sessions.map((open) =>
+          open.session.id === session.id ? { ...open, session } : open,
+        ),
+      };
+    }
     case "action_done": {
       if (state.kind !== "ready") return state;
       const { outcome, sessionId } = event;

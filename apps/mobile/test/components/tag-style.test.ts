@@ -3,7 +3,7 @@
 // Tests for tagStyle.
 //
 // Tested:
-// - The box and label variant of the tint, the outline, the word, the count and the withdrawn tag
+// - The box and label variant of the tint, the outline, the word, the count, the withdrawn and the type tag
 //
 // What is covered:
 // - Normal case, edges
@@ -29,6 +29,19 @@ describe("tagStyle", () => {
       label: "tag",
     });
     expect(tagStyle("tint")).toEqual(tagStyle());
+  });
+
+  it("draws the type tag with 2 points of vertical padding", () => {
+    expect(tagStyle("type")).toEqual({
+      box: {
+        backgroundColor: colors.accentTag,
+        borderRadius: radius.pill,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.tight,
+        flexShrink: 0,
+      },
+      label: "tag",
+    });
   });
 
   it("draws the outline pill on surface with a border, 28 high", () => {
