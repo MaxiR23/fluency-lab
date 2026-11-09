@@ -55,6 +55,9 @@ export type UserStore = {
   withdrawCorrections(messageId: string, items: number[]): Promise<StoreOutcome<Message | null>>;
   // INFO: the reply count of each message of the session that has a thread; [] is the expected empty.
   listThreadCounts(sessionId: string): Promise<StoreOutcome<ThreadReplies>>;
+  // INFO: the new words of every thread row of the session's messages, oldest row first,
+  // as saved (not trimmed or deduplicated); [] is the expected empty. Only the Summary reads it.
+  listThreadWords(sessionId: string): Promise<StoreOutcome<string[]>>;
   // INFO: the caller's runs created since the given time, each with its items; [] is the expected empty.
   listPracticeRunsSince(since: string): Promise<StoreOutcome<PracticeRunWithItems[]>>;
   // INFO: null means the note of a note run is not visible to the caller (missing or another user's).

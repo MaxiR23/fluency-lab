@@ -345,6 +345,14 @@ export function toThreadCount(row: unknown): { messageId: string; count: number 
     : null;
 }
 
+const threadWordsRowSchema = z.object({ new_words: newWordsSchema.nullable() });
+
+// INFO: the embedded message only filters the read by session; its fields are not kept.
+export function toThreadWords(row: unknown): string[] | null {
+  const parsed = threadWordsRowSchema.safeParse(row);
+  return parsed.success ? (parsed.data.new_words ?? []) : null;
+}
+
 // INFO: a note row with its session's title embedded (null when the session is gone). The
 // content is checked against the shape of its kind, so a row that does not match is null.
 export function toStudyNote(row: unknown): StudyNote | null {

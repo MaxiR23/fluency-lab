@@ -6,6 +6,7 @@
 // - sessionSummary counts the messages and collects the corrections and the new words
 // - A withdrawn correction was not a mistake and is left out, without its flag
 // - The new words are deduplicated the way profile_stats counts them
+// - The thread words of the session follow the chat words, deduplicated with them
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -107,5 +108,35 @@ describe("sessionSummary", () => {
   it("treats a corrections object with no items as no corrections", () => {
     const messages = [message({ corrections: { items: [], explanation: null } })];
     expect(sessionSummary(messages).corrections).toEqual([]);
+  });
+
+  it("collects the chat words alone when the session has no thread words", () => {
+    expect(sessionSummary([message({ newWords: ["budget"] })], []).newWords).toEqual(["budget"]);
+  });
+
+  it("collects the thread words alone when no chat message taught one", () => {
+    expect(sessionSummary([message()], [" Deadline ", "budget"]).newWords).toEqual([
+      "Deadline",
+      "budget",
+    ]);
+  });
+
+  it("counts a word in the chat and in a thread once, with its chat spelling", () => {
+    expect(
+      sessionSummary([message({ newWords: ["Budget"] })], ["budget", " BUDGET ", "deadline"])
+        .newWords,
+    ).toEqual(["Budget", "deadline"]);
+  });
+
+  it("skips blank thread words", () => {
+    expect(sessionSummary([], ["  ", "deadline"]).newWords).toEqual(["deadline"]);
+  });
+
+  it("leaves the count and the corrections alone when thread words arrive", () => {
+    expect(sessionSummary([], ["deadline"])).toEqual({
+      messageCount: 0,
+      corrections: [],
+      newWords: ["deadline"],
+    });
   });
 });

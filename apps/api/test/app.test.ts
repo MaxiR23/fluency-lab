@@ -13,7 +13,7 @@
 //   GET/POST /sessions/:id/messages, GET/POST /messages/:id/thread, POST /messages/:id/withdraw, GET /sessions/:id/summary, POST /sessions/:id/usage, PATCH /sessions/:id/context and POST /sessions/:id/end:
 //   401 without a valid token, 400 on invalid input, 404, 503, and the typed client
 // - GET /sessions/:id/messages carries the thread reply counts
-// - GET /sessions/:id/summary counts the messages and collects the corrections and new words
+// - GET /sessions/:id/summary counts the messages and collects the corrections and new words, the session's thread words included
 // - GET /sessions/spend still counts the cost of a deleted session
 // - the notes routes: create, read, delete and the Progress page, and the notes and note ids of the chat and practice routes
 // - the practice routes: today, recent prompts, create, read, items, answer, usage, target and finish
@@ -1265,6 +1265,7 @@ describe("GET /sessions/:id/summary", () => {
       ok: true,
       value: { session, messages: [corrected, reply] },
     });
+    fake.user.listThreadWords.mockResolvedValue({ ok: true, value: [] });
 
     const res = await summary(sessionId);
 
@@ -1285,6 +1286,7 @@ describe("GET /sessions/:id/summary", () => {
       ok: true,
       value: { session, messages: [] },
     });
+    fake.user.listThreadWords.mockResolvedValue({ ok: true, value: [] });
 
     const res = await summary(sessionId);
 
@@ -1324,6 +1326,75 @@ describe("GET /sessions/:id/summary", () => {
 
   it("responds 503 when the store is unavailable", async () => {
     fake.user.getSessionWithMessages.mockResolvedValue({ ok: false, failure: "unavailable" });
+
+    expect((await summary(sessionId)).status).toBe(503);
+  });
+
+  it("responds 200 with the words taught in the session's threads, once each", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [{ ...message, newWords: ["definitely"] }] },
+    });
+    fake.user.listThreadWords.mockResolvedValue({
+      ok: true,
+      value: ["Deadline", "definitely", "deadline"],
+    });
+
+    const res = await summary(sessionId);
+
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { newWords: string[] }).newWords).toEqual([
+      "definitely",
+      "Deadline",
+    ]);
+    expect(fake.user.listThreadWords).toHaveBeenCalledWith(sessionId);
+  });
+
+  it("never returns a thread word of another session", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [] },
+    });
+    fake.user.listThreadWords.mockImplementation(async (id) => ({
+      ok: true,
+      value: id === sessionId ? ["deadline"] : ["elsewhere"],
+    }));
+
+    const res = await summary(sessionId);
+
+    const body = (await res.json()) as { newWords: string[] };
+    expect(body.newWords).toEqual(["deadline"]);
+    expect(body.newWords).not.toContain("elsewhere");
+    expect(fake.user.listThreadWords).toHaveBeenCalledTimes(1);
+    expect(fake.user.listThreadWords).toHaveBeenCalledWith(sessionId);
+  });
+
+  it("does not read thread words for a session that is not the caller's", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({ ok: true, value: null });
+
+    expect((await summary(sessionId)).status).toBe(404);
+    expect(fake.user.listThreadWords).not.toHaveBeenCalled();
+  });
+
+  it("responds 401 when the thread words read is unauthorized", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [] },
+    });
+    fake.user.listThreadWords.mockResolvedValue({ ok: false, failure: "unauthorized" });
+
+    const res = await summary(sessionId);
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("responds 503 when the thread words read is unavailable", async () => {
+    fake.user.getSessionWithMessages.mockResolvedValue({
+      ok: true,
+      value: { session, messages: [] },
+    });
+    fake.user.listThreadWords.mockResolvedValue({ ok: false, failure: "unavailable" });
 
     expect((await summary(sessionId)).status).toBe(503);
   });
@@ -1761,6 +1832,7 @@ describe("typed client (data routes)", () => {
       ok: true,
       value: { session, messages: [] },
     });
+    fake.user.listThreadWords.mockResolvedValue({ ok: true, value: [] });
     const client = testClient(app, undefined, undefined, { headers: await authed() });
 
     const res = await client.sessions[":id"].summary.$get({ param: { id: sessionId } });

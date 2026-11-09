@@ -12,7 +12,7 @@
 // - toSessionCost reads the start time and the cost of a session row
 // - toMonthProgressRow, toHistoryRow, toMistakeRow and toWordRow read the Progress rows
 // - toMessage reads a message whose correction is withdrawn
-// - toThreadMessage and toThreadCount read a thread row and a reply count
+// - toThreadMessage, toThreadCount and toThreadWords read a thread row, a reply count and a thread row's new words
 // - toPracticeRun, toPracticeItem and toPracticeRunWithItems read the practice rows
 // - toStudyNote and toNoteRow read a note row, with and without its session
 // - toProfilePatch renames an update to columns
@@ -45,6 +45,7 @@ import {
   toSessionStart,
   toStudyNote,
   toThreadCount,
+  toThreadWords,
   toThreadMessage,
   toWordRow,
 } from "../src/rows";
@@ -290,6 +291,30 @@ describe("toThreadCount", () => {
 
   it("rejects a count that is a string", () => {
     expect(toThreadCount({ message_id: id, reply_count: "3" })).toBeNull();
+  });
+});
+
+describe("toThreadWords", () => {
+  const messages = { session_id: id };
+
+  it("reads the new words of a thread row with its embedded message", () => {
+    expect(toThreadWords({ new_words: ["deadline", "budget"], messages })).toEqual([
+      "deadline",
+      "budget",
+    ]);
+  });
+
+  it("maps null new words to no words", () => {
+    expect(toThreadWords({ new_words: null, messages })).toEqual([]);
+  });
+
+  it("rejects new words that are not a list of words", () => {
+    expect(toThreadWords({ new_words: "deadline", messages })).toBeNull();
+    expect(toThreadWords({ new_words: [""], messages })).toBeNull();
+  });
+
+  it("rejects a row without new_words", () => {
+    expect(toThreadWords({ messages })).toBeNull();
   });
 });
 
