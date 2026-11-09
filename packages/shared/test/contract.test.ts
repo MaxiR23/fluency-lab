@@ -16,7 +16,7 @@
 // - The study note schemas: both shapes, their limits, the create body, the stored note, the page and the loose payload
 // - The recent prompts query and response
 // - The thread schemas: the stored correction with its withdrawn flag, the thread rows, the withdraw body, the reply counts and the thread reply payload
-// - The session and run read schemas accept a topic id outside the catalogs; the create schemas reject it
+// - The profile, session and run read schemas accept a topic id outside the catalogs; the create and update schemas reject it
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -266,6 +266,10 @@ describe("sessionIdParamSchema", () => {
 describe("response schemas", () => {
   it("parses a profile body", () => {
     expect(profileSchema.parse(profile)).toEqual(profile);
+  });
+
+  it("parses a profile whose topics are outside the catalog", () => {
+    expect(profileSchema.parse({ ...profile, topics: ["cooking"] }).topics).toEqual(["cooking"]);
   });
 
   it("rejects a profile body with a missing field", () => {

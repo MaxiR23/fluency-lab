@@ -25,3 +25,9 @@ export function topicLabel(id: string): string {
   const topic = TOPICS.find((entry) => entry.id === id);
   return topic === undefined ? id : topic.label;
 }
+
+// INFO: a profile can hold an id the catalog no longer has; the topics editor shows and
+// saves only the catalog ones.
+export function catalogTopicIds(ids: readonly string[]): TopicId[] {
+  return ids.filter((id): id is TopicId => TOPIC_IDS.some((known) => known === id));
+}

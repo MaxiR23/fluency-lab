@@ -16,7 +16,7 @@
 // - GET /sessions/:id/summary counts the messages and collects the corrections and new words, the session's thread words included
 // - GET /sessions/spend still counts the cost of a deleted session
 // - the notes routes: create, read, delete and the Progress page, and the notes and note ids of the chat and practice routes
-// - POST /sessions and POST /practice/runs accept a catalog topic and answer invalid_input for one outside it
+// - PUT /profile, POST /sessions and POST /practice/runs accept a catalog topic and answer invalid_input for one outside it
 // - the practice routes: today, recent prompts, create, read, items, answer, usage, target and finish
 // - the usage route prices the tokens, and the routes reject an apiKey field
 //
@@ -541,6 +541,27 @@ describe("PUT /profile", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ level: "advanced" });
     expect(fake.user.updateProfile).toHaveBeenCalledWith({ level: "advanced", displayName: "Ada" });
+  });
+
+  it("responds 200 for catalog topics and hands them to the store", async () => {
+    const topics = ["food", "music", "travel"];
+    fake.user.updateProfile.mockResolvedValue({ ok: true, value: { ...profile, topics } });
+
+    const res = await put(json({ topics }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ topics });
+    expect(fake.user.updateProfile).toHaveBeenCalledWith({ topics });
+  });
+
+  it("responds 400 invalid_input for a topic outside the catalog", async () => {
+    for (const topics of [["cooking"], ["food", "cooking"], ["articles"]]) {
+      const res = await put(json({ topics }));
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_input" });
+    }
+    expect(fake.user.updateProfile).not.toHaveBeenCalled();
   });
 
   it("responds 400 for an empty body object", async () => {

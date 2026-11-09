@@ -5,6 +5,7 @@
 // Tested:
 // - The twelve topics in catalog order, with unique ids and English labels
 // - topicLabel returns the label of a topic id, and the raw id for one outside the catalog
+// - catalogTopicIds keeps only the catalog ids, in their order
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -14,7 +15,7 @@
 // SEE: packages/shared/src/topics.ts
 
 import { describe, expect, it } from "vitest";
-import { TOPICS, TOPIC_IDS, topicLabel } from "../src/topics";
+import { TOPICS, TOPIC_IDS, catalogTopicIds, topicLabel } from "../src/topics";
 
 describe("TOPICS", () => {
   it("lists the twelve topics in catalog order", () => {
@@ -58,5 +59,27 @@ describe("topicLabel", () => {
 
   it("returns an empty id as it is", () => {
     expect(topicLabel("")).toBe("");
+  });
+});
+
+describe("catalogTopicIds", () => {
+  it("keeps the catalog ids of a list in their order", () => {
+    expect(catalogTopicIds(["music", "food"])).toEqual(["music", "food"]);
+  });
+
+  it("drops an id outside the catalog", () => {
+    expect(catalogTopicIds(["food", "cooking", "travel"])).toEqual(["food", "travel"]);
+  });
+
+  it("returns an empty list for an empty list", () => {
+    expect(catalogTopicIds([])).toEqual([]);
+  });
+
+  it("returns an empty list when no id is in the catalog", () => {
+    expect(catalogTopicIds(["cooking", ""])).toEqual([]);
+  });
+
+  it("keeps all twelve catalog ids", () => {
+    expect(catalogTopicIds([...TOPIC_IDS])).toEqual([...TOPIC_IDS]);
   });
 });

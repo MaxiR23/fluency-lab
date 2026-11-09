@@ -4,7 +4,7 @@
 //
 // Tested:
 // - profileFromReads and profileReducer
-// - profileHeader, statTiles and learningValues
+// - profileHeader, statTiles and learningValues; learningValues counts only the catalog topics
 // - deleteAccountButtons and the deletion steps (deletionReducer)
 //
 // What is covered:
@@ -132,6 +132,16 @@ describe("learningValues", () => {
       goals: "Work, Everyday conversation",
       topics: "4 selected",
     });
+  });
+
+  it("counts only the catalog topics, as the topics editor shows them", () => {
+    expect(learningValues(profileWith({ topics: ["food", "cooking", "music"] })).topics).toBe(
+      "2 selected",
+    );
+  });
+
+  it("says 0 selected when no topic is in the catalog", () => {
+    expect(learningValues(profileWith({ topics: ["cooking"] })).topics).toBe("0 selected");
   });
 
   it("says Not set for no level and no goals, and 0 selected for no topics", () => {

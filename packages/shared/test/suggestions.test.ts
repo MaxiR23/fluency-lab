@@ -5,6 +5,7 @@
 // Tested:
 // - The catalog is complete, with unique ids and valid topics, goals and levels
 // - suggestTopics interleaves interests, goals and new topics for a level
+// - suggestTopics treats a topic outside the catalog as no interest
 // - allSuggestions lists every starter for a level once
 //
 // What is covered:
@@ -179,6 +180,12 @@ describe("suggestTopics", () => {
     const result = suggestTopics(input({ topics: ["travel"] }), catalog, Infinity);
     expect(ids(result)).toEqual(["tv1", "t1", "tv2", "s1", "w1", "e1", "w2"]);
     expect(result.slice(0, 2).map((entry) => entry.tag)).toEqual(["Your interests", "New topic"]);
+  });
+
+  it("treats a topic outside the catalog as no interest", () => {
+    const result = suggestTopics(input({ topics: ["cooking"] }), catalog, Infinity);
+    expect(result).toEqual(suggestTopics(input({ topics: [] }), catalog, Infinity));
+    expect(result.some((entry) => entry.tag === "Your interests")).toBe(false);
   });
 
   it("suggests only new topics when the user chose nothing", () => {

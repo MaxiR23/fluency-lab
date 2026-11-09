@@ -1,3 +1,4 @@
+import { catalogTopicIds } from "@fluency-lab/shared";
 import type { Profile, ProfileStats } from "@fluency-lab/shared";
 
 import type { FailureCause } from "@/auth/auth-port";
@@ -70,7 +71,7 @@ export function learningValues(profile: Profile): {
   return {
     level,
     goals: goals.length === 0 ? NOT_SET : goals.join(", "),
-    topics: selectedCountLabel(profile.topics.length),
+    topics: selectedCountLabel(catalogTopicIds(profile.topics).length),
   };
 }
 

@@ -11,6 +11,7 @@
 //   setSessionContext, endSession and getMonthSpend
 // - listOpenSessions and deleteSession
 // - getSessionSummary
+// - getProfile parses a profile topic outside the catalog
 // - getProfileStats and deleteAccount
 // - getMonthProgress, listHistory, listMistakes and listWords
 // - The practice calls: getTodayPractice, listRecentPrompts, createPracticeRun, openPracticeRun, addPracticeItems,
@@ -157,6 +158,14 @@ describe("getProfile", () => {
   it("returns the parsed profile", async () => {
     const { data } = setup(reply(profile));
     expect(await data.getProfile()).toEqual({ ok: true, value: profile });
+  });
+
+  it("returns a profile whose topic is outside the catalog", async () => {
+    const { data } = setup(reply({ ...profile, topics: ["cooking"] }));
+    expect(await data.getProfile()).toEqual({
+      ok: true,
+      value: { ...profile, topics: ["cooking"] },
+    });
   });
 
   it("returns not_found on 404", async () => {

@@ -21,7 +21,7 @@ export type Suggestion = {
 export type SuggestionInput = {
   level: Level | null;
   goals: readonly Goal[];
-  topics: readonly TopicId[];
+  topics: readonly string[];
 };
 
 export const SUGGESTION_LIMIT = 6;
@@ -472,7 +472,7 @@ export function suggestTopics(
   const fits = catalog.filter(
     (entry) => input.level === null || entry.levels.includes(input.level),
   );
-  const ofTopic = (topicId: TopicId) => fits.filter((entry) => entry.topicId === topicId);
+  const ofTopic = (topicId: string) => fits.filter((entry) => entry.topicId === topicId);
   const ofGoal = (goal: Goal) => fits.filter((entry) => entry.goal === goal);
   const queues: Starter[][] = [
     roundRobin(input.topics.map(ofTopic)),

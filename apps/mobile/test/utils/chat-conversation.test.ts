@@ -4,6 +4,7 @@
 //
 // Tested:
 // - startConversation for a free chat, a starter, a topic and a resumed session
+// - startConversation carries a profile topic outside the catalog to the learner
 // - conversationReducer and nextStep: the order of the outside calls of a turn
 // - A reply's corrections are grounded in the learner's message before they are shown or saved
 // - Failures: an AI failure restores the draft, a save failure resumes at the failed write
@@ -188,6 +189,10 @@ describe("startConversation", () => {
     expect(c.session).toBeNull();
     expect(c.phase).toBe("idle");
     expect(nextStep(c)).toEqual({ kind: "none" });
+  });
+
+  it("carries a profile topic outside the catalog to the learner", () => {
+    expect(free({ topics: ["food", "cooking"] }).learner.topics).toEqual(["food", "cooking"]);
   });
 
   it("greets without a name", () => {
