@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 
-import { apple, auth } from "@/auth";
+import { apple, appleSignIn, auth } from "@/auth";
 import type { AuthOutcome, ProfileName } from "@/auth/auth-port";
 import { AppleButton } from "@/components/apple-button";
 import { AuthScreen } from "@/components/auth-screen";
@@ -45,7 +45,7 @@ export default function SignIn() {
   useEffect(() => {
     void apple.isAvailable().then(setAvailability);
   }, []);
-  const showApple = showsAppleSignIn(Platform.OS, availability);
+  const showApple = showsAppleSignIn(Platform.OS, availability, appleSignIn);
 
   async function continueWithApple() {
     setFailure(undefined);
