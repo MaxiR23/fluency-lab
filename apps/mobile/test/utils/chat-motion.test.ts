@@ -31,6 +31,8 @@ describe("chatMotion", () => {
       swipeBack: { duration: 240 },
       noteEnter: { duration: 700, offset: 12 },
       saved: { delay: 1000, duration: 400, scale: 0.8 },
+      titleSwap: { outDuration: 500, inDelay: 400, inDuration: 600, offset: 6 },
+      sheet: { duration: 700, curve: [0.2, 0.8, 0.2, 1] },
     });
   });
 
@@ -56,6 +58,8 @@ describe("chatMotion", () => {
       swipeBack: null,
       noteEnter: null,
       saved: null,
+      titleSwap: null,
+      sheet: null,
     });
   });
 });

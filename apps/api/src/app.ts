@@ -16,6 +16,7 @@ import {
   sessionIdParamSchema,
   sessionTitle,
   sessionContextSchema,
+  sessionTitleUpdateSchema,
   sessionUsageSchema,
   starterById,
   studyNoteCreateSchema,
@@ -561,6 +562,24 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
         const outcome = await config.store
           .forUser(c.get("caller"))
           .setSessionContext(c.req.valid("param").id, c.req.valid("json"));
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json(outcome.value, 200);
+      },
+    )
+    .patch(
+      "/sessions/:id/title",
+      auth,
+      caller,
+      zValidator("param", sessionIdParamSchema, invalidInput),
+      zValidator("json", sessionTitleUpdateSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .setSessionTitle(c.req.valid("param").id, c.req.valid("json"));
         if (!outcome.ok) {
           const { status, body } = failureResponse(outcome.failure);
           return c.json(body, status);

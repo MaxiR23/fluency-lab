@@ -1,4 +1,5 @@
 import {
+  sessionTitle,
   topicLabel,
   type MonthSpend,
   type Profile,
@@ -27,6 +28,7 @@ import type { ChatOrigin } from "@/utils/chat-opening";
 import { dataFailureMessage, keyReadFailureMessage } from "@/utils/data-message";
 import { hasText } from "@/utils/has-text";
 import { providerOptions } from "@/utils/onboarding-options";
+import { tutorName } from "@/utils/chat-reply";
 import { spendWarningText } from "@/utils/spend-limit";
 
 export type ChatView =
@@ -75,6 +77,18 @@ export function originTitle(origin: ChatOrigin): string {
   if (origin.kind === "starter") return origin.starter.title;
   if (origin.kind === "topic") return topicLabel(origin.topicId);
   return origin.kind === "free" ? "Free chat" : "Chat";
+}
+
+// INFO: the session's topic once it exists; before that, the one the chat starts from.
+export function chatTopicId(c: Pick<Conversation, "session" | "origin">): string | null {
+  if (c.session !== null) return c.session.topicId;
+  if (c.origin.kind === "starter") return c.origin.starter.topicId;
+  return c.origin.kind === "topic" ? c.origin.topicId : null;
+}
+
+// INFO: the header's second line: the chat's type and the tutor, like the Continue card's type.
+export function chatSubtitle(topicId: string | null, provider: Provider | null): string {
+  return `${sessionTitle(topicId)} · ${tutorName(provider)}`;
 }
 
 export function providerLine(provider: Provider | null): string {

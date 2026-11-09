@@ -1,3 +1,4 @@
+import type { Session } from "@fluency-lab/shared";
 import { router, useIsFocused } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 
@@ -39,6 +40,7 @@ export function useChat(chatOrigin: ChatOrigin): {
   retry: () => Promise<void>;
   end: () => Promise<void>;
   openNote: (noteId: string) => void;
+  renamed: (session: Session) => void;
   updateKey: () => void;
 } {
   const [view, setView] = useState<ChatView>({ kind: "loading" });
@@ -141,6 +143,12 @@ export function useChat(chatOrigin: ChatOrigin): {
           dispatch(
             saved.ok ? { type: "write_done", session: saved.value } : { type: "context_dropped" },
           );
+        } else if (step.write.kind === "title") {
+          const saved = await data.setSessionTitle(session.id, step.write.input);
+          // INFO: a title that cannot be saved is dropped; the next turn asks again.
+          dispatch(
+            saved.ok ? { type: "write_done", session: saved.value } : { type: "title_dropped" },
+          );
         } else {
           const saved = await data.addUsage(session.id, step.write.usage);
           if (!saved.ok) {
@@ -239,6 +247,7 @@ export function useChat(chatOrigin: ChatOrigin): {
     retry,
     end,
     openNote: (noteId) => router.push({ pathname: "/note", params: { id: noteId } }),
+    renamed: (renamedSession) => dispatch({ type: "session_renamed", session: renamedSession }),
     updateKey: () => router.push("/api-key"),
   };
 }

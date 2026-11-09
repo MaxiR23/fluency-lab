@@ -11,6 +11,7 @@ import {
   type Provider,
   type Session,
   type SessionContext,
+  type SessionTitleUpdate,
   type SessionCreate,
   type SessionUsage,
   type SessionWithMessages,
@@ -32,6 +33,7 @@ import {
 } from "@/utils/chat-opening";
 import { contextTurns, summaryCut, summaryPoint } from "@/utils/chat-context";
 import { summaryRequest } from "@/utils/context-prompt";
+import { wantsTitle } from "@/utils/chat-title";
 import { noteDraft } from "@/utils/note";
 import { spendLevel } from "@/utils/spend-limit";
 import { tutorPrompt } from "@/utils/tutor-prompt";
@@ -69,7 +71,9 @@ export type Write =
   | { kind: "note"; localId: string; input: StudyNoteCreate }
   | { kind: "usage"; usage: SessionUsage }
   // INFO: the summary of the older turns and the last message it covers, saved on the session.
-  | { kind: "context"; input: SessionContext };
+  | { kind: "context"; input: SessionContext }
+  // INFO: the tutor's title, saved as auto; dropped if it cannot be saved.
+  | { kind: "title"; input: SessionTitleUpdate };
 
 export type Learner = {
   displayName: string | null;
@@ -126,6 +130,10 @@ export type ConversationEvent =
   | { type: "summary_failed"; usage?: TokenUsage }
   // INFO: the context write failed: the summary is dropped and tried again on the next turn.
   | { type: "context_dropped" }
+  // INFO: the title write failed: the title is dropped and asked again on the next turn.
+  | { type: "title_dropped" }
+  // INFO: the owner renamed this chat from the sheet; session is the one the API returned.
+  | { type: "session_renamed"; session: Session }
   // INFO: the turn's summary took the spend to the limit: the text goes back to the draft, no failure.
   | { type: "limit_reached" }
   // INFO: session is the session the context write returned.
@@ -234,7 +242,7 @@ export function startConversation(input: {
       ...base,
       session,
       title: session.title,
-      topicTitle: promptTopic(session),
+      topicTitle: promptTopic(session, openingOf(messages)),
       opening: openingOf(messages),
       messages: messages.map((m) => fromMessage(m, countOf(threadReplies, m.id), notes)),
     };
@@ -292,6 +300,7 @@ function replyWrites(
   ids: { user: string; tutor: string },
   replyToId: string | null,
   sessionId: string | null,
+  title: string | null,
 ): Write[] {
   const user: MessageCreate = { role: "user", text: pending };
   if (replyToId !== null) user.replyToId = replyToId;
@@ -309,6 +318,9 @@ function replyWrites(
     ...note,
     messageWrite({ role: "tutor", text: reply.reply }, ids.tutor),
     { kind: "usage", usage: usageWrite(reply.model, reply.usage) },
+    ...(title === null
+      ? []
+      : [{ kind: "title" as const, input: { title, source: "auto" as const } }]),
   ];
 }
 
@@ -417,6 +429,7 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
             ids,
             replyTargetId(c.messages, c.pendingReplyTo),
             c.session?.id ?? null,
+            c.session?.titleSource === "default" ? reply.title : null,
           ),
         ],
         spentUsd: round8(c.spentUsd + usageCostUsd(reply.model, reply.usage)),
@@ -475,7 +488,11 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
         ...c,
         messages,
         session:
-          done?.kind === "context" && event.session !== undefined ? event.session : c.session,
+          (done?.kind === "context" || done?.kind === "title") && event.session !== undefined
+            ? event.session
+            : c.session,
+        title:
+          done?.kind === "title" && event.session !== undefined ? event.session.title : c.title,
         writes: rest,
         phase: rest.length === 0 && c.phase === "saving" ? "idle" : c.phase,
       };
@@ -510,6 +527,19 @@ export function conversationReducer(c: Conversation, event: ConversationEvent): 
         phase: rest.length === 0 && c.phase === "saving" ? "idle" : c.phase,
       };
     }
+    case "title_dropped": {
+      const [done, ...rest] = c.writes;
+      if (done?.kind !== "title") return c;
+      return {
+        ...c,
+        writes: rest,
+        phase: rest.length === 0 && c.phase === "saving" ? "idle" : c.phase,
+      };
+    }
+    case "session_renamed":
+      return c.session?.id === event.session.id
+        ? { ...c, session: event.session, title: event.session.title }
+        : c;
     case "limit_reached":
       return {
         ...c,
@@ -597,6 +627,7 @@ export function nextStep(c: Conversation): Step {
       ...c.learner,
       topicTitle: c.topicTitle,
       openingLine: c.opening,
+      askTitle: wantsTitle(c.session, c.messages, c.pending),
     });
     const system = context.addition === null ? prompt : `${prompt}\n${context.addition}`;
     return { kind: "ask", request: { system, turns: context.turns } };

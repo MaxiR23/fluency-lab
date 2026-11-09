@@ -8,6 +8,7 @@
 // - The chevron only when asked
 // - The title row alignment
 // - Pressing the card
+// - An optional type tag before the detail, with the 4 point column gap
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -22,6 +23,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 
 import { SessionCard } from "@/components/session-card";
+import { spacing } from "@/constants/theme";
 
 const card = {
   title: "Weekend plans",
@@ -89,5 +91,27 @@ describe("SessionCard", () => {
     const icon = screen.getByTestId("icon-chat", { includeHiddenElements: true });
     expect(icon.props.width).toBe(18);
     expect(icon.props.height).toBe(18);
+  });
+
+  it("draws the tag before the detail with the 4 point column gap when a tag is given", async () => {
+    await render(<SessionCard {...card} tag="Free chat" onPress={jest.fn()} />);
+    const tag = screen.getByText("Free chat");
+    const detail = screen.getByText("14 messages");
+    expect(tag.parent?.parent).toBe(detail.parent);
+    expect(StyleSheet.flatten(detail.parent?.props.style)).toMatchObject({
+      flexDirection: "row",
+      gap: spacing.sm,
+    });
+    expect(StyleSheet.flatten(detail.parent?.parent?.props.style)).toMatchObject({
+      gap: spacing.xs,
+    });
+  });
+
+  it("keeps the 3 point gap and no tag without one", async () => {
+    await render(<SessionCard {...card} onPress={jest.fn()} />);
+    expect(screen.queryByText("Free chat")).toBeNull();
+    expect(StyleSheet.flatten(screen.getByText("14 messages").parent?.props.style)).toMatchObject({
+      gap: spacing.hair,
+    });
   });
 });

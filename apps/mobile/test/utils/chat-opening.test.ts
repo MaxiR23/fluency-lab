@@ -6,7 +6,7 @@
 // - chatOrigin reads the route params
 // - freeChatGreeting greets with or without a name
 // - chatOrigin reads a topic, and topicGreeting greets by topic
-// - promptTopic gives the topic title for the prompt, null for a free chat
+// - promptTopic gives the topic title for the prompt, null for a free chat, and ignores a title the tutor or the owner wrote, keeping a goal starter's title by its opener
 // - openingOf reads the opening line of a saved conversation
 //
 // What is covered:
@@ -38,6 +38,7 @@ function sessionWith(overrides: Partial<Session>): Session {
     summary: null,
     contextSummary: null,
     contextThroughId: null,
+    titleSource: "default",
     costUsd: 0,
     createdAt: "2026-11-05T09:00:00Z",
     updatedAt: "2026-11-05T09:00:00Z",
@@ -152,17 +153,61 @@ describe("topicGreeting", () => {
 
 describe("promptTopic", () => {
   it("is null for a free chat", () => {
-    expect(promptTopic(sessionWith({}))).toBeNull();
+    expect(promptTopic(sessionWith({}), null)).toBeNull();
   });
 
   it("is the title of a topic session", () => {
-    expect(promptTopic(sessionWith({ topicId: "food", title: "Food" }))).toBe("Food");
+    expect(promptTopic(sessionWith({ topicId: "food", title: "Food" }), null)).toBe("Food");
   });
 
   it("is the title of a goal starter session (no topic, a starter title)", () => {
-    expect(promptTopic(sessionWith({ topicId: null, title: "Your next interview" }))).toBe(
+    expect(promptTopic(sessionWith({ topicId: null, title: "Your next interview" }), null)).toBe(
       "Your next interview",
     );
+  });
+});
+
+describe("promptTopic with a written title", () => {
+  it("gives no topic for a free chat with an automatic or a user title", () => {
+    for (const titleSource of ["auto", "user"] as const) {
+      expect(
+        promptTopic(
+          sessionWith({ topicId: null, title: "Ramen spots in Tokyo", titleSource }),
+          null,
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it("gives the topic label for a topic chat with a written title", () => {
+    expect(
+      promptTopic(
+        sessionWith({ topicId: "food", title: "My grandma's soup", titleSource: "user" }),
+        null,
+      ),
+    ).toBe("Food");
+  });
+});
+
+describe("promptTopic for a goal starter with a written title", () => {
+  it("keeps the starter title, found by its opener, for an automatic or a user title", () => {
+    for (const titleSource of ["auto", "user"] as const) {
+      expect(
+        promptTopic(
+          sessionWith({ topicId: null, title: "Ramen spots in Tokyo", titleSource }),
+          starter.opener,
+        ),
+      ).toBe(starter.title);
+    }
+  });
+
+  it("gives no topic when the opening is not a starter's", () => {
+    expect(
+      promptTopic(
+        sessionWith({ topicId: null, title: "Ramen", titleSource: "auto" }),
+        "Hi! What would you like to talk about today?",
+      ),
+    ).toBeNull();
   });
 });
 

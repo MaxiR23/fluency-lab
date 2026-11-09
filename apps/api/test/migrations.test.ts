@@ -9,6 +9,7 @@
 // - Row level security is enabled on profiles, sessions, messages, thread_messages,
 //   practice_runs, practice_items and study_notes
 // - Every note kind appears quoted in the migrations
+// - Every title source appears quoted in the migrations
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -28,6 +29,7 @@ import {
   PRACTICE_KINDS,
   PROVIDERS,
   SESSION_STATUSES,
+  TITLE_SOURCES,
 } from "@fluency-lab/shared";
 import { describe, expect, it } from "vitest";
 
@@ -52,6 +54,10 @@ describe("migrations", () => {
 
   it("lists every session status and message role", () => {
     expect(missing([...SESSION_STATUSES, ...MESSAGE_ROLES])).toEqual([]);
+  });
+
+  it("lists every title source", () => {
+    expect(missing([...TITLE_SOURCES])).toEqual([]);
   });
 
   it("lists every practice focus and practice kind", () => {

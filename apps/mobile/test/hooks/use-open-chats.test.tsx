@@ -5,6 +5,7 @@
 // Tested:
 // - The open sessions read from the data port, the expected empty and the failure
 // - A read again on retry and on regaining focus, and a read that ends after unmount
+// - A renamed session replaces its row in the list
 // - End and Delete through the port, removing the row (also on not_found) or keeping it on failure
 //
 // What is covered:
@@ -147,5 +148,19 @@ describe("useOpenChats", () => {
       sessions: [first, second],
       actionFailure: "network",
     });
+  });
+
+  it("replaces a renamed session in the list", async () => {
+    const { result } = await renderHook(() => useOpenChats());
+    await waitFor(() => expect(result.current.state.kind).toBe("ready"));
+    await act(async () =>
+      result.current.titled({ ...session, title: "Weekend plans", titleSource: "user" }),
+    );
+    expect(result.current.state).toMatchObject({ kind: "ready" });
+    if (result.current.state.kind !== "ready") throw new Error("expected ready");
+    expect(result.current.state.sessions.map((open) => open.session.title)).toEqual([
+      "Weekend plans",
+      second.session.title,
+    ]);
   });
 });

@@ -181,22 +181,24 @@ describe("TUTOR_REPLY_JSON_SCHEMA", () => {
     for (const value of Object.values(record)) walk(value, visit);
   }
 
-  it("closes every object and requires all of its properties but the optional note", () => {
+  it("closes every object and requires all of its properties but the optional note and title", () => {
     let objects = 0;
     walk(TUTOR_REPLY_JSON_SCHEMA, (node) => {
       if (node.type !== "object") return;
       objects += 1;
       expect(node.additionalProperties).toBe(false);
       const keys = Object.keys(node.properties as object).filter(
-        (key) => node !== TUTOR_REPLY_JSON_SCHEMA || key !== "note",
+        (key) => node !== TUTOR_REPLY_JSON_SCHEMA || (key !== "note" && key !== "title"),
       );
       expect(node.required).toEqual(keys);
     });
     expect(objects).toBe(3);
   });
 
-  it("sends the note as the only optional property of the reply schema", () => {
+  it("sends the note and the title as the two optional properties of the reply schema", () => {
     expect(TUTOR_REPLY_JSON_SCHEMA.required).not.toContain("note");
+    expect(TUTOR_REPLY_JSON_SCHEMA.required).not.toContain("title");
+    expect(TUTOR_REPLY_JSON_SCHEMA.properties.title).toEqual({ type: "string" });
     expect(TUTOR_REPLY_JSON_SCHEMA.properties.note).toBe(STUDY_NOTE_JSON_SCHEMA);
     expect(STUDY_NOTE_JSON_SCHEMA.additionalProperties).toBe(false);
     expect(STUDY_NOTE_JSON_SCHEMA.required).toEqual([
@@ -231,13 +233,14 @@ describe("TUTOR_REPLY_JSON_SCHEMA", () => {
     expect(items.properties.rule).toEqual({ type: "string" });
   });
 
-  it("describes the four fields of the reply and its note", () => {
+  it("describes the four fields of the reply, its note and its title", () => {
     expect(Object.keys(TUTOR_REPLY_JSON_SCHEMA.properties)).toEqual([
       "reply",
       "corrections",
       "explanation",
       "newWords",
       "note",
+      "title",
     ]);
   });
 });
@@ -292,6 +295,37 @@ describe("a reply with a study note", () => {
   });
 });
 
+describe("a reply with a title", () => {
+  const ask = (ai: ReturnType<typeof setup>["ai"]) =>
+    ai.reply({ system: request.system, turns: [...request.turns] });
+
+  it("returns the normalized title", async () => {
+    const { ai } = setup(success({ ...payload, title: '"Ramen spots in Tokyo."' }));
+    expect(await ask(ai)).toMatchObject({ ok: true, value: { title: "Ramen spots in Tokyo" } });
+  });
+
+  it("returns a null title when the reply has none", async () => {
+    const { ai } = setup(success(payload));
+    expect(await ask(ai)).toMatchObject({ ok: true, value: { title: null } });
+  });
+
+  it("drops a title over six words and keeps the paid reply", async () => {
+    const { ai } = setup(success({ ...payload, title: "one two three four five six seven" }));
+    expect(await ask(ai)).toMatchObject({
+      ok: true,
+      value: { reply: "Nice! Where did you go?", title: null },
+    });
+  });
+
+  it("drops a blank title and keeps the paid reply", async () => {
+    const { ai } = setup(success({ ...payload, title: "   " }));
+    expect(await ask(ai)).toMatchObject({
+      ok: true,
+      value: { reply: "Nice! Where did you go?", title: null },
+    });
+  });
+});
+
 describe("a successful reply", () => {
   it("parses the reply, corrections, explanation, new words, model and usage", async () => {
     const { ai } = setup(
@@ -310,6 +344,7 @@ describe("a successful reply", () => {
         explanation: "Use the present perfect.",
         newWords: ["definitely"],
         note: null,
+        title: null,
         model: TUTOR_MODEL,
         usage: {
           inputTokens: 700,

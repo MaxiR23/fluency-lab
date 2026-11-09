@@ -1,10 +1,13 @@
 import { Pressable, StyleSheet, View } from "react-native";
+import Animated, { LayoutAnimationConfig } from "react-native-reanimated";
 
 import { BackButton } from "@/components/back-button";
 import { Icon, type IconName } from "@/components/icon";
 import { IconButton } from "@/components/icon-button";
 import { Text } from "@/components/text";
 import { borderWidth, colors, radius, size, spacing, strokeWidth } from "@/constants/theme";
+import type { TitleSwapMotion } from "@/utils/chat-motion";
+import { titleInTransition, titleOutTransition } from "@/utils/chat-transitions";
 
 export function ChatHeader({
   title,
@@ -14,6 +17,9 @@ export function ChatHeader({
   endDisabled,
   backLabel,
   action,
+  onRename,
+  renameDisabled,
+  titleSwap,
 }: {
   title: string;
   subtitle?: string;
@@ -24,16 +30,53 @@ export function ChatHeader({
   backLabel?: string;
   // INFO: a trailing icon button, like the note screen's delete.
   action?: { icon: IconName; label: string; onPress: () => void };
+  // INFO: the chat's title opens the rename sheet; the other headers pass none.
+  onRename?: () => void;
+  renameDisabled?: boolean;
+  // INFO: the swap of chat-title.html when the title changes; null is reduce motion.
+  titleSwap?: TitleSwapMotion | null;
 }) {
   return (
     <View style={styles.row}>
       <BackButton onPress={onBack} label={backLabel} />
-      <View style={styles.texts}>
-        <Text variant="chatTitle" accessibilityRole="header">
-          {title}
-        </Text>
-        {subtitle === undefined ? null : <Text variant="why">{subtitle}</Text>}
-      </View>
+      {onRename === undefined ? (
+        <View style={styles.texts}>
+          <Text variant="chatTitle" accessibilityRole="header">
+            {title}
+          </Text>
+          {subtitle === undefined ? null : <Text variant="why">{subtitle}</Text>}
+        </View>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Rename chat: ${title}`}
+          disabled={renameDisabled}
+          onPress={onRename}
+          style={styles.rename}
+        >
+          <View testID="chat-title-row" style={styles.titleRow}>
+            <LayoutAnimationConfig skipEntering>
+              <Animated.View
+                key={title}
+                entering={titleInTransition(titleSwap ?? null)}
+                exiting={titleOutTransition(titleSwap ?? null)}
+                style={styles.titleText}
+              >
+                <Text variant="chatTitle" numberOfLines={1}>
+                  {title}
+                </Text>
+              </Animated.View>
+            </LayoutAnimationConfig>
+            <Icon
+              name="pen"
+              size={size.iconCheck}
+              color={colors.textMuted}
+              strokeWidth={strokeWidth.action}
+            />
+          </View>
+          {subtitle === undefined ? null : <Text variant="why">{subtitle}</Text>}
+        </Pressable>
+      )}
       {onEnd === undefined ? null : (
         <Pressable
           accessibilityRole="button"
@@ -95,4 +138,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   texts: { flex: 1, gap: spacing.tight },
+  rename: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: size.touch,
+    justifyContent: "center",
+    gap: spacing.tight,
+  },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: spacing.stack },
+  titleText: { flexShrink: 1 },
 });

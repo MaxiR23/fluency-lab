@@ -5,7 +5,7 @@
 -- Tested:
 -- - a user sees only their own sessions
 -- - a session can only be created for the caller, with a limited set of columns
--- - a user ends their own session; no other column can be updated
+-- - a user ends their own session; no column outside status, cost, context and title can be updated
 -- - a user deletes their own session and its messages; another user's session is untouched
 --
 -- What is covered:
@@ -16,6 +16,7 @@
 -- SEE: supabase/migrations/20261106000211_create_profiles_sessions_messages.sql
 --      supabase/migrations/20261106035530_chat_writes.sql
 --      supabase/migrations/20261106063500_session_delete.sql
+--      supabase/migrations/20261108050000_session_titles.sql
 
 begin;
 create extension if not exists pgtap with schema extensions;
@@ -49,8 +50,8 @@ select is_empty($$select 1 from public.sessions where id = (select id from t_ids
 select throws_ok($$insert into public.sessions (user_id, title) values ((select id from t_ids where k = 'e0b'), 'Free chat')$$, '42501', null, 'creating a session for another user is not allowed');
 select results_eq($$insert into public.sessions (user_id, title) values ((select id from t_ids where k = 'e0a'), 'Food') returning status, cost_usd$$, $$values ('active'::text, 0::numeric)$$, 'a new session is active and costs 0');
 select throws_ok($$insert into public.sessions (user_id, title, status) values ((select id from t_ids where k = 'e0a'), 'Food', 'ended')$$, '42501', null, 'setting the status on insert is not allowed');
-select throws_ok($$update public.sessions set title = 'x' where id = (select id from t_ids where k = 'ea1')$$, '42501', null, 'updating their own session is not allowed');
-select throws_ok($$update public.sessions set title = 'x' where id = (select id from t_ids where k = 'eb1')$$, '42501', null, 'updating another user session is not allowed');
+select throws_ok($$update public.sessions set topic_id = 'food' where id = (select id from t_ids where k = 'ea1')$$, '42501', null, 'updating their own session is not allowed');
+select throws_ok($$update public.sessions set topic_id = 'food' where id = (select id from t_ids where k = 'eb1')$$, '42501', null, 'updating another user session is not allowed');
 select results_eq($$update public.sessions set status = 'ended' where id = (select id from t_ids where k = 'ea1') returning status$$, array['ended'::text], 'a user ends their own session');
 select is_empty($$update public.sessions set status = 'ended' where id = (select id from t_ids where k = 'eb1') returning 1$$, 'ending another user session changes no row');
 select is_empty($$delete from public.sessions where id = (select id from t_ids where k = 'eb1') returning 1$$, 'deleting another user session deletes no row');

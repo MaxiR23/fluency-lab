@@ -4,6 +4,7 @@
 //
 // Tested:
 // - Loading, with data, expected empty and error states
+// - Each row draws its title, its type tag and its last message; Rename opens the sheet, saves as the user's and shows the new title
 // - Back, the title, the intro line and the rows in the order the API sent
 // - A row opens its chat; End removes the row; Delete asks first, then removes
 // - A failed End keeps the row and shows the failure
@@ -205,5 +206,55 @@ describe("Open chats", () => {
     expect(screen.getByRole("button", { name: "Older chat" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Newest chat" })).toBeNull();
     expect(screen.queryByRole("link", { name: /See all \(/ })).toBeNull();
+  });
+
+  it("draws each row's title, its type tag and its last message", async () => {
+    await renderAppAt("/chats", fakeSession());
+    expect(screen.getByRole("button", { name: "Weekend plans" })).toBeTruthy();
+    expect(screen.getByText("Where to?")).toBeTruthy();
+    expect(screen.getByText("Music")).toBeTruthy();
+    expect(screen.getAllByText("Free chat").length).toBeGreaterThan(0);
+  });
+
+  it("renames a chat from the swiped row's Rename", async () => {
+    await renderAppAt("/chats", fakeSession());
+    await pressAction(screen.getByRole("button", { name: "Rename Weekend plans" }));
+
+    expect(screen.getByRole("header", { name: "Rename chat" })).toBeTruthy();
+    expect(screen.getByDisplayValue("Weekend plans")).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText("Title"), "Trip to Rome");
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+    await act(async () => {});
+
+    expect(fakeData.setSessionTitle).toHaveBeenCalledWith("s1", {
+      title: "Trip to Rome",
+      source: "user",
+    });
+    expect(screen.getByRole("button", { name: "Trip to Rome" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Weekend plans" })).toBeNull();
+    expect(screen.queryByTestId("rename-sheet")).toBeNull();
+  });
+
+  it("keeps the sheet open with the error when the rename fails", async () => {
+    fakeData.setSessionTitle.mockResolvedValue({ ok: false, failure: "network" });
+    await renderAppAt("/chats", fakeSession());
+    await pressAction(screen.getByRole("button", { name: "Rename Weekend plans" }));
+    await fireEvent.changeText(screen.getByLabelText("Title"), "Trip to Rome");
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(dataFailureMessage("network"))).toBeTruthy();
+    expect(screen.getByDisplayValue("Trip to Rome")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Weekend plans", hidden: true })).not.toHaveLength(
+      0,
+    );
+  });
+
+  it("closes the sheet without saving on Cancel", async () => {
+    await renderAppAt("/chats", fakeSession());
+    await pressAction(screen.getByRole("button", { name: "Rename Weekend plans" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByTestId("rename-sheet")).toBeNull();
+    expect(fakeData.setSessionTitle).not.toHaveBeenCalled();
   });
 });

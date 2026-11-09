@@ -275,6 +275,7 @@ describe("chatItems", () => {
       corrections: [],
       explanation: null,
       note: null,
+      title: null,
       newWords: [],
       model: TUTOR_MODEL,
       usage: {

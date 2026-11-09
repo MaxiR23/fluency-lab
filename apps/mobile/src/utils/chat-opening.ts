@@ -1,4 +1,5 @@
 import {
+  STARTERS,
   TOPIC_IDS,
   sessionTitle,
   starterById,
@@ -58,7 +59,13 @@ export function freeChatGreeting(displayName: string | null): string {
 }
 
 // INFO: null is a free chat. A goal starter has no topic but a title of its own.
-export function promptTopic(session: Session): string | null {
+export function promptTopic(session: Session, opening: string | null): string | null {
+  // INFO: an automatic or a user title names the chat, not the tutor's topic. A goal starter's own
+  // title is gone from the session then, so its opener (the first tutor line) tells which it was.
+  if (session.titleSource !== "default") {
+    if (session.topicId !== null) return topicLabel(session.topicId);
+    return STARTERS.find((starter) => starter.opener === opening)?.title ?? null;
+  }
   return session.topicId === null && session.title === sessionTitle(null) ? null : session.title;
 }
 

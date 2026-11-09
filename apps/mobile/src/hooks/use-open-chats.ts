@@ -1,4 +1,5 @@
 import { useIsFocused } from "expo-router";
+import type { Session } from "@fluency-lab/shared";
 import { useEffect, useReducer } from "react";
 
 import { data } from "@/data";
@@ -9,6 +10,8 @@ export function useOpenChats(): {
   retry: () => Promise<void>;
   end: (sessionId: string) => Promise<void>;
   remove: (sessionId: string) => Promise<void>;
+  // INFO: the session as the rename sheet saved it.
+  titled: (session: Session) => void;
 } {
   const [state, dispatch] = useReducer(openChatsReducer, initialOpenChats);
   const focused = useIsFocused();
@@ -42,5 +45,11 @@ export function useOpenChats(): {
     dispatch({ type: "action_done", sessionId, outcome });
   }
 
-  return { state, retry, end, remove };
+  return {
+    state,
+    retry,
+    end,
+    remove,
+    titled: (session) => dispatch({ type: "title_saved", session }),
+  };
 }

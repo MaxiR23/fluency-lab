@@ -75,6 +75,7 @@ const sessionRow = {
   summary: null,
   context_summary: null,
   context_through_id: null,
+  title_source: "default",
   cost_usd: 0.25,
   created_at: stamp,
   updated_at: stamp,
@@ -166,6 +167,7 @@ describe("toSession", () => {
       summary: null,
       contextSummary: null,
       contextThroughId: null,
+      titleSource: "default",
       costUsd: 0.25,
       createdAt: stamp,
       updatedAt: stamp,
@@ -186,6 +188,15 @@ describe("toSession", () => {
     const mapped = toSession(sessionRow);
     expect(mapped?.contextSummary).toBeNull();
     expect(mapped?.contextThroughId).toBeNull();
+  });
+
+  it("reads the title source of a session", () => {
+    expect(toSession({ ...sessionRow, title_source: "auto" })?.titleSource).toBe("auto");
+    expect(toSession({ ...sessionRow, title_source: "user" })?.titleSource).toBe("user");
+  });
+
+  it("rejects a session row with an unknown title source", () => {
+    expect(toSession({ ...sessionRow, title_source: "other" })).toBeNull();
   });
 
   it("maps a free chat session with a null topic", () => {

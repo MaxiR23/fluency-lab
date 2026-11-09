@@ -32,6 +32,7 @@ function sessionAt(createdAt: string): Session {
     summary: null,
     contextSummary: null,
     contextThroughId: null,
+    titleSource: "default",
     costUsd: 0,
     createdAt,
     updatedAt: createdAt,

@@ -167,9 +167,9 @@ client (RPC). Run it with `pnpm --filter api dev`.
     Suggestions     the full list of suggested topics, opened from Home
     Practice        pick a focus (mistakes, words or a topic) and start, opened from Home
     Practice run    the exercises of today's practice, or of a study note, and its result
-    Chat            the session, corrections inline, reply to a tutor message, end session
+    Chat            the session, corrections inline, reply to a tutor message, rename the chat, end session
     Thread          a correction's own thread: ask the tutor, withdrawn corrections
-    Open chats      the active chats, open or delete one, from Home
+    Open chats      the active chats, open, end, rename or delete one, from Home
     Summary         after a session: mistakes, new words, topic; also
                     opened from a Progress History row
     Plan            optional, off by default

@@ -18,6 +18,10 @@ export const NOTE_SHAPE =
   'kind is "table" or "summary". title names the grammar point in two to five words. topic is one short line of what it covers, like "Going to, will, present simple". A table has exactly three columns (the form, when to use it, an example) in columns, and two to six rows in rows, each exactly three cells in that order; points is empty. A summary has three to six short sentences in points; columns and rows are empty. remember is one short sentence to keep in mind.';
 export const NOTE_GUIDE = `Only when the learner asks for a table, a summary or a study note about English grammar, also fill note. ${NOTE_SHAPE} Then reply says in one short sentence that the note is ready, without repeating it. Leave note out otherwise.`;
 
+export const TITLE_GUIDE =
+  'Also fill title: a name for this chat in English, at most six words, naming what it is about, like "Ramen spots in Tokyo", without quotes or a final period.';
+export const TITLE_SKIP = "Leave title out.";
+
 export const LEVEL_LINES: Record<Level, string> = {
   beginner: "The learner is a beginner: use short sentences and common words.",
   intermediate:
@@ -35,6 +39,8 @@ export type TutorPromptInput = {
   // INFO: null is a free chat.
   topicTitle: string | null;
   openingLine: string | null;
+  // INFO: true while the chat still has its default title.
+  askTitle: boolean;
 };
 
 export function tutorPrompt(input: TutorPromptInput): string {
@@ -61,6 +67,6 @@ export function tutorPrompt(input: TutorPromptInput): string {
   if (input.openingLine !== null) {
     lines.push(`You opened the conversation with: "${input.openingLine}"`);
   }
-  lines.push(OUTPUT_GUIDE, NOTE_GUIDE);
+  lines.push(OUTPUT_GUIDE, NOTE_GUIDE, input.askTitle ? TITLE_GUIDE : TITLE_SKIP);
   return lines.join("\n");
 }

@@ -6,6 +6,7 @@
 // - Label, value and typing
 // - The error message shows only when it gets one
 // - The text hides when secure
+// - The sheet look draws its label like the form look
 // - The answer look draws its tone border at once, or eases to it over a border duration
 //
 // What is covered:
@@ -111,6 +112,11 @@ describe("TextField", () => {
     expect(input.props.keyboardType).toBe("email-address");
     expect(input.props.autoCapitalize).toBe("none");
     expect(input.props.autoCorrect).toBe(false);
+  });
+
+  it("draws the label of the sheet look", async () => {
+    await render(<TextField label="Title" value="Ramen" look="sheet" />);
+    expect(screen.getByText("Title")).toBeTruthy();
   });
 
   it("hides the visible label in the answer look and keeps the accessibility label", async () => {

@@ -3,7 +3,8 @@
 // Tests for the Open chats state, its rows and the delete prompt.
 //
 // Tested:
-// - openChatRow: title, icon, short time and a one-line preview of the last message
+// - openChatRow: title, type tag, icon, short time and a one-line preview of the last message
+// - openChatsReducer: a renamed session replaces its row in place, keeping the order
 // - openChatsFromRead: ready, expected empty and failed
 // - openChatsReducer: load, a row removed after End or Delete (also on not_found), the
 //   last row removed, and an action failure that keeps the row
@@ -55,10 +56,24 @@ describe("openChatRow", () => {
     expect(openChatRow(open, now)).toEqual({
       id: "s1",
       title: "Music",
+      tag: "Music",
       time: "2h",
       preview: "What do you listen to?",
       icon: "note",
     });
+  });
+
+  it("tags a free chat Free chat and a topic chat with its topic", () => {
+    expect(openChatRow(first, now).tag).toBe("Free chat");
+    const topic = activeSessionWith({ id: "s9", topicId: "music", title: "Music" });
+    expect(openChatRow(topic, now).tag).toBe("Music");
+  });
+
+  it("shows the session's own title, not its type", () => {
+    const renamed = activeSessionWith({ id: "s9", topicId: null, title: "Ramen spots in Tokyo" });
+    const row = openChatRow(renamed, now);
+    expect(row.title).toBe("Ramen spots in Tokyo");
+    expect(row.tag).toBe("Free chat");
   });
 
   it("uses the chat icon for a free chat", () => {
@@ -189,5 +204,32 @@ describe("deletePromptButtons", () => {
   it("titles the prompt 'Delete this chat?' with 'This can't be undone.'", () => {
     expect(deletePromptTitle).toBe("Delete this chat?");
     expect(deletePromptMessage).toBe("This can't be undone.");
+  });
+});
+
+describe("openChatsReducer with a saved title", () => {
+  const renamed = { ...second.session, title: "Weekend plans", titleSource: "user" as const };
+
+  it("replaces the renamed session in place, keeping the order", () => {
+    const next = openChatsReducer(ready(), { type: "title_saved", session: renamed });
+    if (next.kind !== "ready") throw new Error("expected ready");
+    expect(next.sessions.map((open) => open.session.id)).toEqual(["s1", "s2", "s3"]);
+    expect(next.sessions[1]?.session.title).toBe("Weekend plans");
+    expect(next.sessions[1]?.lastMessage).toEqual(second.lastMessage);
+  });
+
+  it("ignores a title for a session it does not hold", () => {
+    const state = ready();
+    expect(
+      openChatsReducer(state, { type: "title_saved", session: { ...renamed, id: "other" } }),
+    ).toBe(state);
+  });
+
+  it("ignores a title while loading or failed", () => {
+    expect(openChatsReducer(initialOpenChats, { type: "title_saved", session: renamed })).toBe(
+      initialOpenChats,
+    );
+    const failed: OpenChatsState = { kind: "failed", failure: "network" };
+    expect(openChatsReducer(failed, { type: "title_saved", session: renamed })).toBe(failed);
   });
 });

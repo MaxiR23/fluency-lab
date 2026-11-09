@@ -36,6 +36,7 @@ export function tutorReplyWith(overrides: Partial<TutorReply> = {}): TutorReply 
     explanation: null,
     newWords: [],
     note: null,
+    title: null,
     model: TUTOR_MODEL,
     usage: {
       inputTokens: 700,

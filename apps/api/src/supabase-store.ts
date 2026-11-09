@@ -579,6 +579,17 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           return mapRow(result, toSession);
         },
 
+        async setSessionTitle(sessionId, input) {
+          const result = await client
+            .rpc("set_session_title", {
+              session_id: sessionId,
+              new_title: input.title,
+              source: input.source,
+            })
+            .maybeSingle();
+          return mapRow(result, toSession);
+        },
+
         async endSession(sessionId) {
           const result = await client
             .from("sessions")

@@ -13,6 +13,7 @@
 // - End, Update key, the refocus refresh, and a reply that ends after unmount
 // - A reply with a note saves the note first, then the tutor message with its id, and the card opens its note
 // - A chat with a session re-reads it on refocus, to show the thread counts and withdrawn corrections
+// - A reply with a title saves it as auto and swaps the conversation title; a failed save keeps the chat going; a user title is never replaced; renamed takes a renamed session
 // - A long chat: one summary before the turn, saved with its point, then the summary and the latest messages; a failed summary sends the history and retries next turn
 //
 // What is covered:
@@ -73,6 +74,7 @@ const session: Session = {
   summary: null,
   contextSummary: null,
   contextThroughId: null,
+  titleSource: "default",
   costUsd: 0,
   createdAt: "2026-11-05T09:00:00Z",
   updatedAt: "2026-11-05T09:00:00Z",
@@ -1193,6 +1195,77 @@ describe("useChat", () => {
       expect(fakeAi.summarize).toHaveBeenCalledTimes(2);
       expect(fakeData.setSessionContext).toHaveBeenCalledTimes(1);
       expect(replyRequest(1).system).toContain("Earlier in this chat");
+    });
+  });
+
+  describe("an automatic title", () => {
+    it("saves the tutor's title as auto and swaps the conversation title", async () => {
+      withKey();
+      fakeAi.reply.mockResolvedValue({
+        ok: true,
+        value: tutorReplyWith({ title: "Ramen spots in Tokyo" }),
+      });
+      const hook = await ready();
+      await sendText(hook, "I like ramen");
+
+      expect(fakeData.setSessionTitle).toHaveBeenCalledWith("session-1", {
+        title: "Ramen spots in Tokyo",
+        source: "auto",
+      });
+      const c = conversationOf(hook.result.current.view);
+      expect(c.title).toBe("Ramen spots in Tokyo");
+      expect(c.session?.titleSource).toBe("auto");
+    });
+
+    it("keeps the chat going when the title cannot be saved", async () => {
+      withKey();
+      fakeAi.reply.mockResolvedValue({
+        ok: true,
+        value: tutorReplyWith({ title: "Ramen spots in Tokyo" }),
+      });
+      fakeData.setSessionTitle.mockResolvedValue({ ok: false, failure: "unavailable" });
+      const hook = await ready();
+      await sendText(hook, "I like ramen");
+
+      const c = conversationOf(hook.result.current.view);
+      expect(c.failure).toBeNull();
+      expect(c.phase).toBe("idle");
+      expect(c.title).toBe("Free chat");
+      expect(c.writes).toEqual([]);
+    });
+
+    it("saves no title for a resumed chat with a user title", async () => {
+      withKey();
+      fakeData.openSession.mockResolvedValue({
+        ok: true,
+        value: {
+          session: { ...session, title: "My trip", titleSource: "user" },
+          messages: [saved("tutor", "Opening")],
+          threadReplies: [],
+          notes: [],
+        },
+      });
+      fakeAi.reply.mockResolvedValue({
+        ok: true,
+        value: tutorReplyWith({ title: "Ramen spots in Tokyo" }),
+      });
+      const hook = await ready({ kind: "resume", sessionId: "session-1" });
+      await sendText(hook, "I like ramen");
+
+      expect(fakeData.setSessionTitle).not.toHaveBeenCalled();
+      expect(conversationOf(hook.result.current.view).title).toBe("My trip");
+    });
+
+    it("takes a renamed session", async () => {
+      withKey();
+      const hook = await ready();
+      await sendText(hook, "Hello");
+      const renamed: Session = { ...session, title: "Weekend plans", titleSource: "user" };
+      await act(async () => hook.result.current.renamed(renamed));
+
+      const c = conversationOf(hook.result.current.view);
+      expect(c.title).toBe("Weekend plans");
+      expect(c.session).toEqual(renamed);
     });
   });
 });

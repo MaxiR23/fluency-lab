@@ -9,7 +9,9 @@ import {
   PRACTICE_KINDS,
   PROVIDERS,
   SESSION_STATUSES,
+  TITLE_SOURCES,
 } from "./profile-values";
+import { SESSION_TITLE_MAX } from "./session-title";
 import { MODEL_IDS } from "./model-price";
 import { STARTER_IDS } from "./suggestions";
 import { TOPIC_IDS } from "./topics";
@@ -154,7 +156,8 @@ export const studyNotePayloadSchema = z.object({
 
 // INFO: the shape of the structured output of the tutor. It is parsed loosely
 // here and normalized by the app before it is saved. rule is optional here so
-// a paid reply that lacks it is kept.
+// a paid reply that lacks it is kept. title is optional too: it is asked only
+// while the session has its default title.
 export const tutorReplySchema = z.object({
   reply: z.string(),
   corrections: z.array(
@@ -163,6 +166,7 @@ export const tutorReplySchema = z.object({
   explanation: z.string(),
   newWords: z.array(z.string()),
   note: studyNotePayloadSchema.optional(),
+  title: z.string().optional(),
 });
 
 export const messageCreateSchema = z.strictObject({
@@ -194,6 +198,12 @@ export const withdrawSchema = z.strictObject({
 });
 
 const tokenCount = z.int().min(0).max(10_000_000);
+
+// INFO: default is not a source a caller can write; only the API sets it.
+export const sessionTitleUpdateSchema = z.strictObject({
+  title: z.string().trim().min(1).max(SESSION_TITLE_MAX),
+  source: z.enum(TITLE_SOURCES).exclude(["default"]),
+});
 
 export const sessionUsageSchema = z.strictObject({
   model: z.enum(MODEL_IDS),
@@ -239,6 +249,7 @@ export const sessionSchema = z.object({
   summary: z.string().nullable(),
   contextSummary: z.string().nullable(),
   contextThroughId: z.string().nullable(),
+  titleSource: z.enum(TITLE_SOURCES),
   costUsd: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -533,6 +544,7 @@ export type MessageCorrections = z.infer<typeof messageCorrectionsSchema>;
 export type MessageCreate = z.infer<typeof messageCreateSchema>;
 export type SessionContext = z.infer<typeof sessionContextSchema>;
 export type ContextSummaryPayload = z.infer<typeof contextSummarySchema>;
+export type SessionTitleUpdate = z.infer<typeof sessionTitleUpdateSchema>;
 export type SessionUsage = z.infer<typeof sessionUsageSchema>;
 export type TutorReplyPayload = z.infer<typeof tutorReplySchema>;
 export type MonthSpend = z.infer<typeof monthSpendSchema>;

@@ -4,7 +4,7 @@
 //
 // Tested:
 // - Loading, no key, ready (the opener or greeting) and the key, profile and spend read errors
-// - The header: the starter's title or Free chat, the provider line, Back and the X (End session)
+// - The header: the starter's title or Free chat, the type and tutor line, Back and the X (End session); the title button opens Rename once the chat has a session
 // - The composer is one line and the pill again after a long message is sent
 // - A message gets a tutor reply with corrections and new words, with the typing indicator
 // - A saved session from Continue draws its messages and corrections
@@ -20,6 +20,8 @@
 // - A tutor reply with a table is saved as a note before the tutor message, the card shows Saved to Notes and opens the note
 // - A saved message with corrections offers Ask about this with its reply count, and opens its thread
 // - Coming back from a thread draws the new count and a withdrawn correction; thread text never shows in the chat
+// - A new free chat gets the tutor's title after its first exchange and the header swaps to it
+// - Rename from the header: the sheet, Save, the 60 character limit, a failed save, and the owner's title is kept
 // - The state updates when the key step goes back to Chat
 // - Signed out users cannot reach Chat
 //
@@ -108,6 +110,7 @@ const session: Session = {
   summary: null,
   contextSummary: null,
   contextThroughId: null,
+  titleSource: "default",
   costUsd: 0,
   createdAt: "2026-11-05T09:00:00Z",
   updatedAt: "2026-11-05T09:30:00Z",
@@ -223,7 +226,7 @@ describe("Chat", () => {
   it("draws the free chat greeting with the provider when a key is saved", async () => {
     withKey("claude");
     await renderAppAt("/chat", fakeSession());
-    expect(screen.getByText("Claude")).toBeTruthy();
+    expect(screen.getByText("Free chat · Claude")).toBeTruthy();
     expect(screen.getByTestId("message-list")).toBeTruthy();
     expect(screen.getByText("Hi Ada! What would you like to talk about today?")).toBeTruthy();
     expect(screen.queryByText("New word")).toBeNull();
@@ -549,7 +552,7 @@ describe("Chat", () => {
     await renderAppAt({ pathname: "/chat", params: { session: "session-1" } }, fakeSession());
 
     expect(fakeData.openSession).toHaveBeenCalledWith("session-1");
-    expect(screen.getByRole("header", { name: "Travel plans" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Rename chat: Travel plans" })).toBeTruthy();
     expect(screen.getByText("Where do you want to go?")).toBeTruthy();
     expect(screen.getByText("I goed to Rome")).toBeTruthy();
     expect(screen.getByText("1 correction")).toBeTruthy();
@@ -960,7 +963,7 @@ describe("Chat", () => {
     expect(screen.getByText(keyReadFailureMessage)).toBeTruthy();
     withKey();
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
-    expect(screen.getByText("Claude")).toBeTruthy();
+    expect(screen.getByText("Free chat · Claude")).toBeTruthy();
     expect(fakeKeys.hasApiKey).toHaveBeenCalledTimes(2);
   });
 
@@ -985,12 +988,139 @@ describe("Chat", () => {
     await fireEvent.changeText(screen.getByLabelText("API key"), generatedSecret("api-key"));
     await fireEvent.press(screen.getByRole("button", { name: "Save" }));
     expect(screen).toHavePathname("/chat");
-    expect(screen.getByText("OpenAI")).toBeTruthy();
+    expect(screen.getByText("Free chat · OpenAI")).toBeTruthy();
   });
 
   it("lands on Login when signed out at Chat", async () => {
     await renderApp("/chat", null);
     expect(screen).toHavePathname("/sign-in");
     expect(screen.queryByText("Connect your AI to start")).toBeNull();
+  });
+
+  describe("titles and renaming", () => {
+    const renameButton = (title: string) => ({ name: `Rename chat: ${title}` });
+
+    it("swaps the header to the tutor's title after the first exchange of a free chat", async () => {
+      withKey();
+      fakeAi.reply.mockResolvedValue({
+        ok: true,
+        value: tutorReplyWith({ title: "Ramen spots in Tokyo" }),
+      });
+      await renderAppAt("/chat", fakeSession());
+      await sendMessage("I like ramen");
+
+      expect(await screen.findByRole("button", renameButton("Ramen spots in Tokyo"))).toBeTruthy();
+      expect(fakeData.setSessionTitle).toHaveBeenCalledWith("session-1", {
+        title: "Ramen spots in Tokyo",
+        source: "auto",
+      });
+    });
+
+    it("renames the chat from the header", async () => {
+      withKey();
+      await renderAppAt("/chat", fakeSession());
+      await sendMessage("Hello");
+      await fireEvent.press(await screen.findByRole("button", renameButton("Free chat")));
+
+      expect(screen.getByRole("header", { name: "Rename chat" })).toBeTruthy();
+      expect(screen.getByDisplayValue("Free chat")).toBeTruthy();
+      expect(screen.getByText("9/60")).toBeTruthy();
+
+      await fireEvent.changeText(screen.getByLabelText("Title"), "Weekend plans");
+      await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+
+      expect(fakeData.setSessionTitle).toHaveBeenCalledWith("session-1", {
+        title: "Weekend plans",
+        source: "user",
+      });
+      expect(await screen.findByRole("button", renameButton("Weekend plans"))).toBeTruthy();
+      expect(screen.queryByTestId("rename-sheet")).toBeNull();
+    });
+
+    it("keeps the owner's title when a later reply carries a title", async () => {
+      withKey();
+      await renderAppAt("/chat", fakeSession());
+      await sendMessage("Hello");
+      await fireEvent.press(await screen.findByRole("button", renameButton("Free chat")));
+      await fireEvent.changeText(screen.getByLabelText("Title"), "Weekend plans");
+      await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+      await screen.findByRole("button", renameButton("Weekend plans"));
+
+      fakeAi.reply.mockResolvedValue({
+        ok: true,
+        value: tutorReplyWith({ title: "Ramen spots in Tokyo" }),
+      });
+      await sendMessage("Now about ramen");
+      expect(await screen.findAllByText("Nice! Where did you go?")).toHaveLength(2);
+
+      expect(fakeData.setSessionTitle).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("button", renameButton("Weekend plans"))).toBeTruthy();
+    });
+
+    it("keeps the sheet open with the error and the typed title when the save fails", async () => {
+      withKey();
+      await renderAppAt("/chat", fakeSession());
+      await sendMessage("Hello");
+      await fireEvent.press(await screen.findByRole("button", renameButton("Free chat")));
+      fakeData.setSessionTitle.mockResolvedValue({ ok: false, failure: "unavailable" });
+      await fireEvent.changeText(screen.getByLabelText("Title"), "Weekend plans");
+      await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByText(dataFailureMessage("unavailable"))).toBeTruthy();
+      expect(screen.getByDisplayValue("Weekend plans")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Save", disabled: false })).toBeTruthy();
+    });
+
+    it("closes the sheet without saving on Cancel", async () => {
+      withKey();
+      await renderAppAt("/chat", fakeSession());
+      await sendMessage("Hello");
+      await fireEvent.press(await screen.findByRole("button", renameButton("Free chat")));
+      await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByTestId("rename-sheet")).toBeNull();
+      expect(fakeData.setSessionTitle).not.toHaveBeenCalled();
+    });
+
+    it("disables Save for an empty or unchanged title and caps the field at 60", async () => {
+      withKey();
+      await renderAppAt("/chat", fakeSession());
+      await sendMessage("Hello");
+      await fireEvent.press(await screen.findByRole("button", renameButton("Free chat")));
+
+      expect(screen.getByRole("button", { name: "Save", disabled: true })).toBeTruthy();
+      await fireEvent.changeText(screen.getByLabelText("Title"), "   ");
+      expect(screen.getByRole("button", { name: "Save", disabled: true })).toBeTruthy();
+      expect(screen.getByLabelText("Title").props.maxLength).toBe(60);
+      await fireEvent.changeText(screen.getByLabelText("Title"), "a".repeat(70));
+      expect(screen.getByText("60/60")).toBeTruthy();
+    });
+
+    it("draws no rename button before the chat has a session or without a key", async () => {
+      withKey();
+      await renderAppAt("/chat", fakeSession());
+      expect(screen.queryByRole("button", { name: /Rename chat/ })).toBeNull();
+    });
+
+    it("draws no rename button without a key", async () => {
+      await renderAppAt("/chat", fakeSession());
+      expect(screen.queryByRole("button", { name: /Rename chat/ })).toBeNull();
+    });
+
+    it("disables rename while the tutor is answering", async () => {
+      withKey();
+      const pending = deferred<Awaited<ReturnType<typeof fakeAi.reply>>>();
+      fakeAi.reply.mockReturnValue(pending.promise);
+      await renderAppAt("/chat", fakeSession());
+      await sendMessage("Hello");
+
+      expect(
+        await screen.findByRole("button", { ...renameButton("Free chat"), disabled: true }),
+      ).toBeTruthy();
+      await act(async () => pending.resolve({ ok: true, value: tutorReplyWith() }));
+      expect(
+        await screen.findByRole("button", { ...renameButton("Free chat"), disabled: false }),
+      ).toBeTruthy();
+    });
   });
 });

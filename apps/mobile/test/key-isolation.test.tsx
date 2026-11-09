@@ -5,6 +5,7 @@
 // Tested:
 // - The key is sent only to the provider endpoint, in x-api-key
 // - The key never reaches the data port or any request to our API
+// - The title PATCH that follows a reply carries the session title and source, and no key
 // - The same holds for a question asked in a correction thread
 // - The same holds for a practice round and the grading of a typed answer
 // - The same holds for a study note made from a missed exercise
@@ -115,6 +116,23 @@ describe("the user's key", () => {
       expect(entry.body).not.toContain(apiKey);
       expect(Object.values(entry.headers).join("\n")).not.toContain(apiKey);
     }
+  });
+
+  it("sends the title PATCH without the key", async () => {
+    await chatAndSend();
+    await act(async () => {});
+
+    const patch = recorded.find(
+      (entry) => entry.method === "PATCH" && entry.url.endsWith("/sessions/session-1/title"),
+    );
+    expect(patch).toBeDefined();
+    expect(JSON.parse(patch?.body ?? "null")).toEqual({
+      title: "Ramen spots in Tokyo",
+      source: "auto",
+    });
+    expect(patch?.url).not.toContain(apiKey);
+    expect(patch?.body).not.toContain(apiKey);
+    expect(Object.values(patch?.headers ?? {}).join("\n")).not.toContain(apiKey);
   });
 
   it("never reaches the data port", async () => {

@@ -51,6 +51,7 @@ function opened(overrides: Partial<CorrectionThread["message"]> = {}): {
         summary: null,
         contextSummary: null,
         contextThroughId: null,
+        titleSource: "default",
         costUsd: 0,
         createdAt: "2026-11-05T09:00:00Z",
         updatedAt: "2026-11-05T09:00:00Z",

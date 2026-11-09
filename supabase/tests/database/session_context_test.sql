@@ -61,7 +61,7 @@ select ok(
   and not has_column_privilege('authenticated', 'public.sessions', 'context_through_id', 'INSERT'),
   'authenticated updates only the context columns, and inserts neither'
 );
-select throws_ok($$update public.sessions set title = 'x' where id = (select id from t_ids where k = 'ca1')$$, '42501', null, 'no other column of sessions becomes updatable');
+select throws_ok($$update public.sessions set topic_id = 'food' where id = (select id from t_ids where k = 'ca1')$$, '42501', null, 'no other column of sessions becomes updatable');
 select results_eq(
   $$update public.sessions set context_summary = 'The learner lives in Lisbon.', context_through_id = (select id from t_ids where k = 'cta1') where id = (select id from t_ids where k = 'ca1') returning context_summary, context_through_id$$,
   $$select 'The learner lives in Lisbon.'::text, id from t_ids where k = 'cta1'$$,
