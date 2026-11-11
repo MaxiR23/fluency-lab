@@ -909,7 +909,7 @@ describe("listOpenSessions", () => {
     expect(params.get("order")).toBe("updated_at.desc");
     expect(params.get("messages.order")).toBe("created_at.desc");
     expect(params.get("messages.limit")).toBe("1");
-    expect(params.get("select")).toContain("messages(*)");
+    expect(params.get("select")).toBe("*,messages!messages_session_id_fkey(*)");
   });
 
   it("returns an empty list when there is no open session", async () => {
