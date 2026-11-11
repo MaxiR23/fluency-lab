@@ -1,8 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { noteDeletedSchema, type Message } from "@fluency-lab/shared";
+import { createClient } from "@supabase/supabase-js";
 import {
   toFinishedRun,
-  toRecentPrompt,
   toHistoryRow,
   toMessage,
   toMistakeRow,
@@ -15,13 +14,14 @@ import {
   toProfile,
   toProfilePatch,
   toProfileStatsRow,
+  toRecentPrompt,
   toSession,
   toSessionCost,
   toSessionStart,
   toStudyNote,
   toThreadCount,
-  toThreadWords,
   toThreadMessage,
+  toThreadWords,
   toWordRow,
 } from "./rows";
 import type { Caller, Store, StoreOutcome, UserStore } from "./store";
@@ -171,10 +171,12 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           return { ok: true, value: { session: session.value, lastMessage: last.value } };
         },
 
+        // INFO: sessions_context_through_fkey is a second relationship to messages, so the
+        // embed names messages_session_id_fkey; without it PostgREST answers PGRST201.
         async listOpenSessions() {
           const result = await client
             .from("sessions")
-            .select("*, messages(*)")
+            .select("*, messages!messages_session_id_fkey(*)")
             .eq("status", "active")
             .order("updated_at", { ascending: false })
             .order("created_at", { referencedTable: "messages", ascending: false })
