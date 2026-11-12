@@ -12,7 +12,7 @@
 // - A fix exercise: the source card, the answer field, Check disabled while empty
 // - A typed match is graded with no tutor call; a typed miss asks the tutor and shows its explanation
 // - The result: the offer at 5 with a miss, Keep going writing the next exercise, Finish for today going Home, no offer at 15
-// - Three failed attempts at an exercise draw the AI failure with Try again
+// - An exercise slot that used up every kind draws the AI failure with Try again
 // - The 100% limit locks answering, the 80% warning keeps going, an invalid key offers Update key
 // - The study note: Make me a study note on a miss, opening the saved note, hidden on a right answer and in a words run, its failures
 // - Stop goes Home
@@ -304,15 +304,14 @@ describe("Practice run", () => {
     expect(screen.getByText("2/5")).toBeTruthy();
   });
 
-  it("draws today's AI failure with Try again after three failed attempts", async () => {
+  it("draws today's AI failure with Try again once every kind of the slot is used up", async () => {
     withKey();
-    fakeAi.practiceExercise
-      .mockResolvedValueOnce({ ok: false, failure: "bad_response" })
-      .mockResolvedValueOnce({ ok: false, failure: "bad_response" })
-      .mockResolvedValueOnce({ ok: false, failure: "bad_response" });
+    for (let i = 0; i < 9; i += 1) {
+      fakeAi.practiceExercise.mockResolvedValueOnce({ ok: false, failure: "bad_response" });
+    }
     await renderAppAt(start, fakeSession());
     expect(screen.getByText("The tutor could not answer. Try again.")).toBeTruthy();
-    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(3);
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(9);
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
     expect(screen.queryByText("The tutor could not answer. Try again.")).toBeNull();
     expect(screen.getByText("Choose the answer")).toBeTruthy();

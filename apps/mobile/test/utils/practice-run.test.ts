@@ -6,7 +6,7 @@
 // - practiceStep sends this run's prompts, the queued ones, the rejected ones and the recent ones as avoid
 // - startPractice: a new run starts by creating the run; a resumed run settles on its items and plans only its missing positions
 // - practiceReducer and practiceStep: the order of the outside calls of a slot (write, code check, solver, reviewer), of an answer and of the grader
-// - A slot is written again after a failed check, up to three attempts, then the AI failure with Try again
+// - A slot is written again after a failed check, up to three attempts per kind, then switches kind (choose, gap, fix, never translate); the AI failure with Try again only when every kind is exhausted, and Try again restarts from the planned kind
 // - One exercise ahead: a passed exercise is saved at its position, the next slot is written while the learner answers, and generating shows only when the next one is not ready
 // - A background write never takes a write the screen waits on, and a background AI failure waits until the learner is waiting
 // - The checks save: sent with the item's save or after a rejection, kept when it fails, twenty at a time
@@ -212,6 +212,12 @@ const aiFailure = (failure: "bad_response" | "refused" | "network" | "invalid_ke
   ({ source: "ai", failure }) as const;
 
 // INFO: a run with positions 0 and 1 answered, so the slot being worked is the fix at position 2.
+// INFO: n writer failures that each use up an attempt of the slot being written.
+const failTimes = (state: PracticeRunState, n: number) =>
+  Array.from({ length: n }).reduce<PracticeRunState>(
+    (current) => apply(current, { type: "exercise_failed", failure: aiFailure("bad_response") }),
+    state,
+  );
 const fixSlot = () => resumed(practiceTodayWith([item(0, true), item(1, true)], { target: 5 }));
 
 describe("startPractice", () => {
@@ -548,11 +554,37 @@ describe("a slot", () => {
     expect(practiceStep(apply(failed, { type: "retry" })).kind).toBe("exercise");
   });
 
-  it("after the third failed attempt shows the AI failure with Try again", () => {
-    const failed = [1, 2, 3].reduce(
-      (state) => apply(state, { type: "exercise_failed", failure: aiFailure("bad_response") }),
-      created,
-    );
+  it("switches a fix slot to choose after its third failed attempt", () => {
+    const failed = failTimes(fixSlot(), 3);
+    expect(failed.failure).toBeNull();
+    expect(failed.held).toBeNull();
+    expect(failed.work).toMatchObject({ attempt: 1, stage: "write", slot: { kind: "choose" } });
+    expect(failed.work?.rejected).toEqual([]);
+    const step = practiceStep(drain(failed));
+    const turn = step.kind === "exercise" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
+    expect(turn.kind).toBe("choose");
+  });
+
+  it("keeps the rejected prompts when the slot switches kind", () => {
+    const wrong = exerciseFor("choose", 1);
+    const rejected = apply(fixSlot(), {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise: wrong }),
+    });
+    const switched = failTimes(rejected, 2);
+    expect(switched.work).toMatchObject({ attempt: 1, slot: { kind: "choose" } });
+    expect(switched.work?.rejected).toEqual([wrong.prompt]);
+  });
+
+  it("never falls back to translate and tries choose, gap and fix in that order", () => {
+    const afterChoose = failTimes(created, 3);
+    expect(afterChoose.work).toMatchObject({ attempt: 1, slot: { kind: "gap" } });
+    const afterGap = failTimes(afterChoose, 3);
+    expect(afterGap.work).toMatchObject({ attempt: 1, slot: { kind: "fix" } });
+  });
+
+  it("after every kind of the slot is exhausted shows the AI failure with Try again", () => {
+    const failed = failTimes(created, 9);
     expect(failed.failure).toEqual({
       source: "ai",
       failure: "bad_response",
@@ -562,15 +594,29 @@ describe("a slot", () => {
     expect(practiceStep(failed)).toEqual({ kind: "none" });
   });
 
-  it("Try again after three failures writes the slot from attempt one", () => {
-    const failed = [1, 2, 3].reduce(
-      (state) => apply(state, { type: "exercise_failed", failure: aiFailure("bad_response") }),
-      created,
-    );
+  it("shows the AI failure after a fix slot exhausts fix, choose and gap", () => {
+    expect(failTimes(fixSlot(), 8).failure).toBeNull();
+    const failed = failTimes(fixSlot(), 9);
+    expect(failed.failure).toMatchObject({ source: "ai", cause: { name: "PracticeChecks" } });
+    expect(practiceStep(failed)).toEqual({ kind: "none" });
+  });
+
+  it("Try again after every kind is exhausted writes the slot from its planned kind", () => {
+    const failed = failTimes(fixSlot(), 9);
     const retried = apply(failed, { type: "retry" });
     expect(retried.failure).toBeNull();
-    expect(retried.work).toMatchObject({ attempt: 1, stage: "write" });
-    expect(practiceStep(retried).kind).toBe("exercise");
+    expect(retried.work).toMatchObject({
+      attempt: 1,
+      stage: "write",
+      slot: { kind: "fix" },
+      tried: [],
+    });
+    const again = failTimes(retried, 3);
+    expect(again.failure).toBeNull();
+    expect(again.work).toMatchObject({ attempt: 1, slot: { kind: "choose" } });
+    const step = practiceStep(retried);
+    const turn = step.kind === "exercise" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
+    expect(turn.kind).toBe("fix");
   });
 
   it("saves the usage of every solver and reviewer call with its model", () => {
@@ -781,11 +827,8 @@ describe("one exercise ahead", () => {
     expect(failed.held).toBeNull();
   });
 
-  it("holds the third failed attempt until the learner waits", () => {
-    const failed = [1, 2, 3].reduce(
-      (state) => apply(state, { type: "exercise_failed", failure: aiFailure("bad_response") }),
-      onScreen(),
-    );
+  it("holds the exhausted slot's failure until the learner waits", () => {
+    const failed = failTimes(onScreen(), 9);
     expect(failed.failure).toBeNull();
     expect(failed.held).toMatchObject({ source: "ai", cause: { name: "PracticeChecks" } });
   });

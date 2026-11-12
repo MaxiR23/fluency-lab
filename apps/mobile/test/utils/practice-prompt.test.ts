@@ -7,6 +7,7 @@
 // - exerciseRequest sends only the slot's kind, target and avoid list, with the rules of that kind
 // - solveRequest sends what the learner sees and reviewRequest adds the accepted answers and the solver's answer
 // - RULE_PRACTICE_GRADE asks for one short sentence to the learner
+// - RULE_PRACTICE_FIX puts the one mistake on the practiced rule with a single correction; RULE_PRACTICE_REVIEW counts variants as one answer and judges only the practiced point
 // - avoidPrompts builds the avoid list from the run, the queue, the rejected prompts and the recent prompts
 // - focusDataFrom sends the raw id of a topic outside the catalog
 // - rotateMistakes puts the rules not practiced recently first
@@ -393,6 +394,35 @@ describe("reviewRequest", () => {
 
   it("is a single user turn with no history", () => {
     expect(reviewRequest(exercise, "x").turns).toHaveLength(1);
+  });
+
+  it("counts contractions and spelling variants as one answer and judges only the practiced point", () => {
+    expect(RULE_PRACTICE_REVIEW).toContain(
+      "Contractions and spelling variants of the same answer count as one answer",
+    );
+    expect(RULE_PRACTICE_REVIEW).toContain(
+      "Judge only the practiced point, not punctuation or style outside it",
+    );
+  });
+});
+
+describe("RULE_PRACTICE_FIX", () => {
+  it("puts the mistake on the practiced rule with exactly one correction", () => {
+    expect(RULE_PRACTICE_FIX).toContain("The mistake is on the practiced rule itself");
+    expect(RULE_PRACTICE_FIX).toContain("exactly one correction fixes it");
+  });
+
+  it("never allows another form of the practiced point to be correct too", () => {
+    expect(RULE_PRACTICE_FIX).toContain(
+      "Never write a sentence where another form of the practiced point is also correct",
+    );
+    expect(RULE_PRACTICE_FIX).toContain('for "going to vs will"');
+  });
+
+  it("lists only the one correction and its spelling or contraction variants", () => {
+    expect(RULE_PRACTICE_FIX).toContain(
+      "accepted lists that one correction and only its spelling or contraction variants",
+    );
   });
 });
 

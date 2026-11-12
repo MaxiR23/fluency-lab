@@ -77,8 +77,11 @@ export type WriteLane = "screen" | "background";
 
 // INFO: the slot being written and checked. attempt counts the failed checks of the slot; stage
 // is the call it waits for. rejected holds the prompts the code check or a later check refused.
+// tried holds the kinds the slot already used up, the planned kind first; slot.kind is the
+// kind being written now.
 export type SlotWork = {
   slot: PracticeSlot;
+  tried: PracticeSlot["kind"][];
   attempt: number;
   stage: "write" | "solve" | "review";
   exercise: PracticeExercise | null;
@@ -304,6 +307,7 @@ function schedule(s: PracticeRunState): PracticeRunState {
     ...s,
     work: {
       slot,
+      tried: [],
       attempt: 1,
       stage: "write",
       exercise: null,
@@ -473,8 +477,13 @@ function passSlot(s: PracticeRunState, work: SlotWork, exercise: PracticeExercis
   };
 }
 
-// INFO: the slot is written again; after the last attempt the AI failure shows, and Try again
-// starts the slot from attempt one.
+// INFO: the kinds a slot falls back to, in order, once its kind used up every attempt. A translate
+// is never a fallback: it needs the device language and stays at most one in three.
+const FALLBACK_KINDS: readonly PracticeSlot["kind"][] = ["choose", "gap", "fix"];
+
+// INFO: the slot is written again; after the last attempt it switches to the next kind not yet
+// tried, from attempt one with its rejected prompts kept. When every kind is used up the AI
+// failure shows, and Try again starts the slot from its planned kind.
 function failAttempt(
   s: PracticeRunState,
   work: SlotWork,
@@ -492,7 +501,19 @@ function failAttempt(
   if (work.attempt < MAX_SLOT_ATTEMPTS) {
     return { ...due, work: { ...again, attempt: work.attempt + 1 } };
   }
-  return hold({ ...due, work: { ...again, attempt: 1 } }, EXHAUSTED);
+  const tried = [...work.tried, work.slot.kind];
+  const next = FALLBACK_KINDS.find((kind) => !tried.includes(kind));
+  if (next !== undefined) {
+    return { ...due, work: { ...again, slot: { ...work.slot, kind: next }, tried, attempt: 1 } };
+  }
+  const planned = tried[0] ?? work.slot.kind;
+  const restart: SlotWork = {
+    ...again,
+    slot: { ...work.slot, kind: planned },
+    tried: [],
+    attempt: 1,
+  };
+  return hold({ ...due, work: restart }, EXHAUSTED);
 }
 
 // INFO: a bad_response or a refusal is a failed attempt with no check row (there is no exercise

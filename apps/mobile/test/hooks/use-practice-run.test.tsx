@@ -9,7 +9,7 @@
 // - A failed checks save does not block and is sent with the next save
 // - A right pick and a typed match are answered with no tutor call; a typed miss asks the tutor
 // - Every billed call saves its usage with its model
-// - A billed AI failure saves its usage; after three failed attempts the AI failure shows and Try again writes again; a write failure resumes
+// - A billed AI failure saves its usage; after three failed attempts the slot switches kind, once every kind is used up the AI failure shows and Try again writes again; a write failure resumes
 // - One chain at a time: a pick during a background call is saved by the same chain
 // - A note run reads its note and sends it in the writer call; a missed exercise makes a study note, saves it with no session, adds its usage to the run and opens it, also while the background chain runs
 // - Keep going, finish and stop; update key
@@ -481,27 +481,26 @@ describe("usePracticeRun", () => {
     expect(fakeData.addPracticeChecks.mock.calls[1]?.[1]).toHaveLength(4);
   });
 
-  it("saves the usage of a billed failure and shows the AI failure after three attempts", async () => {
+  it("saves the usage of a billed failure and shows the AI failure once every kind is used up", async () => {
     withKey();
     const usage = exerciseDraftWith().usage;
     fakeAi.practiceExercise.mockResolvedValue({ ok: false, failure: "bad_response", usage });
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).failure).not.toBeNull());
-    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(3);
-    await waitFor(() => expect(fakeData.addPracticeUsage).toHaveBeenCalledTimes(3));
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(9);
+    await waitFor(() => expect(fakeData.addPracticeUsage).toHaveBeenCalledTimes(9));
     expect(ready(result).failure).toMatchObject({ source: "ai", failure: "bad_response" });
     expect(ready(result).phase).toBe("asking");
   });
 
-  it("shows the AI failure after three failed attempts and writes again on Try again", async () => {
+  it("shows the AI failure once every kind is used up and writes again on Try again", async () => {
     withKey();
-    fakeAi.practiceExercise
-      .mockResolvedValueOnce({ ok: false, failure: "bad_response" })
-      .mockResolvedValueOnce({ ok: false, failure: "bad_response" })
-      .mockResolvedValueOnce({ ok: false, failure: "bad_response" });
+    for (let i = 0; i < 9; i += 1) {
+      fakeAi.practiceExercise.mockResolvedValueOnce({ ok: false, failure: "bad_response" });
+    }
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).failure).not.toBeNull());
-    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(3);
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(9);
     await act(async () => result.current.retry());
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
     expect(ready(result).failure).toBeNull();
