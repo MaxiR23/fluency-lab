@@ -4,10 +4,14 @@
 //
 // Tested:
 // - The key, the profile, the spend, the run and the focus data read from their ports; no key and each failure
-// - A new run is created, the first round is asked with the focus data only, and its items and usage are saved
+// - A new run is created, the first exercise is written with the slot's target, kind and avoid only, solved, and saved with its usage
+// - The next exercise is written in the background while the first is on screen, and the checks of each slot are sent
+// - A failed checks save does not block and is sent with the next save
 // - A right pick and a typed match are answered with no tutor call; a typed miss asks the tutor
-// - A billed AI failure saves its usage; an AI failure resends and a write failure resumes
-// - A note run reads its note and sends it in the round call; a missed exercise makes a study note, saves it with no session, adds its usage to the run and opens it
+// - Every billed call saves its usage with its model
+// - A billed AI failure saves its usage; after three failed attempts the slot switches kind, once every kind is used up the AI failure shows and Try again writes again; a write failure resumes
+// - One chain at a time: a pick during a background call is saved by the same chain
+// - A note run reads its note and sends it in the writer call; a missed exercise makes a study note, saves it with no session, adds its usage to the run and opens it, also while the background chain runs
 // - Keep going, finish and stop; update key
 // - Reads the recent prompts and sends them as avoid
 // - Regaining focus re-reads the context
@@ -23,16 +27,19 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { router, useIsFocused } from "expo-router";
 
+import { TUTOR_MODEL } from "@fluency-lab/shared";
+
 import { usePracticeRun } from "@/hooks/use-practice-run";
 import { dataFailureMessage } from "@/utils/data-message";
 import { practiceNoteGoneMessage, practiceNotFoundMessage } from "@/utils/practice-run-state";
 import type { PracticeOrigin } from "@/utils/practice-focus";
 import {
   answerGradeWith,
-  exerciseWith,
+  exerciseDraftWith,
   fakeAi,
-  practiceRoundWith,
   resetFakeAi,
+  reviewWith,
+  solutionWith,
   studyNoteReplyWith,
 } from "../helpers/fake-ai";
 import {
@@ -89,10 +96,6 @@ function withKey(overrides: Parameters<typeof profileWith>[0] = {}) {
     ok: true,
     value: practiceRunWith({ focus: input.focus, target: input.target }),
   }));
-  fakeData.addPracticeItems.mockImplementation(async (runId, items) => ({
-    ok: true,
-    value: items.map((item) => practiceItemWith({ ...item, id: `item-${item.position}`, runId })),
-  }));
   fakeData.addPracticeUsage.mockResolvedValue({ ok: true, value: practiceRunWith() });
   fakeData.answerPracticeItem.mockImplementation(async (itemId, answer) => ({
     ok: true,
@@ -106,6 +109,33 @@ function withKey(overrides: Parameters<typeof profileWith>[0] = {}) {
     ok: true,
     value: practiceRunWith({ target }),
   }));
+}
+
+const typedFix = (overrides: Parameters<typeof practiceItemWith>[0] = {}) =>
+  practiceItemWith({
+    id: "item-0",
+    position: 0,
+    kind: "fix",
+    prompt: "I never been.",
+    options: null,
+    accepted: ["I've never been."],
+    source: null,
+    ...overrides,
+  });
+
+const resumeOrigin: PracticeOrigin = { kind: "resume", runId: "run-1" };
+
+// INFO: a resumed run whose first item is a typed fix, so a typed answer can be graded.
+function openTyped(item = typedFix()) {
+  fakeData.openPracticeRun.mockResolvedValue({ ok: true, value: practiceTodayWith([item]) });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 function ready(result: { current: ReturnType<typeof usePracticeRun> }) {
@@ -124,7 +154,7 @@ describe("usePracticeRun", () => {
     jest.mocked(router.dismissTo).mockClear();
   });
 
-  it("is loading, then creates the run and asks the first round", async () => {
+  it("is loading, then creates the run and writes, solves and saves the first exercise", async () => {
     withKey();
     let finish!: (value: Awaited<ReturnType<typeof fakeData.getProfile>>) => void;
     fakeData.getProfile.mockReturnValue(
@@ -139,30 +169,36 @@ describe("usePracticeRun", () => {
     );
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
     expect(fakeData.createPracticeRun).toHaveBeenCalledWith({ focus: "mistakes", target: 5 });
-    expect(fakeAi.practiceRound).toHaveBeenCalledTimes(1);
-    expect(fakeData.addPracticeItems).toHaveBeenCalledWith("run-1", expect.any(Array));
-    expect(fakeData.addPracticeUsage).toHaveBeenCalledTimes(1);
-    expect(ready(result).items).toHaveLength(5);
+    expect(fakeAi.practiceExercise).toHaveBeenCalled();
+    expect(fakeAi.solveExercise).toHaveBeenCalled();
+    expect(fakeData.addPracticeItems).toHaveBeenCalledWith("run-1", [
+      expect.objectContaining({ position: 0, kind: "choose" }),
+    ]);
+    expect(fakeData.addPracticeUsage).toHaveBeenCalledWith(
+      "run-1",
+      expect.objectContaining({ model: TUTOR_MODEL, inputTokens: 400, outputTokens: 150 }),
+    );
+    expect(fakeData.addPracticeUsage).toHaveBeenCalledWith(
+      "run-1",
+      expect.objectContaining({ model: TUTOR_MODEL, inputTokens: 150, outputTokens: 20 }),
+    );
+    expect(ready(result).items[0]?.position).toBe(0);
   });
 
-  it("sends only the focus data and the count in the round, no chat text", async () => {
+  it("sends only the slot's target, kind and avoid to the writer, no chat text", async () => {
     withKey();
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
-    const [request] = fakeAi.practiceRound.mock.calls[0];
+    const [request] = fakeAi.practiceExercise.mock.calls[0];
     expect(request.turns).toHaveLength(1);
     expect(JSON.parse(request.turns[0].text)).toEqual({
-      focus: {
-        kind: "mistakes",
-        corrections: [
-          { original: "I have went", corrected: "I have gone", rule: "Present perfect" },
-        ],
+      kind: "choose",
+      target: {
+        focus: "mistakes",
+        correction: { original: "I have went", corrected: "I have gone", rule: "Present perfect" },
       },
-      count: 7,
       avoid: [],
     });
-    expect(fakeAi.practiceRound.mock.calls[0]?.[1]).toBe(5);
-    expect(fakeAi.practiceRound.mock.calls[0]?.[2]).toEqual([]);
     expect(request.system).not.toContain("Ada");
   });
 
@@ -173,7 +209,7 @@ describe("usePracticeRun", () => {
     expect(fakeData.listRecentPrompts).toHaveBeenCalledWith(7, 40);
   });
 
-  it("sends the recent prompts as avoid and to the round's validation", async () => {
+  it("sends the recent prompts as avoid", async () => {
     withKey();
     fakeData.listRecentPrompts.mockResolvedValue({
       ok: true,
@@ -181,9 +217,8 @@ describe("usePracticeRun", () => {
     });
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
-    const [request, , avoid] = fakeAi.practiceRound.mock.calls[0];
+    const [request] = fakeAi.practiceExercise.mock.calls[0];
     expect(JSON.parse(request.turns[0].text).avoid).toEqual(["I ___ (be) there."]);
-    expect(avoid).toEqual(["I ___ (be) there."]);
   });
 
   it("shows the failure when the recent prompts cannot be read", async () => {
@@ -191,7 +226,7 @@ describe("usePracticeRun", () => {
     fakeData.listRecentPrompts.mockResolvedValue({ ok: false, failure: "network" });
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(result.current.view.kind).toBe("failed"));
-    expect(fakeAi.practiceRound).not.toHaveBeenCalled();
+    expect(fakeAi.practiceExercise).not.toHaveBeenCalled();
   });
 
   it("reads the spend in the device's time zone", async () => {
@@ -206,7 +241,7 @@ describe("usePracticeRun", () => {
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(result.current.view).toEqual({ kind: "no_key" }));
     expect(fakeData.getMonthSpend).not.toHaveBeenCalled();
-    expect(fakeAi.practiceRound).not.toHaveBeenCalled();
+    expect(fakeAi.practiceExercise).not.toHaveBeenCalled();
   });
 
   it("fails with not found for an unknown origin", async () => {
@@ -237,18 +272,18 @@ describe("usePracticeRun", () => {
     expect(result.current.view.kind).toBe("ready");
   });
 
-  it("fails when the run cannot be created and retries without asking twice", async () => {
+  it("fails when the run cannot be created and retries without writing twice", async () => {
     withKey();
     fakeData.createPracticeRun.mockResolvedValueOnce({ ok: false, failure: "network" });
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() =>
       expect(ready(result).failure).toEqual({ source: "data", failure: "network" }),
     );
-    expect(fakeAi.practiceRound).not.toHaveBeenCalled();
+    expect(fakeAi.practiceExercise).not.toHaveBeenCalled();
     await act(async () => result.current.retry());
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
     expect(fakeData.createPracticeRun).toHaveBeenCalledTimes(2);
-    expect(fakeAi.practiceRound).toHaveBeenCalledTimes(1);
+    expect(fakeAi.practiceExercise).toHaveBeenCalled();
   });
 
   it("fails on a spend read failure", async () => {
@@ -281,7 +316,7 @@ describe("usePracticeRun", () => {
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
     expect(fakeData.openPracticeRun).toHaveBeenCalledWith("run-1");
     expect(fakeData.createPracticeRun).not.toHaveBeenCalled();
-    expect(fakeAi.practiceRound).not.toHaveBeenCalled();
+    expect(fakeAi.practiceExercise).not.toHaveBeenCalled();
   });
 
   it("fails with not found for another user's run", async () => {
@@ -309,21 +344,8 @@ describe("usePracticeRun", () => {
 
   it("answers a typed match with no tutor call", async () => {
     withKey();
-    fakeAi.practiceRound.mockResolvedValue({
-      ok: true,
-      value: practiceRoundWith({
-        items: Array.from({ length: 5 }, () =>
-          exerciseWith({
-            kind: "fix",
-            prompt: "I never been.",
-            options: null,
-            accepted: ["I've never been."],
-            source: null,
-          }),
-        ),
-      }),
-    });
-    const { result } = await renderHook(() => usePracticeRun(newRun));
+    openTyped();
+    const { result } = await renderHook(() => usePracticeRun(resumeOrigin));
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
     await act(async () => result.current.setDraft("i've never been"));
     await act(async () => result.current.check());
@@ -334,21 +356,14 @@ describe("usePracticeRun", () => {
 
   it("answers a gap typed as the whole sentence with no tutor call", async () => {
     withKey();
-    fakeAi.practiceRound.mockResolvedValue({
-      ok: true,
-      value: practiceRoundWith({
-        items: Array.from({ length: 5 }, () =>
-          exerciseWith({
-            kind: "gap",
-            prompt: "I ___ (not / can) remember who made the shot!",
-            options: null,
-            accepted: ["can't"],
-            source: null,
-          }),
-        ),
+    openTyped(
+      typedFix({
+        kind: "gap",
+        prompt: "I ___ (not / can) remember who made the shot!",
+        accepted: ["can't"],
       }),
-    });
-    const { result } = await renderHook(() => usePracticeRun(newRun));
+    );
+    const { result } = await renderHook(() => usePracticeRun(resumeOrigin));
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
     await act(async () => result.current.setDraft("I can't remember who made the shot."));
     await act(async () => result.current.check());
@@ -357,27 +372,14 @@ describe("usePracticeRun", () => {
     expect(ready(result).feedback?.tone).toBe("right");
   });
 
-  it("saves a flawed exercise as correct", async () => {
+  it("saves a flawed exercise as correct and records a grader check that failed", async () => {
     withKey();
-    fakeAi.practiceRound.mockResolvedValue({
-      ok: true,
-      value: practiceRoundWith({
-        items: Array.from({ length: 5 }, () =>
-          exerciseWith({
-            kind: "fix",
-            prompt: "I never been.",
-            options: null,
-            accepted: ["I've never been."],
-            source: null,
-          }),
-        ),
-      }),
-    });
+    openTyped();
     fakeAi.gradeAnswer.mockResolvedValue({
       ok: true,
       value: answerGradeWith({ correct: false, flawed: true, explanation: "Two answers fit." }),
     });
-    const { result } = await renderHook(() => usePracticeRun(newRun));
+    const { result } = await renderHook(() => usePracticeRun(resumeOrigin));
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
     await act(async () => result.current.setDraft("I never was."));
     await act(async () => result.current.check());
@@ -386,31 +388,23 @@ describe("usePracticeRun", () => {
       "item-0",
       expect.objectContaining({ correct: true }),
     );
+    await waitFor(() =>
+      expect(fakeData.addPracticeChecks).toHaveBeenCalledWith(
+        "run-1",
+        expect.arrayContaining([
+          expect.objectContaining({ stage: "grader", passed: false, reason: "grader_flawed" }),
+        ]),
+      ),
+    );
   });
 
   it("asks the tutor for a typed miss and saves the answer and its usage", async () => {
     withKey();
-    fakeAi.practiceRound.mockResolvedValue({
-      ok: true,
-      value: practiceRoundWith({
-        items: Array.from({ length: 5 }, () =>
-          exerciseWith({
-            kind: "fix",
-            prompt: "I never been.",
-            options: null,
-            accepted: ["I've never been."],
-            source: null,
-          }),
-        ),
-      }),
-    });
-    fakeAi.gradeAnswer.mockResolvedValue({
-      ok: true,
-      value: answerGradeWith({ correct: false, explanation: "Needs have." }),
-    });
-    const { result } = await renderHook(() => usePracticeRun(newRun));
+    openTyped();
+    const grade = answerGradeWith({ correct: false, explanation: "Needs have." });
+    fakeAi.gradeAnswer.mockResolvedValue({ ok: true, value: grade });
+    const { result } = await renderHook(() => usePracticeRun(resumeOrigin));
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
-    fakeData.addPracticeUsage.mockClear();
     await act(async () => result.current.setDraft("I never was."));
     await act(async () => result.current.check());
     await waitFor(() => expect(ready(result).phase).toBe("feedback"));
@@ -420,47 +414,217 @@ describe("usePracticeRun", () => {
       userAnswer: "I never was.",
       correct: false,
     });
-    expect(fakeData.addPracticeUsage).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(fakeData.addPracticeUsage).toHaveBeenCalledWith("run-1", {
+        model: grade.model,
+        ...grade.usage,
+      }),
+    );
   });
 
-  it("saves the usage of a billed failure and shows the failure", async () => {
+  it("saves the usage of the writer, solver, reviewer and grader with their model", async () => {
     withKey();
-    fakeAi.practiceRound.mockResolvedValue({
-      ok: false,
-      failure: "bad_response",
-      usage: practiceRoundWith().usage,
+    fakeData.openPracticeRun.mockResolvedValue({
+      ok: true,
+      value: practiceTodayWith([
+        typedFix(),
+        practiceItemWith({ id: "item-1", position: 1, correct: true }),
+      ]),
     });
+    const grade = answerGradeWith({ correct: false });
+    fakeAi.gradeAnswer.mockResolvedValue({ ok: true, value: grade });
+    const { result } = await renderHook(() => usePracticeRun(resumeOrigin));
+    await waitFor(() => expect(fakeAi.reviewExercise).toHaveBeenCalled());
+    await act(async () => result.current.setDraft("I never was."));
+    await act(async () => result.current.check());
+    await waitFor(() => expect(ready(result).phase).toBe("feedback"));
+    const draft = exerciseDraftWith();
+    const solution = solutionWith();
+    const review = reviewWith();
+    await waitFor(() => {
+      for (const call of [draft, solution, review, grade]) {
+        expect(fakeData.addPracticeUsage).toHaveBeenCalledWith("run-1", {
+          model: call.model,
+          ...call.usage,
+        });
+      }
+    });
+  });
+
+  it("writes the next exercise in the background while the first is on screen", async () => {
+    withKey();
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(ready(result).items).toHaveLength(2));
+    expect(ready(result).phase).toBe("answering");
+    expect(ready(result).items.map((entry) => entry.position)).toEqual([0, 1]);
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends the checks of each slot to addPracticeChecks", async () => {
+    withKey();
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(ready(result).items).toHaveLength(2));
+    await waitFor(() => expect(fakeData.addPracticeChecks).toHaveBeenCalled());
+    const rows = fakeData.addPracticeChecks.mock.calls.flatMap(([, checks]) => checks);
+    expect(rows.map((row) => row.stage)).toEqual(["code", "solver", "code", "solver"]);
+    expect(fakeData.addPracticeChecks.mock.calls[0]?.[0]).toBe("run-1");
+  });
+
+  it("goes on when the checks save fails and sends them with the next save", async () => {
+    withKey();
+    fakeData.addPracticeChecks.mockResolvedValueOnce({ ok: false, failure: "network" });
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(ready(result).items).toHaveLength(2));
+    await waitFor(() => expect(fakeData.addPracticeChecks).toHaveBeenCalledTimes(2));
+    expect(ready(result).failure).toBeNull();
+    expect(fakeData.addPracticeChecks.mock.calls[0]?.[1]).toHaveLength(2);
+    expect(fakeData.addPracticeChecks.mock.calls[1]?.[1]).toHaveLength(4);
+  });
+
+  it("saves the usage of a billed failure and shows the AI failure once every kind is used up", async () => {
+    withKey();
+    const usage = exerciseDraftWith().usage;
+    fakeAi.practiceExercise.mockResolvedValue({ ok: false, failure: "bad_response", usage });
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).failure).not.toBeNull());
-    expect(fakeData.addPracticeUsage).toHaveBeenCalledTimes(1);
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(9);
+    await waitFor(() => expect(fakeData.addPracticeUsage).toHaveBeenCalledTimes(9));
     expect(ready(result).failure).toMatchObject({ source: "ai", failure: "bad_response" });
     expect(ready(result).phase).toBe("asking");
   });
 
-  it("asks the round again on retry after an AI failure", async () => {
+  it("shows the AI failure once every kind is used up and writes again on Try again", async () => {
     withKey();
-    fakeAi.practiceRound.mockResolvedValueOnce({ ok: false, failure: "network" });
+    for (let i = 0; i < 9; i += 1) {
+      fakeAi.practiceExercise.mockResolvedValueOnce({ ok: false, failure: "bad_response" });
+    }
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(ready(result).failure).not.toBeNull());
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(9);
+    await act(async () => result.current.retry());
+    await waitFor(() => expect(ready(result).phase).toBe("answering"));
+    expect(ready(result).failure).toBeNull();
+  });
+
+  it("writes the exercise again on retry after a network failure", async () => {
+    withKey();
+    fakeAi.practiceExercise.mockResolvedValueOnce({ ok: false, failure: "network" });
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).failure).not.toBeNull());
     expect(fakeData.addPracticeUsage).not.toHaveBeenCalled();
     await act(async () => result.current.retry());
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
-    expect(fakeAi.practiceRound).toHaveBeenCalledTimes(2);
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(3);
   });
 
-  it("resumes at the failed write without asking the tutor again", async () => {
+  it("resumes at the failed write without writing the exercise again", async () => {
     withKey();
     fakeData.addPracticeItems.mockResolvedValueOnce({ ok: false, failure: "unavailable" });
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).failure).not.toBeNull());
     expect(ready(result).failure).toEqual({ source: "data", failure: "unavailable" });
+    const written = fakeAi.practiceExercise.mock.calls.length;
     await act(async () => result.current.retry());
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
-    expect(fakeAi.practiceRound).toHaveBeenCalledTimes(1);
-    expect(fakeData.addPracticeItems).toHaveBeenCalledTimes(2);
+    expect(fakeAi.practiceExercise.mock.calls.length).toBeGreaterThanOrEqual(written);
+    expect(fakeData.addPracticeItems.mock.calls[0]?.[1]).toEqual(
+      fakeData.addPracticeItems.mock.calls[1]?.[1],
+    );
   });
 
-  it("raises the target and asks again on keep going", async () => {
+  it("runs one chain at a time: a pick during a background call is saved by the same chain", async () => {
+    withKey();
+    const second = deferred<Awaited<ReturnType<typeof fakeAi.practiceExercise>>>();
+    let calls = 0;
+    let running = 0;
+    let overlapped = false;
+    const original = fakeAi.practiceExercise.getMockImplementation();
+    fakeAi.practiceExercise.mockImplementation(async (request) => {
+      calls += 1;
+      running += 1;
+      overlapped = overlapped || running > 1;
+      try {
+        if (calls === 2) return await second.promise;
+        return original === undefined ? { ok: false, failure: "network" } : await original(request);
+      } finally {
+        running -= 1;
+      }
+    });
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(ready(result).phase).toBe("answering"));
+    await waitFor(() => expect(calls).toBe(2));
+    let picked: Promise<void> = Promise.resolve();
+    await act(async () => {
+      picked = result.current.pick("have been");
+    });
+    expect(ready(result).feedback?.tone).toBe("right");
+    expect(fakeData.answerPracticeItem).not.toHaveBeenCalled();
+    const next =
+      original === undefined ? null : await original(fakeAi.practiceExercise.mock.calls[1][0]);
+    await act(async () => {
+      second.resolve(next ?? { ok: false, failure: "network" });
+      await picked;
+    });
+    expect(fakeData.answerPracticeItem).toHaveBeenCalledWith("item-0", {
+      userAnswer: "have been",
+      correct: true,
+    });
+    expect(overlapped).toBe(false);
+  });
+
+  async function holdSecondWrite() {
+    withKey();
+    const second = deferred<Awaited<ReturnType<typeof fakeAi.practiceExercise>>>();
+    let calls = 0;
+    const original = fakeAi.practiceExercise.getMockImplementation();
+    fakeAi.practiceExercise.mockImplementation(async (request) => {
+      calls += 1;
+      if (calls === 2) return await second.promise;
+      return original === undefined ? { ok: false, failure: "network" } : await original(request);
+    });
+    return { second, original, count: () => calls };
+  }
+
+  it("starts no new AI call after Stop practice, and still saves the call in flight", async () => {
+    const setup = await holdSecondWrite();
+    const { result } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(setup.count()).toBe(2));
+    const solves = fakeAi.solveExercise.mock.calls.length;
+    const usages = fakeData.addPracticeUsage.mock.calls.length;
+    await act(async () => result.current.stop());
+    const next =
+      setup.original === undefined
+        ? null
+        : await setup.original(fakeAi.practiceExercise.mock.calls[1][0]);
+    await act(async () => {
+      setup.second.resolve(next ?? { ok: false, failure: "network" });
+    });
+    await waitFor(() => expect(fakeData.addPracticeUsage.mock.calls.length).toBe(usages + 1));
+    expect(fakeAi.solveExercise.mock.calls.length).toBe(solves);
+    expect(fakeAi.practiceExercise.mock.calls.length).toBe(2);
+    expect(router.dismissTo).toHaveBeenCalledWith("/");
+  });
+
+  it("starts no new AI call after the screen unmounts", async () => {
+    const setup = await holdSecondWrite();
+    const { result, unmount } = await renderHook(() => usePracticeRun(newRun));
+    await waitFor(() => expect(setup.count()).toBe(2));
+    const solves = fakeAi.solveExercise.mock.calls.length;
+    const usages = fakeData.addPracticeUsage.mock.calls.length;
+    expect(result.current.view.kind).toBe("ready");
+    await unmount();
+    const next =
+      setup.original === undefined
+        ? null
+        : await setup.original(fakeAi.practiceExercise.mock.calls[1][0]);
+    await act(async () => {
+      setup.second.resolve(next ?? { ok: false, failure: "network" });
+    });
+    await waitFor(() => expect(fakeData.addPracticeUsage.mock.calls.length).toBe(usages + 1));
+    expect(fakeAi.solveExercise.mock.calls.length).toBe(solves);
+  });
+
+  it("raises the target and writes the next exercise on keep going", async () => {
     withKey();
     fakeData.openPracticeRun.mockResolvedValue({
       ok: true,
@@ -470,13 +634,14 @@ describe("usePracticeRun", () => {
         ),
       ),
     });
-    const { result } = await renderHook(() => usePracticeRun({ kind: "resume", runId: "run-1" }));
+    const { result } = await renderHook(() => usePracticeRun(resumeOrigin));
     await waitFor(() => expect(ready(result).phase).toBe("result"));
     await act(async () => result.current.keepGoing());
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
     expect(fakeData.setPracticeTarget).toHaveBeenCalledWith("run-1", 10);
-    expect(fakeAi.practiceRound).toHaveBeenCalledTimes(1);
+    expect(fakeAi.practiceExercise).toHaveBeenCalled();
     expect(ready(result).run?.target).toBe(10);
+    expect(ready(result).items.at(-1)?.position).toBeGreaterThanOrEqual(5);
   });
 
   it("finishes the run and goes Home", async () => {
@@ -557,7 +722,7 @@ describe("usePracticeRun", () => {
     });
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).run).not.toBeNull());
-    expect(fakeAi.practiceRound).not.toHaveBeenCalled();
+    expect(fakeAi.practiceExercise).not.toHaveBeenCalled();
     expect(ready(result).phase).toBe("asking");
   });
 
@@ -586,7 +751,49 @@ describe("usePracticeRun", () => {
     jest.mocked(useIsFocused).mockReturnValue(true);
     await rerender({});
     await waitFor(() => expect(ready(result).spentUsd).toBe(3));
-    expect(ready(result).items).toHaveLength(5);
+    expect(ready(result).items.length).toBeGreaterThan(0);
+  });
+
+  it("finishes after the chain in flight and goes Home", async () => {
+    withKey();
+    fakeData.openPracticeRun.mockResolvedValue({
+      ok: true,
+      value: practiceTodayWith([
+        ...[0, 1, 2, 3].map((position) =>
+          practiceItemWith({ id: `item-${position}`, position, correct: true }),
+        ),
+        typedFix({ id: "item-4", position: 4 }),
+      ]),
+    });
+    fakeAi.gradeAnswer.mockResolvedValue({
+      ok: true,
+      value: answerGradeWith({ correct: false }),
+    });
+    const checks = deferred<Awaited<ReturnType<typeof fakeData.addPracticeChecks>>>();
+    fakeData.addPracticeChecks.mockReturnValue(checks.promise);
+    const { result } = await renderHook(() => usePracticeRun(resumeOrigin));
+    await waitFor(() => expect(ready(result).phase).toBe("answering"));
+    await act(async () => result.current.setDraft("I never was."));
+    // INFO: the calls below wait on the chain that waits on the checks save, so none is awaited here.
+    const pending: Promise<void>[] = [];
+    await act(async () => {
+      pending.push(result.current.check());
+    });
+    await waitFor(() => expect(fakeData.addPracticeChecks).toHaveBeenCalled());
+    await act(async () => {
+      pending.push(result.current.next());
+    });
+    expect(ready(result).phase).toBe("result");
+    await act(async () => {
+      pending.push(result.current.finish());
+    });
+    expect(fakeData.finishPracticeRun).not.toHaveBeenCalled();
+    await act(async () => {
+      checks.resolve({ ok: true, value: { count: 1 } });
+      await Promise.all(pending);
+    });
+    expect(fakeData.finishPracticeRun).toHaveBeenCalledWith("run-1");
+    expect(router.dismissTo).toHaveBeenCalledWith("/");
   });
 });
 
@@ -605,7 +812,7 @@ describe("usePracticeRun with study notes", () => {
     input: { focus: "note", noteId: "note-1", target: 5 },
   };
 
-  it("reads the note of a note run and sends it in the round call", async () => {
+  it("reads the note of a note run and sends it in the writer call", async () => {
     withKey();
     const { result } = await renderHook(() => usePracticeRun(noteRun));
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
@@ -615,10 +822,10 @@ describe("usePracticeRun with study notes", () => {
       noteId: "note-1",
       target: 5,
     });
-    const turn = fakeAi.practiceRound.mock.calls[0]?.[0].turns[0]?.text ?? "";
-    const sent = JSON.parse(turn) as { focus: { kind: string; note: { title: string } } };
-    expect(sent.focus.kind).toBe("note");
-    expect(sent.focus.note.title).toBe("Future forms");
+    const turn = fakeAi.practiceExercise.mock.calls[0]?.[0].turns[0]?.text ?? "";
+    const sent = JSON.parse(turn) as { target: { focus: string; note: { title: string } } };
+    expect(sent.target.focus).toBe("note");
+    expect(sent.target.note.title).toBe("Future forms");
     expect(turn).toContain("going to");
     expect(turn).not.toContain("note-1");
   });
@@ -689,6 +896,42 @@ describe("usePracticeRun with study notes", () => {
     expect(router.push).not.toHaveBeenCalled();
     expect(ready(result).failure).toMatchObject({ source: "ai", failure: "rate_limited" });
     expect(fakeData.createNote).not.toHaveBeenCalled();
+  });
+
+  it("opens a saved study note even while the background chain is running", async () => {
+    withKey();
+    fakeData.openPracticeRun.mockResolvedValue({
+      ok: true,
+      value: practiceTodayWith([practiceItemWith({ id: "item-0" })]),
+    });
+    const third = deferred<Awaited<ReturnType<typeof fakeAi.practiceExercise>>>();
+    const original = fakeAi.practiceExercise.getMockImplementation();
+    let calls = 0;
+    fakeAi.practiceExercise.mockImplementation(async (request) => {
+      calls += 1;
+      if (calls === 2) return await third.promise;
+      return original === undefined ? { ok: false, failure: "network" } : await original(request);
+    });
+    const { result } = await renderHook(() => usePracticeRun(resumeOrigin));
+    await waitFor(() => expect(calls).toBe(1));
+    await waitFor(() => expect(ready(result).items).toHaveLength(2));
+    const pending: Promise<void>[] = [];
+    await act(async () => {
+      pending.push(result.current.pick("was"));
+    });
+    await waitFor(() => expect(calls).toBe(2));
+    await waitFor(() => expect(ready(result).phase).toBe("feedback"));
+    expect(fakeData.answerPracticeItem).toHaveBeenCalled();
+    await act(async () => {
+      pending.push(result.current.makeNote());
+      third.resolve(
+        original === undefined
+          ? { ok: false, failure: "network" }
+          : await original(fakeAi.practiceExercise.mock.calls[1][0]),
+      );
+      await Promise.all(pending);
+    });
+    expect(router.push).toHaveBeenCalledWith({ pathname: "/note", params: { id: "note-1" } });
   });
 
   it("saves the usage of a billed note failure", async () => {

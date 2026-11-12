@@ -15,7 +15,7 @@
 // - getProfileStats and deleteAccount
 // - getMonthProgress, listHistory, listMistakes and listWords
 // - The practice calls: getTodayPractice, listRecentPrompts, createPracticeRun, openPracticeRun, addPracticeItems,
-//   answerPracticeItem, addPracticeUsage, setPracticeTarget and finishPracticeRun
+//   addPracticeChecks (no expected empty: zero rows answer invalid_input), answerPracticeItem, addPracticeUsage, setPracticeTarget and finishPracticeRun
 // - The note calls: createNote, getNote, deleteNote and listNotes (createNote, getNote and deleteNote have no expected empty: a note exists or is not_found)
 // - openThread, addThreadMessage and withdrawCorrections; openSession carries the thread reply counts
 //
@@ -28,7 +28,7 @@
 
 import { describe, expect, it, jest } from "@jest/globals";
 
-import type { MessageCreate, ThreadMessageCreate } from "@fluency-lab/shared";
+import type { MessageCreate, PracticeCheckCreate, ThreadMessageCreate } from "@fluency-lab/shared";
 
 import type { DataPort } from "@/data/data-port";
 import { createHonoData } from "@/data/hono-data";
@@ -1350,6 +1350,24 @@ describe("the practice calls", () => {
     cacheReadInputTokens: 0,
   } as const;
 
+  const checkRow: PracticeCheckCreate = {
+    stage: "code",
+    generatorModel: "claude-haiku-5-5",
+    checkerModel: null,
+    passed: true,
+    reason: null,
+    solverAnswer: null,
+    exercise: {
+      kind: "gap",
+      rule: "Present perfect",
+      prompt: "I ___ (be) there.",
+      options: [],
+      accepted: ["have been"],
+      explanation: "Experience.",
+      source: "",
+    },
+  };
+
   type Call = {
     name: string;
     method: string;
@@ -1405,6 +1423,15 @@ describe("the practice calls", () => {
       answer: { items: [item] },
       value: [item],
       run: (data) => data.addPracticeItems(runId, [created]),
+    },
+    {
+      name: "addPracticeChecks",
+      method: "POST",
+      url: `http://api.test/practice/runs/${runId}/checks`,
+      body: { checks: [checkRow] },
+      answer: { count: 1 },
+      value: { count: 1 },
+      run: (data) => data.addPracticeChecks(runId, [checkRow]),
     },
     {
       name: "answerPracticeItem",
@@ -1513,6 +1540,14 @@ describe("the practice calls", () => {
     expect(await data.addPracticeItems(runId, [created])).toEqual({
       ok: true,
       value: [item, second],
+    });
+  });
+
+  it("addPracticeChecks has no expected empty: zero rows answer invalid_input", async () => {
+    const { data } = setup(reply({ error: "invalid_input" }, 400));
+    expect(await data.addPracticeChecks(runId, [])).toEqual({
+      ok: false,
+      failure: "invalid_input",
     });
   });
 

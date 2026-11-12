@@ -7,6 +7,7 @@
 // - Every request carries the caller's token and the publishable key
 // - listOpenSessions reads active sessions newest first with their newest message in one request; deleteSession deletes by id
 // - listSessionCostsSince reads the sessions, deleted_session_costs and practice_runs and returns all three
+// - addPracticeChecks inserts the check rows of a visible run into practice_checks without user_id
 // - The practice methods read and write practice_runs and practice_items (listFinishedRunsSince reads the finished runs with their item verdicts, listRecentPrompts reads the caller's items newest first through their runs) and call add_practice_cost with the caller's token
 // - getStats calls profile_stats with the caller's token; deleteAccount deletes the caller through the admin API with the secret key and never the caller's token
 // - getMonthProgress, listEndedSessions, listMistakeGroups and listNewWords call their progress_* function with the caller's token
@@ -22,7 +23,7 @@
 //
 // SEE: apps/api/src/supabase-store.ts
 
-import type { MessageCreate, ThreadMessageCreate } from "@fluency-lab/shared";
+import type { MessageCreate, PracticeCheckCreate, ThreadMessageCreate } from "@fluency-lab/shared";
 import { describe, expect, it } from "vitest";
 import { createSupabaseStore, storeConfigFromEnv } from "../src/supabase-store";
 import { generatedSecret } from "./helpers/generated-secret";
@@ -2044,6 +2045,64 @@ describe("practice methods", () => {
           runId,
           created.items,
         ),
+      ).toEqual({ ok: false, failure: "unavailable" });
+    });
+  });
+
+  describe("addPracticeChecks", () => {
+    const check: PracticeCheckCreate = {
+      stage: "solver",
+      generatorModel: "claude-haiku-5-5",
+      checkerModel: "claude-haiku-5-5",
+      passed: false,
+      reason: "solver_mismatch",
+      solverAnswer: "was",
+      exercise: {
+        kind: "gap",
+        rule: "r",
+        prompt: "p ___",
+        options: [],
+        accepted: ["a"],
+        explanation: "e",
+        source: "",
+      },
+    };
+
+    it("inserts the rows of a visible run without user_id and returns how many", async () => {
+      const { user, requests } = setup([ok({ id: runId }), ok(null, 201)]);
+      const outcome = await user.addPracticeChecks(runId, [check, check]);
+      expect(outcome).toEqual({ ok: true, value: 2 });
+      expect(requests[1].method).toBe("POST");
+      expect(requests[1].url.pathname).toBe("/rest/v1/practice_checks");
+      const row = {
+        run_id: runId,
+        stage: "solver",
+        generator_model: "claude-haiku-5-5",
+        checker_model: "claude-haiku-5-5",
+        passed: false,
+        reason: "solver_mismatch",
+        solver_answer: "was",
+        exercise: check.exercise,
+      };
+      expect(JSON.parse(requests[1].body ?? "null")).toEqual([row, row]);
+    });
+
+    it("returns null when the run is not visible", async () => {
+      const { user, requests } = setup([ok([])]);
+      expect(await user.addPracticeChecks(runId, [check])).toEqual({ ok: true, value: null });
+      expect(requests).toHaveLength(1);
+    });
+
+    it("fails on a 401, a down fetch and an insert error", async () => {
+      expect(await setup([failure(401)]).user.addPracticeChecks(runId, [check])).toEqual({
+        ok: false,
+        failure: "unauthorized",
+      });
+      expect(await setup([ok({ id: runId }), down]).user.addPracticeChecks(runId, [check])).toEqual(
+        { ok: false, failure: "unavailable" },
+      );
+      expect(
+        await setup([ok({ id: runId }), failure(500)]).user.addPracticeChecks(runId, [check]),
       ).toEqual({ ok: false, failure: "unavailable" });
     });
   });

@@ -15,6 +15,7 @@
 // - The practice schemas: the run to create, the items, the answer, the new target, the reads and the tutor payloads
 // - The study note schemas: both shapes, their limits, the create body, the stored note, the page and the loose payload
 // - The recent prompts query and response
+// - The practice check schemas: the loose exercise, solution and review payloads, the check row and the 1 to 20 rows body
 // - The session title: titleSource on a session and the title update body
 // - The thread schemas: the stored correction with its withdrawn flag, the thread rows, the withdraw body, the reply counts and the thread reply payload
 // - The profile, session and run read schemas accept a topic id outside the catalogs; the create and update schemas reject it
@@ -54,7 +55,12 @@ import {
   practiceItemCreateSchema,
   practiceItemSchema,
   practiceItemsCreateSchema,
-  practiceRoundSchema,
+  practiceCheckCreateSchema,
+  practiceChecksCreateSchema,
+  practiceChecksSavedSchema,
+  practiceExercisePayloadSchema,
+  practiceReviewSchema,
+  practiceSolutionSchema,
   practiceRunCreateSchema,
   practiceRunSchema,
   practiceRunWithItemsSchema,
@@ -1029,21 +1035,36 @@ describe("practice schemas", () => {
   });
 
   it("parses the loose tutor payloads", () => {
-    const round = {
-      items: [
-        {
-          kind: "gap",
-          rule: "r",
-          prompt: "p",
-          options: [],
-          accepted: ["a"],
-          explanation: "e",
-          source: "",
-        },
-      ],
+    const exercise = {
+      kind: "gap",
+      rule: "r",
+      prompt: "p",
+      options: [],
+      accepted: ["a"],
+      explanation: "e",
+      source: "",
     };
-    expect(practiceRoundSchema.parse(round)).toEqual(round);
-    expect(practiceRoundSchema.safeParse({ items: [{ kind: "gap" }] }).success).toBe(false);
+    expect(practiceExercisePayloadSchema.parse(exercise)).toEqual(exercise);
+    expect(practiceExercisePayloadSchema.safeParse({ kind: "gap" }).success).toBe(false);
+    expect(practiceSolutionSchema.parse({ answer: "went", alreadyCorrect: false })).toEqual({
+      answer: "went",
+      alreadyCorrect: false,
+    });
+    expect(practiceSolutionSchema.safeParse({ answer: "went" }).success).toBe(false);
+    const review = {
+      singleAnswer: true,
+      meaningKept: true,
+      answerNotInPrompt: true,
+      oneRealMistake: true,
+      naturalEnglish: true,
+      solverAnswerAccepted: true,
+      passed: true,
+      reason: "",
+    };
+    expect(practiceReviewSchema.parse(review)).toEqual(review);
+    expect(practiceReviewSchema.safeParse({ ...review, naturalEnglish: undefined }).success).toBe(
+      false,
+    );
     expect(answerGradeSchema.parse({ flawed: false, correct: false, explanation: "" })).toEqual({
       flawed: false,
       correct: false,
@@ -1357,5 +1378,68 @@ describe("contextSummarySchema", () => {
 
   it("rejects a payload without summary", () => {
     expect(contextSummarySchema.safeParse({}).success).toBe(false);
+  });
+
+  describe("practice checks", () => {
+    const exercise = {
+      kind: "gap",
+      rule: "r",
+      prompt: "p",
+      options: [],
+      accepted: ["a"],
+      explanation: "e",
+      source: "",
+    };
+    const code = {
+      stage: "code",
+      generatorModel: "claude-haiku-5-5",
+      checkerModel: null,
+      passed: true,
+      reason: null,
+      solverAnswer: null,
+      exercise,
+    };
+    const solver = { ...code, stage: "solver", checkerModel: "claude-haiku-5-5" };
+
+    it("accepts a code row with no checker model", () => {
+      expect(practiceCheckCreateSchema.parse(code)).toEqual(code);
+    });
+
+    it("rejects a code row with a checker model and a solver row without one", () => {
+      expect(
+        practiceCheckCreateSchema.safeParse({ ...code, checkerModel: "claude-haiku-5-5" }).success,
+      ).toBe(false);
+      expect(practiceCheckCreateSchema.safeParse({ ...solver, checkerModel: null }).success).toBe(
+        false,
+      );
+      expect(practiceCheckCreateSchema.safeParse(solver).success).toBe(true);
+    });
+
+    it("rejects a failed row with no reason", () => {
+      expect(practiceCheckCreateSchema.safeParse({ ...code, passed: false }).success).toBe(false);
+      expect(
+        practiceCheckCreateSchema.safeParse({ ...code, passed: false, reason: "limit" }).success,
+      ).toBe(true);
+    });
+
+    it("rejects an unknown stage, an unknown model and an extra key", () => {
+      expect(practiceCheckCreateSchema.safeParse({ ...code, stage: "other" }).success).toBe(false);
+      expect(practiceCheckCreateSchema.safeParse({ ...code, generatorModel: "gpt" }).success).toBe(
+        false,
+      );
+      expect(practiceCheckCreateSchema.safeParse({ ...code, extra: 1 }).success).toBe(false);
+    });
+
+    it("takes 1 to 20 rows", () => {
+      const rows = (n: number) => ({ checks: Array.from({ length: n }, () => code) });
+      expect(practiceChecksCreateSchema.safeParse(rows(1)).success).toBe(true);
+      expect(practiceChecksCreateSchema.safeParse(rows(20)).success).toBe(true);
+      expect(practiceChecksCreateSchema.safeParse(rows(0)).success).toBe(false);
+      expect(practiceChecksCreateSchema.safeParse(rows(21)).success).toBe(false);
+    });
+
+    it("parses the saved count", () => {
+      expect(practiceChecksSavedSchema.parse({ count: 3 })).toEqual({ count: 3 });
+    });
   });
 });

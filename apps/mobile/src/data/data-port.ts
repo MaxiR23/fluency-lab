@@ -10,6 +10,8 @@ import type {
   NotePage,
   PracticeAnswer,
   PracticeItem,
+  PracticeCheckCreate,
+  PracticeChecksSaved,
   PracticeItemCreate,
   PracticeRun,
   PracticeRunCreate,
@@ -98,6 +100,11 @@ export type DataPort = {
     runId: string,
     items: PracticeItemCreate[],
   ): Promise<DataOutcome<PracticeItem[]>>;
+  // INFO: no expected empty: the app never sends zero rows.
+  addPracticeChecks(
+    runId: string,
+    checks: PracticeCheckCreate[],
+  ): Promise<DataOutcome<PracticeChecksSaved>>;
   answerPracticeItem(itemId: string, answer: PracticeAnswer): Promise<DataOutcome<PracticeItem>>;
   addPracticeUsage(runId: string, usage: SessionUsage): Promise<DataOutcome<PracticeRun>>;
   setPracticeTarget(runId: string, target: 10 | 15): Promise<DataOutcome<PracticeRun>>;

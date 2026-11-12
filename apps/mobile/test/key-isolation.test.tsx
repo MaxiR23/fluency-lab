@@ -7,7 +7,7 @@
 // - The key never reaches the data port or any request to our API
 // - The title PATCH that follows a reply carries the session title and source, and no key
 // - The same holds for a question asked in a correction thread
-// - The same holds for a practice round and the grading of a typed answer
+// - The same holds for the practice calls (writer, solver, reviewer), the checks save and the grading of a typed answer
 // - The same holds for a study note made from a missed exercise
 // - A 401 or a network error that echoes the key draws no key, cause line included
 // - Nothing is logged
@@ -30,9 +30,8 @@ import {
   apiKey,
   data,
   provider,
-  providerGradeSuccess,
   providerNoteSuccess,
-  providerRoundSuccess,
+  providerPracticeAnswer,
   providerSuccess,
   providerThreadSuccess,
   recorded,
@@ -198,26 +197,27 @@ describe("the user's key", () => {
     expect(JSON.stringify(dataSpies.flatMap((spy) => spy.mock.calls))).not.toContain(apiKey);
   });
 
-  it("is sent only to the provider endpoint when a practice round and a grading are asked", async () => {
-    let calls = 0;
-    provider.answer = () => (calls++ === 0 ? providerRoundSuccess() : providerGradeSuccess());
+  async function practiceUntilGrading() {
     await renderAppAt(
       { pathname: "/practice-run", params: { focus: "mistakes", target: "5" } },
       fakeSession(),
     );
-    await fireEvent.changeText(screen.getByLabelText("Your answer"), "I never was to Japan.");
+    // INFO: position 0 is a choose, picked wrong; position 1 is a gap, typed wrong so a grade is asked.
+    await fireEvent.press(await screen.findByRole("button", { name: "was" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Continue" }));
+    await fireEvent.changeText(await screen.findByLabelText("Your answer"), "I will to Japan.");
     await fireEvent.press(screen.getByRole("button", { name: "Check" }));
     await act(async () => {});
+  }
 
+  function expectKeyOnlyAtProvider() {
     const toProvider = recorded.filter((entry) => entry.url.startsWith(PROVIDER_ORIGIN));
     const toApi = recorded.filter((entry) => entry.url.startsWith("http://api.test"));
-    expect(toProvider).toHaveLength(2);
     for (const entry of toProvider) {
       expect(entry.headers["x-api-key"]).toBe(apiKey);
       expect(entry.url).not.toContain(apiKey);
       expect(entry.body).not.toContain(apiKey);
     }
-    expect(toApi.some((entry) => entry.url.endsWith("/practice/runs"))).toBe(true);
     expect(recorded).toHaveLength(toProvider.length + toApi.length);
     for (const entry of toApi) {
       expect(entry.url).not.toContain(apiKey);
@@ -226,41 +226,54 @@ describe("the user's key", () => {
     }
     expect(JSON.stringify(dataSpies.flatMap((spy) => spy.mock.calls))).not.toContain(apiKey);
     expect(JSON.stringify(screen.toJSON())).not.toContain(apiKey);
+    return { toProvider, toApi };
+  }
+
+  it("is sent only to the provider endpoint when exercises are written, checked and a grading is asked", async () => {
+    provider.answer = providerPracticeAnswer;
+    await practiceUntilGrading();
+
+    const { toProvider, toApi } = expectKeyOnlyAtProvider();
+    const schemas = toProvider.map(
+      (entry) =>
+        (
+          JSON.parse(entry.body) as {
+            output_config: { format: { schema: { required: string[] } } };
+          }
+        ).output_config.format.schema.required,
+    );
+    expect(schemas.some((required) => required.includes("accepted"))).toBe(true);
+    expect(schemas.some((required) => required.includes("alreadyCorrect"))).toBe(true);
+    expect(schemas.some((required) => required.includes("flawed"))).toBe(true);
+    expect(toApi.some((entry) => entry.url.endsWith("/practice/runs"))).toBe(true);
+    expect(toApi.some((entry) => entry.url.endsWith("/checks") && entry.method === "POST")).toBe(
+      true,
+    );
   });
 
   it("sends the key only to the provider for a study note", async () => {
-    const answers = [providerRoundSuccess, providerGradeSuccess, providerNoteSuccess];
-    let calls = 0;
-    provider.answer = () => (answers[calls++] ?? providerNoteSuccess)();
+    provider.answer = providerPracticeAnswer;
     await renderAppAt(
       { pathname: "/practice-run", params: { focus: "mistakes", target: "5" } },
       fakeSession(),
     );
-    await fireEvent.changeText(screen.getByLabelText("Your answer"), "I never was to Japan.");
-    await fireEvent.press(screen.getByRole("button", { name: "Check" }));
-    await act(async () => {});
-    await fireEvent.press(screen.getByRole("button", { name: "Make me a study note" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "was" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Make me a study note" }));
     await act(async () => {});
 
-    const toProvider = recorded.filter((entry) => entry.url.startsWith(PROVIDER_ORIGIN));
-    const toApi = recorded.filter((entry) => entry.url.startsWith("http://api.test"));
-    expect(toProvider).toHaveLength(3);
-    for (const entry of toProvider) {
-      expect(entry.headers["x-api-key"]).toBe(apiKey);
-      expect(entry.url).not.toContain(apiKey);
-      expect(entry.body).not.toContain(apiKey);
-    }
+    const { toProvider, toApi } = expectKeyOnlyAtProvider();
+    const schemas = toProvider.map(
+      (entry) =>
+        (
+          JSON.parse(entry.body) as {
+            output_config: { format: { schema: { required: string[] } } };
+          }
+        ).output_config.format.schema.required,
+    );
+    expect(schemas.some((required) => required.includes("columns"))).toBe(true);
     expect(toApi.some((entry) => entry.url.endsWith("/notes") && entry.method === "POST")).toBe(
       true,
     );
-    expect(recorded).toHaveLength(toProvider.length + toApi.length);
-    for (const entry of toApi) {
-      expect(entry.url).not.toContain(apiKey);
-      expect(entry.body).not.toContain(apiKey);
-      expect(Object.values(entry.headers).join("\n")).not.toContain(apiKey);
-    }
-    expect(JSON.stringify(dataSpies.flatMap((spy) => spy.mock.calls))).not.toContain(apiKey);
-    expect(JSON.stringify(screen.toJSON())).not.toContain(apiKey);
   });
 
   it("logs nothing", async () => {

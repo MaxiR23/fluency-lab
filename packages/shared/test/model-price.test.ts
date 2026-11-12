@@ -4,6 +4,7 @@
 //
 // Tested:
 // - TUTOR_MODEL is the single model constant
+// - The writer, solver and review models of the practice checks
 // - usageCostUsd prices the usage of a request in USD
 //
 // What is covered:
@@ -14,7 +15,15 @@
 // SEE: packages/shared/src/model-price.ts
 
 import { describe, expect, it } from "vitest";
-import { MODEL_IDS, MODEL_PRICES, TUTOR_MODEL, usageCostUsd } from "../src/model-price";
+import {
+  MODEL_IDS,
+  MODEL_PRICES,
+  PRACTICE_REVIEW_MODEL,
+  PRACTICE_SOLVER_MODEL,
+  PRACTICE_WRITER_MODEL,
+  TUTOR_MODEL,
+  usageCostUsd,
+} from "../src/model-price";
 
 const zero = {
   inputTokens: 0,
@@ -71,5 +80,15 @@ describe("usageCostUsd", () => {
     // 1 output token = 5e-7; 1 cache read token = 1e-8; 3 of them = 3e-8
     expect(usageCostUsd(TUTOR_MODEL, { ...zero, cacheReadInputTokens: 3 })).toBe(0.00000003);
     expect(usageCostUsd(TUTOR_MODEL, { ...zero, inputTokens: 1 })).toBe(0.0000001);
+  });
+
+  it("exports the writer, solver and review models, all equal to TUTOR_MODEL", () => {
+    expect(PRACTICE_WRITER_MODEL).toBe(TUTOR_MODEL);
+    expect(PRACTICE_SOLVER_MODEL).toBe(TUTOR_MODEL);
+    expect(PRACTICE_REVIEW_MODEL).toBe(TUTOR_MODEL);
+  });
+
+  it("keeps the tutor model as the only priced model", () => {
+    expect(Object.keys(MODEL_PRICES)).toEqual([TUTOR_MODEL]);
   });
 });

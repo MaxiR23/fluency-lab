@@ -3,10 +3,15 @@
 import {
   NOTE_KINDS,
   PRACTICE_KINDS,
+  PRACTICE_REVIEW_MODEL,
+  PRACTICE_SOLVER_MODEL,
+  PRACTICE_WRITER_MODEL,
   TUTOR_MODEL,
   answerGradeSchema,
   contextSummarySchema,
-  practiceRoundSchema,
+  practiceExercisePayloadSchema,
+  practiceReviewSchema,
+  practiceSolutionSchema,
   studyNotePayloadSchema,
   threadReplySchema,
   tutorReplySchema,
@@ -20,7 +25,7 @@ import type { KeyReadOutcome } from "@/keys/key-port";
 import { toContextSummary } from "@/utils/chat-context";
 import { DEADLINE, withinDeadline } from "@/utils/deadline";
 import { toAnswerGrade } from "@/utils/practice-grade";
-import { toPracticeRound } from "@/utils/practice-round";
+import { toReview } from "@/utils/practice-check";
 import { providerMessages } from "@/utils/provider-messages";
 import { toChatTitle } from "@/utils/chat-title";
 import { toStudyNote } from "@/utils/study-note";
@@ -33,8 +38,7 @@ const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_TOKENS = 1024;
 // INFO: a reply with a table or a study note needs room for it; the thread keeps MAX_TOKENS.
 const NOTE_MAX_TOKENS = 2048;
-// INFO: a round of five exercises needs more room than a chat turn; a grading answer needs less.
-const ROUND_MAX_TOKENS = 2048;
+// INFO: a grading answer, a solver answer and a review need less room than a chat turn.
 const GRADE_MAX_TOKENS = 512;
 
 // INFO: one flat object: anyOf and type arrays count toward the union limit, and every field
@@ -107,31 +111,59 @@ export const THREAD_REPLY_JSON_SCHEMA = {
   },
 } as const;
 
-// INFO: the same limits as above, and enum is supported on string properties. Every exercise carries
-// options and source: an empty array and an empty string when they do not apply, which toPracticeRound
-// turns into null. The limits and the rules of each kind are applied by toPracticeRound.
-export const PRACTICE_ROUND_JSON_SCHEMA = {
+// INFO: the same limits as above, and enum is supported on string properties. One exercise, one
+// object: it carries options and source, an empty array and an empty string when they do not
+// apply. The app checks the limits and the rules of each kind (toExercise).
+export const PRACTICE_EXERCISE_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["items"],
+  required: ["kind", "rule", "prompt", "options", "accepted", "explanation", "source"],
   properties: {
-    items: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["kind", "rule", "prompt", "options", "accepted", "explanation", "source"],
-        properties: {
-          kind: { type: "string", enum: [...PRACTICE_KINDS] },
-          rule: { type: "string" },
-          prompt: { type: "string" },
-          options: { type: "array", items: { type: "string" } },
-          accepted: { type: "array", items: { type: "string" } },
-          explanation: { type: "string" },
-          source: { type: "string" },
-        },
-      },
-    },
+    kind: { type: "string", enum: [...PRACTICE_KINDS] },
+    rule: { type: "string" },
+    prompt: { type: "string" },
+    options: { type: "array", items: { type: "string" } },
+    accepted: { type: "array", items: { type: "string" } },
+    explanation: { type: "string" },
+    source: { type: "string" },
+  },
+} as const;
+
+// INFO: the blind solver's answer; alreadyCorrect is for fix only. An empty answer is allowed.
+export const PRACTICE_SOLUTION_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["answer", "alreadyCorrect"],
+  properties: {
+    answer: { type: "string" },
+    alreadyCorrect: { type: "boolean" },
+  },
+} as const;
+
+// INFO: every property is required so the output keeps this order: the checks before
+// passed and reason. passed is recomputed by the app (toReview).
+export const PRACTICE_REVIEW_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "singleAnswer",
+    "meaningKept",
+    "answerNotInPrompt",
+    "oneRealMistake",
+    "naturalEnglish",
+    "solverAnswerAccepted",
+    "passed",
+    "reason",
+  ],
+  properties: {
+    singleAnswer: { type: "boolean" },
+    meaningKept: { type: "boolean" },
+    answerNotInPrompt: { type: "boolean" },
+    oneRealMistake: { type: "boolean" },
+    naturalEnglish: { type: "boolean" },
+    solverAnswerAccepted: { type: "boolean" },
+    passed: { type: "boolean" },
+    reason: { type: "string" },
   },
 } as const;
 
@@ -244,6 +276,7 @@ const badResponse = (usage?: TokenUsage): Failed =>
 function readSuccess<P extends object>(
   text: string | null,
   parse: (value: unknown) => P | null,
+  model: ModelId,
 ): Asked<P> {
   if (text === null) return badResponse();
   const body = parseJson(text);
@@ -260,14 +293,15 @@ function readSuccess<P extends object>(
   if (!reply.ok) return badResponse(usage);
   const normalized = parse(reply.value);
   if (normalized === null || usage === undefined) return badResponse(usage);
-  return { ok: true, value: { ...normalized, model: TUTOR_MODEL, usage } };
+  return { ok: true, value: { ...normalized, model, usage } };
 }
 
 export function createClaudeAi(config: ClaudeAiConfig): AiPort {
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  // INFO: one request and one reading for both calls; only the schema sent and the parsing differ.
+  // INFO: one request and one reading for every call; only the model, the schema sent and the parsing differ.
   async function ask<P extends object>(
+    model: ModelId,
     request: TutorRequest,
     schema: object,
     maxTokens: number,
@@ -280,7 +314,7 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
     const messages = providerMessages(request.turns);
     if (messages.length === 0) return badResponse();
     const body = JSON.stringify({
-      model: TUTOR_MODEL,
+      model,
       max_tokens: maxTokens,
       system: request.system,
       messages,
@@ -314,12 +348,12 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
         detail: null,
       });
     }
-    return readSuccess(fetched.text, parse);
+    return readSuccess(fetched.text, parse, model);
   }
 
   return {
     reply: (request) =>
-      ask(request, TUTOR_REPLY_JSON_SCHEMA, NOTE_MAX_TOKENS, (value) => {
+      ask(TUTOR_MODEL, request, TUTOR_REPLY_JSON_SCHEMA, NOTE_MAX_TOKENS, (value) => {
         const payload = tutorReplySchema.safeParse(value);
         if (!payload.success) return null;
         const reply = toTutorReply(payload.data);
@@ -331,33 +365,53 @@ export function createClaudeAi(config: ClaudeAiConfig): AiPort {
         return { ...reply, note, title };
       }),
     replyInThread: (request) =>
-      ask(request, THREAD_REPLY_JSON_SCHEMA, MAX_TOKENS, (value) => {
+      ask(TUTOR_MODEL, request, THREAD_REPLY_JSON_SCHEMA, MAX_TOKENS, (value) => {
         const payload = threadReplySchema.safeParse(value);
         return payload.success ? toThreadReply(payload.data) : null;
       }),
-    async practiceRound(request, count, avoid) {
-      const asked = await ask(request, PRACTICE_ROUND_JSON_SCHEMA, ROUND_MAX_TOKENS, (value) => {
-        const payload = practiceRoundSchema.safeParse(value);
-        if (!payload.success) return null;
-        const items = toPracticeRound(payload.data, count, avoid);
-        return items === null ? null : { items };
-      });
-      return asked;
-    },
+    practiceExercise: (request) =>
+      ask(PRACTICE_WRITER_MODEL, request, PRACTICE_EXERCISE_JSON_SCHEMA, MAX_TOKENS, (value) => {
+        const payload = practiceExercisePayloadSchema.safeParse(value);
+        return payload.success ? { exercise: payload.data } : null;
+      }),
+    solveExercise: (request) =>
+      ask(
+        PRACTICE_SOLVER_MODEL,
+        request,
+        PRACTICE_SOLUTION_JSON_SCHEMA,
+        GRADE_MAX_TOKENS,
+        (value) => {
+          const payload = practiceSolutionSchema.safeParse(value);
+          return payload.success
+            ? { answer: payload.data.answer.trim(), alreadyCorrect: payload.data.alreadyCorrect }
+            : null;
+        },
+      ),
+    reviewExercise: (request) =>
+      ask(
+        PRACTICE_REVIEW_MODEL,
+        request,
+        PRACTICE_REVIEW_JSON_SCHEMA,
+        GRADE_MAX_TOKENS,
+        (value) => {
+          const payload = practiceReviewSchema.safeParse(value);
+          return payload.success ? toReview(payload.data) : null;
+        },
+      ),
     studyNote: (request) =>
-      ask(request, STUDY_NOTE_JSON_SCHEMA, NOTE_MAX_TOKENS, (value) => {
+      ask(TUTOR_MODEL, request, STUDY_NOTE_JSON_SCHEMA, NOTE_MAX_TOKENS, (value) => {
         const payload = studyNotePayloadSchema.safeParse(value);
         const note = payload.success ? toStudyNote(payload.data) : null;
         return note === null ? null : { note };
       }),
     summarize: (request) =>
-      ask(request, CONTEXT_SUMMARY_JSON_SCHEMA, MAX_TOKENS, (value) => {
+      ask(TUTOR_MODEL, request, CONTEXT_SUMMARY_JSON_SCHEMA, MAX_TOKENS, (value) => {
         const payload = contextSummarySchema.safeParse(value);
         const summary = payload.success ? toContextSummary(payload.data.summary) : null;
         return summary === null ? null : { summary };
       }),
     gradeAnswer: (request) =>
-      ask(request, ANSWER_GRADE_JSON_SCHEMA, GRADE_MAX_TOKENS, (value) => {
+      ask(TUTOR_MODEL, request, ANSWER_GRADE_JSON_SCHEMA, GRADE_MAX_TOKENS, (value) => {
         const payload = answerGradeSchema.safeParse(value);
         return payload.success ? toAnswerGrade(payload.data) : null;
       }),

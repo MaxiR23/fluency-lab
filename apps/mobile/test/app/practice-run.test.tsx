@@ -3,7 +3,7 @@
 // Tests for the practice run screen: the exercises and the result.
 //
 // Tested:
-// - Loading, no key with Add API key, the failed state with Try again, and generating
+// - Loading, no key with Add API key, the failed state with Try again, and generating only while the next exercise is not ready
 // - A choose exercise: the kind, the rule, the prompt with its gap, three options, the progress
 // - The header: the bar takes the leftover width, the count keeps one line and never shrinks
 // - The gap: the empty 120 point slot, the filled answer underlined in the prompt slot font
@@ -11,7 +11,8 @@
 // - A right pick raises Nice one and plays right, a wrong pick raises Not quite and plays miss, Continue goes on
 // - A fix exercise: the source card, the answer field, Check disabled while empty
 // - A typed match is graded with no tutor call; a typed miss asks the tutor and shows its explanation
-// - The result: the offer at 5 with a miss, Keep going asking a round, Finish for today going Home, no offer at 15
+// - The result: the offer at 5 with a miss, Keep going writing the next exercise, Finish for today going Home, no offer at 15
+// - An exercise slot that used up every kind draws the AI failure with Try again
 // - The 100% limit locks answering, the 80% warning keeps going, an invalid key offers Update key
 // - The study note: Make me a study note on a miss, opening the saved note, hidden on a right answer and in a words run, its failures
 // - Stop goes Home
@@ -35,10 +36,11 @@ import { offlineCardBody, retryingLabel } from "@/utils/load-failure";
 import { fakeSession, resetFakeAuth } from "../helpers/fake-auth";
 import {
   answerGradeWith,
-  exerciseWith,
+  exerciseDraftWith,
+  exerciseFor,
   fakeAi,
-  practiceRoundWith,
   resetFakeAi,
+  solutionWith,
 } from "../helpers/fake-ai";
 import {
   fakeData,
@@ -120,10 +122,6 @@ describe("Practice run", () => {
       ok: true,
       value: practiceRunWith({ focus: input.focus, target: input.target }),
     }));
-    fakeData.addPracticeItems.mockImplementation(async (runId, items) => ({
-      ok: true,
-      value: items.map((item) => practiceItemWith({ ...item, id: `item-${item.position}`, runId })),
-    }));
     fakeData.addPracticeUsage.mockResolvedValue({ ok: true, value: practiceRunWith() });
     fakeData.answerPracticeItem.mockImplementation(async (itemId, answer) => ({
       ok: true,
@@ -146,20 +144,21 @@ describe("Practice run", () => {
     });
   }
 
+  // INFO: a resumed run whose first exercise is a fix the learner types; the others are written in the background.
   function withTypedRound() {
-    fakeAi.practiceRound.mockResolvedValue({
+    fakeData.openPracticeRun.mockResolvedValue({
       ok: true,
-      value: practiceRoundWith({
-        items: Array.from({ length: 5 }, () =>
-          exerciseWith({
-            kind: "fix",
-            prompt: "I never been to Japan.",
-            options: null,
-            accepted: ["I've never been to Japan."],
-            source: "I never been to Japan.",
-          }),
-        ),
-      }),
+      value: practiceTodayWith([
+        practiceItemWith({
+          id: "item-0",
+          position: 0,
+          kind: "fix",
+          prompt: "I never been to Japan.",
+          options: null,
+          accepted: ["I've never been to Japan."],
+          source: "I never been to Japan.",
+        }),
+      ]),
     });
   }
 
@@ -247,16 +246,75 @@ describe("Practice run", () => {
     expect(screen.getByText("This practice could not be found.")).toBeTruthy();
   });
 
-  it("draws the generating state while the first round is asked", async () => {
+  it("draws the generating state while the first exercise is written and checked", async () => {
     withKey();
-    const pending = deferred<Awaited<ReturnType<typeof fakeAi.practiceRound>>>();
-    fakeAi.practiceRound.mockReturnValue(pending.promise);
+    const pending = deferred<Awaited<ReturnType<typeof fakeAi.practiceExercise>>>();
+    fakeAi.practiceExercise.mockReturnValueOnce(pending.promise);
     await renderAppAt(start, fakeSession());
     expect(screen.getByText("Getting your exercises ready…")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Stop practice" })).toBeTruthy();
     expect(screen.getByRole("progressbar")).toBeTruthy();
-    await act(async () => pending.resolve({ ok: true, value: practiceRoundWith() }));
+    await act(async () =>
+      pending.resolve({
+        ok: true,
+        value: exerciseDraftWith({ exercise: exerciseFor("choose", 1) }),
+      }),
+    );
     expect(screen.queryByText("Getting your exercises ready…")).toBeNull();
+    expect(screen.getByText("Choose the answer")).toBeTruthy();
+  });
+
+  it("draws the exercise, not generating, while the next one is written", async () => {
+    withKey();
+    opened([null]);
+    const pending = deferred<Awaited<ReturnType<typeof fakeAi.practiceExercise>>>();
+    fakeAi.practiceExercise.mockReturnValueOnce(pending.promise);
+    await renderAppAt(resume, fakeSession());
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Choose the answer")).toBeTruthy();
+    expect(screen.queryByText("Getting your exercises ready…")).toBeNull();
+    await act(async () =>
+      pending.resolve({
+        ok: true,
+        value: exerciseDraftWith({ exercise: exerciseFor("gap", 1) }),
+      }),
+    );
+  });
+
+  it("draws generating after Continue when the next exercise is not ready", async () => {
+    withKey();
+    opened([null]);
+    const writing = deferred<Awaited<ReturnType<typeof fakeAi.practiceExercise>>>();
+    const solving = deferred<Awaited<ReturnType<typeof fakeAi.solveExercise>>>();
+    fakeAi.practiceExercise.mockReturnValueOnce(writing.promise);
+    fakeAi.solveExercise.mockReturnValueOnce(solving.promise);
+    await renderAppAt(resume, fakeSession());
+    await fireEvent.press(screen.getByRole("button", { name: "have been" }));
+    await act(async () =>
+      writing.resolve({
+        ok: true,
+        value: exerciseDraftWith({ exercise: exerciseFor("gap", 1) }),
+      }),
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText("Getting your exercises ready…")).toBeTruthy();
+    await act(async () => solving.resolve({ ok: true, value: solutionWith({ answer: "went" }) }));
+    expect(screen.queryByText("Getting your exercises ready…")).toBeNull();
+    expect(screen.getByText("Fill the gap")).toBeTruthy();
+    expect(screen.getByText("2/5")).toBeTruthy();
+  });
+
+  it("draws today's AI failure with Try again once every kind of the slot is used up", async () => {
+    withKey();
+    for (let i = 0; i < 9; i += 1) {
+      fakeAi.practiceExercise.mockResolvedValueOnce({ ok: false, failure: "bad_response" });
+    }
+    await renderAppAt(start, fakeSession());
+    expect(screen.getByText("The tutor could not answer. Try again.")).toBeTruthy();
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(9);
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.queryByText("The tutor could not answer. Try again.")).toBeNull();
+    expect(screen.getByText("Choose the answer")).toBeTruthy();
   });
 
   it("draws a choose exercise with its kind, rule, prompt, options and progress", async () => {
@@ -270,7 +328,7 @@ describe("Practice run", () => {
     expect(screen.getByRole("button", { name: "am" })).toBeTruthy();
     expect(screen.getByText("1/5")).toBeTruthy();
     expect(screen.getByRole("progressbar", { name: "Exercise 1 of 5" })).toBeTruthy();
-    expect(fakeAi.practiceRound).toHaveBeenCalledTimes(1);
+    expect(fakeAi.practiceExercise).toHaveBeenCalled();
   });
 
   it("raises Nice one on a right pick, plays right and calls no tutor", async () => {
@@ -278,7 +336,7 @@ describe("Practice run", () => {
     await renderAppAt(start, fakeSession());
     await fireEvent.press(screen.getByRole("button", { name: "have been" }));
     expect(screen.getByText("Nice one!")).toBeTruthy();
-    expect(screen.getByText("Use the present perfect for an experience.")).toBeTruthy();
+    expect(screen.getByText("Because of the rule.")).toBeTruthy();
     expect(fakeHaptics.play).toHaveBeenCalledWith("right");
     expect(fakeHaptics.play).toHaveBeenCalledTimes(1);
     expect(fakeAi.gradeAnswer).not.toHaveBeenCalled();
@@ -336,7 +394,10 @@ describe("Practice run", () => {
       expect(fakeData.createNote).toHaveBeenCalledWith(
         expect.objectContaining({ sessionId: null, kind: "table", title: "Future forms" }),
       );
-      expect(fakeData.addPracticeUsage).toHaveBeenCalledTimes(2);
+      expect(fakeData.addPracticeUsage).toHaveBeenCalledWith(
+        "run-1",
+        expect.objectContaining({ inputTokens: 300, outputTokens: 350 }),
+      );
       expect(screen).toHavePathname("/note");
       expect(screen).toHaveSearchParams({ id: "note-1" });
       expect(await screen.findByRole("header", { name: "Future forms" })).toBeTruthy();
@@ -406,13 +467,13 @@ describe("Practice run", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
     expect(screen.queryByText("Nice one!")).toBeNull();
     expect(screen.getByText("2/5")).toBeTruthy();
-    expect(screen.getByText(/I\s*to Japan 2 times\./)).toBeTruthy();
+    expect(screen.getByText("Fill the gap")).toBeTruthy();
   });
 
   it("draws a fix exercise with its source card and a disabled Check while empty", async () => {
     withKey();
     withTypedRound();
-    await renderAppAt(start, fakeSession());
+    await renderAppAt(resume, fakeSession());
     expect(screen.getByText("Fix the sentence")).toBeTruthy();
     expect(screen.getByText("From your chat")).toBeTruthy();
     expect(screen.getByText("I never been to Japan.")).toBeTruthy();
@@ -425,7 +486,7 @@ describe("Practice run", () => {
   it("grades a typed match with no tutor call", async () => {
     withKey();
     withTypedRound();
-    await renderAppAt(start, fakeSession());
+    await renderAppAt(resume, fakeSession());
     await fireEvent.changeText(screen.getByLabelText("Your answer"), "i've never been to japan");
     await fireEvent.press(screen.getByRole("button", { name: "Check" }));
     expect(screen.getByText("Nice one!")).toBeTruthy();
@@ -437,7 +498,7 @@ describe("Practice run", () => {
     withKey();
     withTypedRound();
     const dismiss = jest.spyOn(Keyboard, "dismiss");
-    await renderAppAt(start, fakeSession());
+    await renderAppAt(resume, fakeSession());
     await fireEvent.changeText(screen.getByLabelText("Your answer"), "i've never been to japan");
     await fireEvent(screen.getByLabelText("Your answer"), "submitEditing");
     expect(dismiss).toHaveBeenCalledTimes(1);
@@ -448,7 +509,7 @@ describe("Practice run", () => {
     withKey();
     withTypedRound();
     const dismiss = jest.spyOn(Keyboard, "dismiss");
-    await renderAppAt(start, fakeSession());
+    await renderAppAt(resume, fakeSession());
     await fireEvent.changeText(screen.getByLabelText("Your answer"), "i've never been to japan");
     await fireEvent.press(screen.getByRole("button", { name: "Check" }));
     expect(dismiss).toHaveBeenCalledTimes(1);
@@ -461,7 +522,7 @@ describe("Practice run", () => {
       ok: true,
       value: answerGradeWith({ correct: false, explanation: "Never was is not natural." }),
     });
-    await renderAppAt(start, fakeSession());
+    await renderAppAt(resume, fakeSession());
     await fireEvent.changeText(screen.getByLabelText("Your answer"), "I never was to Japan.");
     await fireEvent.press(screen.getByRole("button", { name: "Check" }));
     expect(fakeAi.gradeAnswer).toHaveBeenCalledTimes(1);
@@ -482,7 +543,7 @@ describe("Practice run", () => {
         explanation: "Two answers fit here.",
       }),
     });
-    await renderAppAt(start, fakeSession());
+    await renderAppAt(resume, fakeSession());
     await fireEvent.changeText(screen.getByLabelText("Your answer"), "I never was to Japan.");
     await fireEvent.press(screen.getByRole("button", { name: "Check" }));
     expect(screen.getByText("Nice one!")).toBeTruthy();
@@ -496,7 +557,7 @@ describe("Practice run", () => {
     withTypedRound();
     const pending = deferred<Awaited<ReturnType<typeof fakeAi.gradeAnswer>>>();
     fakeAi.gradeAnswer.mockReturnValue(pending.promise);
-    await renderAppAt(start, fakeSession());
+    await renderAppAt(resume, fakeSession());
     await fireEvent.changeText(screen.getByLabelText("Your answer"), "I never was to Japan.");
     await fireEvent.press(screen.getByRole("button", { name: "Check" }));
     expect(screen.getByRole("button", { name: "Check", busy: true })).toBeTruthy();
@@ -508,7 +569,7 @@ describe("Practice run", () => {
     withKey();
     withTypedRound();
     fakeAi.gradeAnswer.mockResolvedValueOnce({ ok: false, failure: "network" });
-    await renderAppAt(start, fakeSession());
+    await renderAppAt(resume, fakeSession());
     await fireEvent.changeText(screen.getByLabelText("Your answer"), "I never was to Japan.");
     await fireEvent.press(screen.getByRole("button", { name: "Check" }));
     expect(
@@ -533,14 +594,14 @@ describe("Practice run", () => {
     expect(fakeData.finishPracticeRun).not.toHaveBeenCalled();
   });
 
-  it("asks a new round on Keep going", async () => {
+  it("writes the next exercise on Keep going", async () => {
     withKey();
     opened([true, true, true, true, false]);
     await renderAppAt(resume, fakeSession());
     await fireEvent.press(screen.getByRole("button", { name: "Keep going · 5 more" }));
     expect(fakeData.setPracticeTarget).toHaveBeenCalledWith("run-1", 10);
-    expect(fakeAi.practiceRound).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Choose the answer")).toBeTruthy();
+    expect(fakeAi.practiceExercise).toHaveBeenCalled();
+    expect(screen.getByText("Fix the sentence")).toBeTruthy();
     expect(screen.getByText("6/10")).toBeTruthy();
   });
 
@@ -595,11 +656,11 @@ describe("Practice run", () => {
     expect(screen.getByText("Choose the answer")).toBeTruthy();
   });
 
-  it("does not ask a round at 100%", async () => {
+  it("does not write an exercise at 100%", async () => {
     withKey("claude", 1);
     withSpent(1);
     await renderAppAt(start, fakeSession());
-    expect(fakeAi.practiceRound).not.toHaveBeenCalled();
+    expect(fakeAi.practiceExercise).not.toHaveBeenCalled();
     expect(screen.getByText("You reached your monthly limit.")).toBeTruthy();
   });
 
@@ -608,20 +669,20 @@ describe("Practice run", () => {
     withSpent(8);
     await renderAppAt(start, fakeSession());
     expect(screen.getByText("You're close to your monthly limit.")).toBeTruthy();
-    expect(fakeAi.practiceRound).toHaveBeenCalledTimes(1);
+    expect(fakeAi.practiceExercise).toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "have been" })).toBeTruthy();
   });
 
   it("shows the OpenAI notice and does not ask", async () => {
     withKey("openai");
     await renderAppAt(start, fakeSession());
-    expect(fakeAi.practiceRound).not.toHaveBeenCalled();
+    expect(fakeAi.practiceExercise).not.toHaveBeenCalled();
     expect(screen.getByText("OpenAI is coming soon. Use a Claude key for now.")).toBeTruthy();
   });
 
   it("offers Update key after an invalid key and opens the key screen", async () => {
     withKey();
-    fakeAi.practiceRound.mockResolvedValue({ ok: false, failure: "invalid_key" });
+    fakeAi.practiceExercise.mockResolvedValue({ ok: false, failure: "invalid_key" });
     await renderAppAt(start, fakeSession());
     expect(
       screen.getByText("Your API key was not accepted. Update it to keep chatting."),

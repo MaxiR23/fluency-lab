@@ -17,7 +17,7 @@
 // - GET /sessions/spend still counts the cost of a deleted session
 // - the notes routes: create, read, delete and the Progress page, and the notes and note ids of the chat and practice routes
 // - PUT /profile, POST /sessions and POST /practice/runs accept a catalog topic and answer invalid_input for one outside it
-// - the practice routes: today, recent prompts, create, read, items, answer, usage, target and finish
+// - the practice routes: today, recent prompts, create, read, items, checks, answer, usage, target and finish
 // - the usage route prices the tokens, and the routes reject an apiKey field
 //
 // What is covered:
@@ -2553,6 +2553,60 @@ describe("the practice routes", () => {
       expect((await call("POST", `/practice/runs/${runId}/items`, body)).status).toBe(404);
       fake.user.addPracticeItems.mockResolvedValue({ ok: false, failure: "unavailable" });
       expect((await call("POST", `/practice/runs/${runId}/items`, body)).status).toBe(503);
+    });
+  });
+
+  describe("POST /practice/runs/:id/checks", () => {
+    const checkRow = {
+      stage: "code",
+      generatorModel: "claude-haiku-5-5",
+      checkerModel: null,
+      passed: true,
+      reason: null,
+      solverAnswer: null,
+      exercise: {
+        kind: "gap",
+        rule: "r",
+        prompt: "p ___",
+        options: [],
+        accepted: ["a"],
+        explanation: "e",
+        source: "",
+      },
+    };
+    const path = `/practice/runs/${runId}/checks`;
+
+    it("answers 201 with the count and passes the rows to the store", async () => {
+      fake.user.addPracticeChecks.mockResolvedValue({ ok: true, value: 2 });
+      const res = await call("POST", path, { checks: [checkRow, checkRow] });
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ count: 2 });
+      expect(fake.user.addPracticeChecks).toHaveBeenCalledWith(runId, [checkRow, checkRow]);
+    });
+
+    it("answers 400 for no rows, 21 rows, an extra key and a code row with a checker model", async () => {
+      const rows = (n: number) => ({ checks: Array.from({ length: n }, () => checkRow) });
+      expect((await call("POST", path, rows(0))).status).toBe(400);
+      expect((await call("POST", path, rows(21))).status).toBe(400);
+      expect((await call("POST", path, { checks: [checkRow], extra: 1 })).status).toBe(400);
+      expect(
+        (
+          await call("POST", path, {
+            checks: [{ ...checkRow, checkerModel: "claude-haiku-5-5" }],
+          })
+        ).status,
+      ).toBe(400);
+      expect(fake.user.addPracticeChecks).not.toHaveBeenCalled();
+    });
+
+    it("answers 404 when the run is another user's", async () => {
+      fake.user.addPracticeChecks.mockResolvedValue({ ok: true, value: null });
+      expect((await call("POST", path, { checks: [checkRow] })).status).toBe(404);
+    });
+
+    it("answers 503 when the store is down", async () => {
+      fake.user.addPracticeChecks.mockResolvedValue({ ok: false, failure: "unavailable" });
+      expect((await call("POST", path, { checks: [checkRow] })).status).toBe(503);
     });
   });
 

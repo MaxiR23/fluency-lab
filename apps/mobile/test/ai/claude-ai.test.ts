@@ -11,7 +11,7 @@
 // - replyInThread: the same request with the thread schema, its payload, and the same failures
 // - A reply may carry a study note; studyNote: its schema, payload and failures
 // - summarize: its schema (no length keyword), its 1024 tokens, the trimmed summary, bad_response for an empty or over-long one, and the same failures
-// - practiceRound and gradeAnswer: their schemas, their token limits, their payloads and the same failures, and practiceRound drops the prompts in avoid
+// - practiceExercise, solveExercise, reviewExercise and gradeAnswer: their schemas, their token limits, their payloads and the same failures; the reviewer's passed is recomputed
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -26,7 +26,9 @@ import { TUTOR_MODEL } from "@fluency-lab/shared";
 import {
   ANSWER_GRADE_JSON_SCHEMA,
   CONTEXT_SUMMARY_JSON_SCHEMA,
-  PRACTICE_ROUND_JSON_SCHEMA,
+  PRACTICE_EXERCISE_JSON_SCHEMA,
+  PRACTICE_REVIEW_JSON_SCHEMA,
+  PRACTICE_SOLUTION_JSON_SCHEMA,
   STUDY_NOTE_JSON_SCHEMA,
   THREAD_REPLY_JSON_SCHEMA,
   TUTOR_REPLY_JSON_SCHEMA,
@@ -870,10 +872,10 @@ describe("THREAD_REPLY_JSON_SCHEMA", () => {
   });
 });
 
-describe("practiceRound", () => {
-  const roundRequest = {
-    system: "Write exercises.",
-    turns: [{ role: "user", text: '{"focus":{"kind":"words","words":["definitely"]},"count":5}' }],
+describe("practice calls", () => {
+  const exerciseRequest = {
+    system: "Write one exercise.",
+    turns: [{ role: "user", text: '{"kind":"gap","target":null,"avoid":[]}' }],
   } as const;
   const exercise = {
     kind: "gap",
@@ -884,34 +886,227 @@ describe("practiceRound", () => {
     explanation: "Since needs the present perfect.",
     source: "",
   };
-  const round = {
-    items: [exercise, { ...exercise, prompt: "He ___ twice.", accepted: ["has been"] }],
+  const solution = { answer: "has lived", alreadyCorrect: false };
+  const review = {
+    singleAnswer: true,
+    meaningKept: true,
+    answerNotInPrompt: true,
+    oneRealMistake: true,
+    naturalEnglish: true,
+    solverAnswerAccepted: true,
+    passed: true,
+    reason: "",
   };
-  const ask = (ai: ReturnType<typeof setup>["ai"], count = 2, avoid: string[] = []) =>
-    ai.practiceRound({ system: roundRequest.system, turns: [...roundRequest.turns] }, count, avoid);
+  const calls = [
+    {
+      name: "practiceExercise",
+      body: exercise,
+      maxTokens: 1024,
+      schema: PRACTICE_EXERCISE_JSON_SCHEMA,
+      run: (ai: ReturnType<typeof setup>["ai"]) =>
+        ai.practiceExercise({ system: exerciseRequest.system, turns: [...exerciseRequest.turns] }),
+    },
+    {
+      name: "solveExercise",
+      body: solution,
+      maxTokens: 512,
+      schema: PRACTICE_SOLUTION_JSON_SCHEMA,
+      run: (ai: ReturnType<typeof setup>["ai"]) =>
+        ai.solveExercise({ system: exerciseRequest.system, turns: [...exerciseRequest.turns] }),
+    },
+    {
+      name: "reviewExercise",
+      body: review,
+      maxTokens: 512,
+      schema: PRACTICE_REVIEW_JSON_SCHEMA,
+      run: (ai: ReturnType<typeof setup>["ai"]) =>
+        ai.reviewExercise({ system: exerciseRequest.system, turns: [...exerciseRequest.turns] }),
+    },
+  ];
 
-  it("returns the parsed round with its usage", async () => {
-    const { ai } = setup(success(round));
-    const outcome = await ask(ai);
-    expect(outcome.ok && outcome.value.items).toHaveLength(2);
-    expect(outcome).toMatchObject({
-      ok: true,
-      value: {
-        items: [{ kind: "gap", options: null, source: null, accepted: ["has lived"] }, {}],
-        model: TUTOR_MODEL,
-        usage: { inputTokens: 700, outputTokens: 150 },
-      },
+  for (const call of calls) {
+    describe(call.name, () => {
+      it("sends its schema and its max tokens, the key only in x-api-key", async () => {
+        const { ai, seen } = setup(success(call.body));
+        await call.run(ai);
+        const body = JSON.parse(seen[0].body);
+        expect(body.max_tokens).toBe(call.maxTokens);
+        expect(body.output_config.format.schema).toEqual(call.schema);
+        expect(body.model).toBe(TUTOR_MODEL);
+        expect(seen[0].headers.get("x-api-key")).toBe(key);
+        expect(body.messages).toEqual([{ role: "user", content: exerciseRequest.turns[0].text }]);
+      });
+
+      it("fails as invalid_key on 401 and as rate_limited on 429", async () => {
+        expect(await call.run(setup(errorResponse(401, "authentication_error")).ai)).toMatchObject({
+          ok: false,
+          failure: "invalid_key",
+        });
+        expect(await call.run(setup(errorResponse(429, "rate_limit_error")).ai)).toMatchObject({
+          ok: false,
+          failure: "rate_limited",
+        });
+      });
+
+      it("fails as missing_key without a saved key and makes no request", async () => {
+        const { ai, fetchFn } = setup(success(call.body), { read: { ok: true, value: null } });
+        expect(await call.run(ai)).toEqual({ ok: false, failure: "missing_key" });
+        expect(fetchFn).not.toHaveBeenCalled();
+      });
+
+      it("fails as network on a thrown fetch and on the timeout", async () => {
+        expect(await call.run(setup(new TypeError("Network request failed")).ai)).toMatchObject({
+          ok: false,
+          failure: "network",
+        });
+        jest.useFakeTimers();
+        const hang = jest.fn(
+          (_input: RequestInfo | URL, init?: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+              init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+            }),
+        );
+        const ai = createClaudeAi({
+          fetchFn: hang as unknown as typeof fetch,
+          readKey: async () => ({ ok: true, value: key }),
+          timeoutMs: 50,
+        });
+        const pending = call.run(ai);
+        await jest.advanceTimersByTimeAsync(60);
+        expect(await pending).toMatchObject({ ok: false, failure: "network" });
+      });
+
+      it("fails as bad_response with its usage on a body of another shape", async () => {
+        expect(await call.run(setup(success({ unexpected: true })).ai)).toMatchObject({
+          ok: false,
+          failure: "bad_response",
+          usage: { inputTokens: 700, outputTokens: 150 },
+        });
+      });
+
+      it("fails as bad_response on a non-JSON body and on max_tokens", async () => {
+        expect(await call.run(setup(new Response("<html>", { status: 200 })).ai)).toMatchObject({
+          ok: false,
+          failure: "bad_response",
+        });
+        const cut = rawResponse({
+          type: "message",
+          stop_reason: "max_tokens",
+          content: [{ type: "text", text: "{" }],
+          usage: { input_tokens: 700, output_tokens: 512 },
+        });
+        expect(await call.run(setup(cut).ai)).toMatchObject({
+          ok: false,
+          failure: "bad_response",
+          usage: { outputTokens: 512 },
+        });
+      });
+    });
+  }
+
+  describe("practiceExercise", () => {
+    it("returns the parsed exercise payload with the writer model and usage", async () => {
+      const { ai } = setup(success(exercise));
+      expect(await calls[0].run(ai)).toEqual({
+        ok: true,
+        value: {
+          exercise,
+          model: TUTOR_MODEL,
+          usage: {
+            inputTokens: 700,
+            outputTokens: 150,
+            cacheCreationInputTokens: 0,
+            cacheReadInputTokens: 0,
+          },
+        },
+      });
+    });
+
+    it("returns empty options and source as sent, for the app to check", async () => {
+      const { ai } = setup(success({ ...exercise, kind: "riddle", accepted: [] }));
+      const outcome = await calls[0].run(ai);
+      expect(outcome.ok && outcome.value).toMatchObject({
+        exercise: { kind: "riddle", options: [], source: "", accepted: [] },
+      });
+    });
+
+    it("fails as bad_response with its usage on a body that is not one exercise", async () => {
+      expect(await calls[0].run(setup(success({ items: [exercise] })).ai)).toMatchObject({
+        ok: false,
+        failure: "bad_response",
+        usage: { inputTokens: 700 },
+      });
     });
   });
 
-  it("sends the round schema and 2048 max tokens", async () => {
-    const { ai, seen } = setup(success(round));
-    await ask(ai);
-    const body = JSON.parse(seen[0].body);
-    expect(body.max_tokens).toBe(2048);
-    expect(body.output_config.format.schema).toEqual(PRACTICE_ROUND_JSON_SCHEMA);
-    expect(seen[0].headers.get("x-api-key")).toBe(key);
-    expect(body.messages).toEqual([{ role: "user", content: roundRequest.turns[0].text }]);
+  describe("solveExercise", () => {
+    it("returns the answer and alreadyCorrect with the solver model", async () => {
+      const { ai } = setup(success({ answer: "  has lived ", alreadyCorrect: true }));
+      expect(await calls[1].run(ai)).toMatchObject({
+        ok: true,
+        value: { answer: "has lived", alreadyCorrect: true, model: TUTOR_MODEL },
+      });
+    });
+
+    it("returns an empty answer as an expected empty", async () => {
+      const { ai } = setup(success({ answer: "", alreadyCorrect: false }));
+      expect(await calls[1].run(ai)).toMatchObject({
+        ok: true,
+        value: { answer: "", alreadyCorrect: false },
+      });
+    });
+
+    it("fails as bad_response with usage on a missing alreadyCorrect", async () => {
+      expect(await calls[1].run(setup(success({ answer: "x" })).ai)).toMatchObject({
+        ok: false,
+        failure: "bad_response",
+        usage: { inputTokens: 700 },
+      });
+    });
+  });
+
+  describe("reviewExercise", () => {
+    it("returns the booleans with the review model", async () => {
+      const { ai } = setup(success(review));
+      expect(await calls[2].run(ai)).toMatchObject({
+        ok: true,
+        value: { passed: true, reason: null, naturalEnglish: true, model: TUTOR_MODEL },
+      });
+    });
+
+    it("recomputes passed: a model passed true with one false boolean is not passed", async () => {
+      const { ai } = setup(success({ ...review, meaningKept: false, passed: true }));
+      expect(await calls[2].run(ai)).toMatchObject({
+        ok: true,
+        value: { passed: false, meaningKept: false },
+      });
+    });
+
+    it("keeps passed true only when every boolean is true, ignoring a model passed false", async () => {
+      const { ai } = setup(success({ ...review, passed: false }));
+      expect(await calls[2].run(ai)).toMatchObject({ ok: true, value: { passed: true } });
+    });
+
+    it("returns an empty reason as null and a present one trimmed", async () => {
+      const ask = (reason: string) =>
+        setup(success({ ...review, reason })).ai.reviewExercise({
+          system: exerciseRequest.system,
+          turns: [...exerciseRequest.turns],
+        });
+      const empty = await ask("  ");
+      expect(empty.ok && empty.value.reason).toBeNull();
+      const given = await ask(" Odd. ");
+      expect(given.ok && given.value.reason).toBe("Odd.");
+    });
+
+    it("fails as bad_response with its usage on a missing boolean", async () => {
+      const { naturalEnglish: _omitted, ...missing } = review;
+      expect(await calls[2].run(setup(success(missing)).ai)).toMatchObject({
+        ok: false,
+        failure: "bad_response",
+        usage: { inputTokens: 700 },
+      });
+    });
   });
 
   it("asks for up to 2048 tokens for a reply and keeps 1024 for a thread", async () => {
@@ -921,121 +1116,6 @@ describe("practiceRound", () => {
     const thread = setup(success({ reply: "x", newWords: [], withdrawn: [] }));
     await thread.ai.replyInThread({ system: request.system, turns: [...request.turns] });
     expect(JSON.parse(thread.seen[0].body).max_tokens).toBe(1024);
-  });
-
-  it("a round with no usable exercise is bad_response with its usage", async () => {
-    const { ai } = setup(success({ items: [{ ...exercise, kind: "riddle" }] }));
-    expect(await ask(ai)).toMatchObject({
-      ok: false,
-      failure: "bad_response",
-      usage: { inputTokens: 700, outputTokens: 150 },
-    });
-  });
-
-  it("a round with fewer valid exercises than the count is bad_response with its usage", async () => {
-    const { ai } = setup(success(round));
-    expect(await ask(ai, 3)).toMatchObject({
-      ok: false,
-      failure: "bad_response",
-      usage: { inputTokens: 700, outputTokens: 150 },
-    });
-  });
-
-  it("keeps a round whose prompts are not in avoid", async () => {
-    const { ai } = setup(success(round));
-    const outcome = await ask(ai, 2, ["Something else ___."]);
-    expect(outcome.ok && outcome.value.items).toHaveLength(2);
-  });
-
-  it("a round left short by the prompts in avoid is bad_response with its usage", async () => {
-    const { ai } = setup(success(round));
-    expect(await ask(ai, 2, ["she ___ here since May"])).toMatchObject({
-      ok: false,
-      failure: "bad_response",
-      usage: { inputTokens: 700, outputTokens: 150 },
-    });
-  });
-
-  it("keeps only the count from a round with spares", async () => {
-    const spare = { ...exercise, prompt: "They ___ there." };
-    const { ai } = setup(success({ items: [...round.items, spare, spare] }));
-    const outcome = await ask(ai, 2);
-    expect(outcome.ok && outcome.value.items).toHaveLength(2);
-  });
-
-  it("drops a fix that is already correct before counting", async () => {
-    const already = {
-      ...exercise,
-      kind: "fix",
-      prompt: "I can't go.",
-      accepted: ["I can't go."],
-    };
-    const { ai } = setup(success({ items: [exercise, already] }));
-    expect(await ask(ai, 2)).toMatchObject({
-      ok: false,
-      failure: "bad_response",
-      usage: { inputTokens: 700, outputTokens: 150 },
-    });
-  });
-
-  it("fails as invalid_key on 401 and as rate_limited on 429", async () => {
-    expect(await ask(setup(errorResponse(401, "authentication_error")).ai)).toMatchObject({
-      ok: false,
-      failure: "invalid_key",
-    });
-    expect(await ask(setup(errorResponse(429, "rate_limit_error")).ai)).toMatchObject({
-      ok: false,
-      failure: "rate_limited",
-    });
-  });
-
-  it("fails as missing_key without a saved key and makes no request", async () => {
-    const { ai, fetchFn } = setup(success(round), { read: { ok: true, value: null } });
-    expect(await ask(ai)).toEqual({ ok: false, failure: "missing_key" });
-    expect(fetchFn).not.toHaveBeenCalled();
-  });
-
-  it("fails as network on a thrown fetch", async () => {
-    expect(await ask(setup(new TypeError("Network request failed")).ai)).toMatchObject({
-      ok: false,
-      failure: "network",
-    });
-  });
-
-  it("fails as network on the timeout", async () => {
-    jest.useFakeTimers();
-    const hang = jest.fn(
-      (_input: RequestInfo | URL, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
-        }),
-    );
-    const ai = createClaudeAi({
-      fetchFn: hang as unknown as typeof fetch,
-      readKey: async () => ({ ok: true, value: key }),
-      timeoutMs: 50,
-    });
-    const pending = ask(ai);
-    await jest.advanceTimersByTimeAsync(60);
-    expect(await pending).toMatchObject({ ok: false, failure: "network" });
-  });
-
-  it("fails as bad_response on a non-JSON body and on max_tokens", async () => {
-    expect(await ask(setup(new Response("<html>", { status: 200 })).ai)).toMatchObject({
-      ok: false,
-      failure: "bad_response",
-    });
-    const cut = rawResponse({
-      type: "message",
-      stop_reason: "max_tokens",
-      content: [{ type: "text", text: "{" }],
-      usage: { input_tokens: 700, output_tokens: 2048 },
-    });
-    expect(await ask(setup(cut).ai)).toMatchObject({
-      ok: false,
-      failure: "bad_response",
-      usage: { outputTokens: 2048 },
-    });
   });
 });
 
@@ -1109,8 +1189,14 @@ describe("gradeAnswer", () => {
   });
 });
 
-describe("PRACTICE_ROUND_JSON_SCHEMA and ANSWER_GRADE_JSON_SCHEMA", () => {
+describe("PRACTICE_EXERCISE_JSON_SCHEMA, PRACTICE_SOLUTION_JSON_SCHEMA, PRACTICE_REVIEW_JSON_SCHEMA and ANSWER_GRADE_JSON_SCHEMA", () => {
   const unsupported = ["minLength", "maxLength", "minimum", "maximum", "minItems", "$ref"];
+  const schemas = [
+    PRACTICE_EXERCISE_JSON_SCHEMA,
+    PRACTICE_SOLUTION_JSON_SCHEMA,
+    PRACTICE_REVIEW_JSON_SCHEMA,
+    ANSWER_GRADE_JSON_SCHEMA,
+  ];
 
   function walk(node: unknown, visit: (node: Record<string, unknown>) => void) {
     if (typeof node !== "object" || node === null) return;
@@ -1124,7 +1210,7 @@ describe("PRACTICE_ROUND_JSON_SCHEMA and ANSWER_GRADE_JSON_SCHEMA", () => {
   }
 
   it("closes every object and requires all of its properties", () => {
-    for (const schema of [PRACTICE_ROUND_JSON_SCHEMA, ANSWER_GRADE_JSON_SCHEMA]) {
+    for (const schema of schemas) {
       walk(schema, (node) => {
         if (node.type !== "object") return;
         expect(node.additionalProperties).toBe(false);
@@ -1134,22 +1220,37 @@ describe("PRACTICE_ROUND_JSON_SCHEMA and ANSWER_GRADE_JSON_SCHEMA", () => {
   });
 
   it("uses no unsupported keyword", () => {
-    for (const schema of [PRACTICE_ROUND_JSON_SCHEMA, ANSWER_GRADE_JSON_SCHEMA]) {
+    for (const schema of schemas) {
       walk(schema, (node) => {
         for (const keyword of unsupported) expect(node).not.toHaveProperty(keyword);
       });
     }
   });
 
-  it("has an object at the root and limits kind to the four kinds", () => {
-    expect(PRACTICE_ROUND_JSON_SCHEMA.type).toBe("object");
-    expect(PRACTICE_ROUND_JSON_SCHEMA.properties.items.items.properties.kind).toEqual({
+  it("has one object at the root, not an array, and limits kind to the four kinds", () => {
+    for (const schema of schemas) expect(schema.type).toBe("object");
+    expect(PRACTICE_EXERCISE_JSON_SCHEMA.properties).not.toHaveProperty("items");
+    expect(PRACTICE_EXERCISE_JSON_SCHEMA.properties.kind).toEqual({
       type: "string",
       enum: ["choose", "fix", "gap", "translate"],
     });
+    expect(PRACTICE_SOLUTION_JSON_SCHEMA.required).toEqual(["answer", "alreadyCorrect"]);
     expect(ANSWER_GRADE_JSON_SCHEMA.properties.correct).toEqual({ type: "boolean" });
     expect(ANSWER_GRADE_JSON_SCHEMA.properties.flawed).toEqual({ type: "boolean" });
     expect(ANSWER_GRADE_JSON_SCHEMA.required).toEqual(["flawed", "correct", "explanation"]);
+  });
+
+  it("keeps the reviewer's checks before passed and reason", () => {
+    expect(PRACTICE_REVIEW_JSON_SCHEMA.required).toEqual([
+      "singleAnswer",
+      "meaningKept",
+      "answerNotInPrompt",
+      "oneRealMistake",
+      "naturalEnglish",
+      "solverAnswerAccepted",
+      "passed",
+      "reason",
+    ]);
   });
 });
 

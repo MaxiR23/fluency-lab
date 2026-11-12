@@ -5,6 +5,7 @@ import type {
   MessageCreate,
   PracticeAnswer,
   PracticeItem,
+  PracticeCheckCreate,
   PracticeItemCreate,
   PracticeRun,
   PracticeRunCreate,
@@ -72,6 +73,12 @@ export type UserStore = {
     runId: string,
     items: PracticeItemCreate[],
   ): Promise<StoreOutcome<PracticeItem[] | null>>;
+  // INFO: null means the run is not visible to the caller (missing or another user's).
+  // The value is how many rows were saved.
+  addPracticeChecks(
+    runId: string,
+    checks: PracticeCheckCreate[],
+  ): Promise<StoreOutcome<number | null>>;
   // INFO: null means the item is not visible to the caller (missing or another user's).
   answerPracticeItem(
     itemId: string,
