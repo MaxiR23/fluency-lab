@@ -36,6 +36,17 @@ map, the palette and the Home design are decided.
   its expo-haptics and key-value adapters), `hooks/`, `keys/` (the key port
   and its secure-store adapter), `utils/` (pure functions)
 - App identifier: `com.maxirebolo.fluencylab`
+- Practice writes one exercise per AI call and checks it before it is shown: a code check, a blind
+  solver, then (for a fix and a translate) a reviewer; every check is stored in `practice_checks`.
+  Why: prompt chaining, one focused task per call (generate, then review). Choices of the plan:
+  - D1: the kind order is fixed by position (`choose, gap, fix` with no device language, a
+    six-position cycle with translates when there is one), so no three slots in a row hold two translates.
+  - D2: a rule or word is capped at 2 slots; when every target is capped the slot gets an open target.
+  - D3: an AI failure of the background slot is held until the learner is waiting for that exercise.
+  - D4: `bad_response` and `refused` from the writer count as a failed attempt with no check row;
+    any other AI failure does not, and Try again resends the stage.
+  - D5: a reviewer row's reason is the code of the first false boolean plus the model's reason, cut to 300.
+  - D6: every grader verdict gets a row; `passed` is `!flawed`, with reason `grader_flawed`.
 
 ## Pending
 
@@ -151,7 +162,8 @@ cost. `POST /sessions` takes a topic or a starter id. The topic of a session, of
 /practice/today?tz=<IANA zone>` (today's run in that zone, or none), `GET
 /practice/recent-prompts?days=<1-7>&limit=<1-40>` (the recent exercise prompts, to avoid repeating them), `POST /practice/runs`, `GET /practice/runs/:id`,
 `POST /practice/runs/:id/items` (a position already saved is ignored, so a retry repeats safely), `POST /practice/runs/:id/usage`
-(priced and added to the run's cost, which counts in the month's spend), `POST /practice/runs/:id/target`, `POST
+(priced and added to the run's cost, which counts in the month's spend), `POST /practice/runs/:id/checks`
+(1 to 20 rows of the exercise checks, insert only, 404 for another user's run), `POST /practice/runs/:id/target`, `POST
 /practice/runs/:id/finish` and `POST /practice/items/:id/answer`. The study notes have `POST /notes`,
 `GET /notes/:id`, `DELETE /notes/:id` and `GET /progress/notes?tz=<IANA zone>` (newest first, with today in that zone); a note run is `POST /practice/runs` with the `note` focus. The API
 reads the database as the signed-in user, so row level security applies.

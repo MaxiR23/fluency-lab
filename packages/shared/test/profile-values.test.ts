@@ -7,6 +7,7 @@
 // - The goal labels
 // - The practice focuses, kinds and targets
 // - The note kinds
+// - The practice check stages and reasons
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -22,6 +23,8 @@ import {
   LEVELS,
   MESSAGE_ROLES,
   NOTE_KINDS,
+  PRACTICE_CHECK_REASONS,
+  PRACTICE_CHECK_STAGES,
   PRACTICE_FOCUSES,
   PRACTICE_KINDS,
   PRACTICE_MAX_TARGET,
@@ -85,5 +88,35 @@ describe("profile values", () => {
     expect(PRACTICE_ROUND_SIZE).toBe(5);
     expect(PRACTICE_TARGETS.every((target) => target % PRACTICE_ROUND_SIZE === 0)).toBe(true);
     expect(Math.max(...PRACTICE_TARGETS)).toBe(PRACTICE_MAX_TARGET);
+  });
+
+  it("lists the four check stages in order", () => {
+    expect(PRACTICE_CHECK_STAGES).toEqual(["code", "solver", "reviewer", "grader"]);
+  });
+
+  it("lists every check reason once", () => {
+    expect(new Set(PRACTICE_CHECK_REASONS).size).toBe(PRACTICE_CHECK_REASONS.length);
+    expect(PRACTICE_CHECK_REASONS).toEqual([
+      "wrong_kind",
+      "limit",
+      "gap_count",
+      "fix_already_answer",
+      "fix_polarity",
+      "hint_shows_answer",
+      "prompt_shows_answer",
+      "choose_options",
+      "choose_answer_not_option",
+      "translate_source_word",
+      "repeat",
+      "solver_mismatch",
+      "solver_already_correct",
+      "single_answer",
+      "meaning_kept",
+      "answer_not_in_prompt",
+      "one_real_mistake",
+      "natural_english",
+      "solver_answer_accepted",
+      "grader_flawed",
+    ]);
   });
 });

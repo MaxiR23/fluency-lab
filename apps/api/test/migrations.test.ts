@@ -7,7 +7,8 @@
 //   packages/shared appears quoted in the migrations
 // - Every practice focus and practice kind appears quoted too
 // - Row level security is enabled on profiles, sessions, messages, thread_messages,
-//   practice_runs, practice_items and study_notes
+//   practice_runs, practice_items, practice_checks and study_notes
+// - Every practice check stage appears quoted in the migrations
 // - Every note kind appears quoted in the migrations
 // - Every title source appears quoted in the migrations
 //
@@ -25,6 +26,7 @@ import {
   LEVELS,
   MESSAGE_ROLES,
   NOTE_KINDS,
+  PRACTICE_CHECK_STAGES,
   PRACTICE_FOCUSES,
   PRACTICE_KINDS,
   PROVIDERS,
@@ -64,6 +66,10 @@ describe("migrations", () => {
     expect(missing([...PRACTICE_FOCUSES, ...PRACTICE_KINDS])).toEqual([]);
   });
 
+  it("lists every practice check stage", () => {
+    expect(missing([...PRACTICE_CHECK_STAGES])).toEqual([]);
+  });
+
   it("lists every note kind", () => {
     expect(missing([...NOTE_KINDS])).toEqual([]);
   });
@@ -76,6 +82,7 @@ describe("migrations", () => {
       "thread_messages",
       "practice_runs",
       "practice_items",
+      "practice_checks",
       "study_notes",
     ]) {
       expect(sql).toMatch(

@@ -1,7 +1,12 @@
 import {
+  PRACTICE_REVIEW_MODEL,
+  PRACTICE_SOLVER_MODEL,
+  PRACTICE_WRITER_MODEL,
   TUTOR_MODEL,
   usageCostUsd,
+  type ModelId,
   type PracticeAnswer,
+  type PracticeCheckCreate,
   type PracticeItem,
   type PracticeItemCreate,
   type PracticeRun,
@@ -12,23 +17,50 @@ import {
   type RecentPrompt,
   type SessionUsage,
   type StudyNoteCreate,
+  type TokenUsage,
 } from "@fluency-lab/shared";
 
-import type { AnswerGrade, PracticeRound, StudyNoteReply, TutorRequest } from "@/ai/ai-port";
+import type {
+  AnswerGrade,
+  ExerciseReview,
+  ExerciseSolution,
+  PracticeExercise,
+  PracticeExerciseDraft,
+  StudyNoteReply,
+  TutorRequest,
+} from "@/ai/ai-port";
 import { round8, sendState, usageWrite, withContext } from "@/utils/chat-conversation";
 import type { ContextEvent } from "@/utils/chat-conversation";
 import type { ChatFailure } from "@/utils/chat-failure";
 import { gradeChoice, gradedCorrect, localGrade } from "@/utils/practice-grade";
-import { keepGoingTarget, missedRules, practiceNext, roundSize } from "@/utils/practice-escalation";
+import { keepGoingTarget, missedRules, practiceNext } from "@/utils/practice-escalation";
 import type { PracticeOrigin } from "@/utils/practice-focus";
 import {
+  codeCheck,
+  codeRow,
+  graderRow,
+  reviewVerdict,
+  reviewerRow,
+  solverRow,
+  solverVerdict,
+} from "@/utils/practice-check";
+import {
+  KIND_LABELS,
   avoidPrompts,
+  exerciseRequest,
   gradeRequest,
-  roundRequest,
+  reviewRequest,
+  solveRequest,
   studyNoteRequest,
   type FocusData,
 } from "@/utils/practice-prompt";
 import { gapSentenceFill, splitGap } from "@/utils/practice-round";
+import {
+  MAX_SLOT_ATTEMPTS,
+  missingPositions,
+  planSlots,
+  type PracticeSlot,
+} from "@/utils/practice-slots";
 
 export type PracticeWrite =
   | { kind: "create"; input: PracticeRunCreate }
@@ -38,6 +70,22 @@ export type PracticeWrite =
   | { kind: "answer"; itemId: string; answer: PracticeAnswer }
   | { kind: "target"; target: 10 | 15 }
   | { kind: "finish" };
+
+// INFO: the screen lane holds the writes the learner waits on; the background lane holds the
+// writes of the slot being prepared. A background write never takes or reorders a screen write.
+export type WriteLane = "screen" | "background";
+
+// INFO: the slot being written and checked. attempt counts the failed checks of the slot; stage
+// is the call it waits for. rejected holds the prompts the code check or a later check refused.
+export type SlotWork = {
+  slot: PracticeSlot;
+  attempt: number;
+  stage: "write" | "solve" | "review";
+  exercise: PracticeExercise | null;
+  generatorModel: ModelId;
+  solverAnswer: string | null;
+  rejected: string[];
+};
 
 export type PracticePhase =
   "creating" | "asking" | "answering" | "grading" | "feedback" | "saving" | "result" | "finishing";
@@ -71,7 +119,22 @@ export type PracticeRunState = {
   // INFO: the id of a note that was just saved, which the screen opens; cleared once opened.
   openNote: string | null;
   phase: PracticePhase;
+  // INFO: the writes the screen waits on, in order.
   writes: PracticeWrite[];
+  // INFO: the writes of the slot being prepared (the passed item, usage of its calls), in order.
+  background: PracticeWrite[];
+  // INFO: one slot per position still to fill; the first is the one being worked.
+  slots: PracticeSlot[];
+  work: SlotWork | null;
+  // INFO: an AI failure of the background chain, kept until the learner waits for that exercise.
+  held: ChatFailure | null;
+  // INFO: the checks not saved yet, and whether the next step should send them. A failed save
+  // keeps the rows and clears checksDue; the next row added sets it again.
+  checks: PracticeCheckCreate[];
+  checksDue: boolean;
+  // INFO: the learner left the run (Stop practice or the screen is gone). A call in flight finishes
+  // and its usage is saved, but no new slot is scheduled and no new AI call starts.
+  stopped: boolean;
   failure: ChatFailure | null;
   provider: Provider | null;
   limitUsd: number | null;
@@ -82,30 +145,47 @@ export type PracticeEvent =
   | { type: "draft_changed"; text: string }
   | { type: "picked"; option: string }
   | { type: "check_started" }
-  | { type: "round_received"; round: PracticeRound }
-  // INFO: usage is present when the provider answered and billed a round that was not usable.
-  | { type: "round_failed"; failure: ChatFailure; usage?: PracticeRound["usage"] }
+  | { type: "exercise_written"; draft: PracticeExerciseDraft }
+  // INFO: usage is present when the provider answered and billed a call that was not usable.
+  | { type: "exercise_failed"; failure: ChatFailure; usage?: TokenUsage }
+  | { type: "exercise_solved"; solution: ExerciseSolution }
+  | { type: "solve_failed"; failure: ChatFailure; usage?: TokenUsage }
+  | { type: "exercise_reviewed"; review: ExerciseReview }
+  | { type: "review_failed"; failure: ChatFailure; usage?: TokenUsage }
+  | { type: "checks_saved"; count: number }
+  | { type: "checks_failed" }
   | { type: "grade_received"; grade: AnswerGrade }
   | { type: "grade_failed"; failure: ChatFailure; usage?: AnswerGrade["usage"] }
   // INFO: run follows a create, target or finish write; items follow an items write (every item of the run).
+  // lane is the lane of the write that finished; the screen lane is the default.
   | { type: "note_requested" }
   | { type: "note_received"; note: StudyNoteReply }
   // INFO: usage is present when the provider answered and billed a note that was not usable.
   | { type: "note_failed"; failure: ChatFailure; usage?: StudyNoteReply["usage"] }
   | { type: "note_opened" }
   // INFO: noteId follows a note write.
-  | { type: "write_done"; run?: PracticeRun; items?: PracticeItem[]; noteId?: string }
-  | { type: "write_failed"; failure: ChatFailure }
+  | {
+      type: "write_done";
+      lane?: WriteLane;
+      run?: PracticeRun;
+      items?: PracticeItem[];
+      noteId?: string;
+    }
+  | { type: "write_failed"; failure: ChatFailure; lane?: WriteLane }
   | { type: "continue" }
   | { type: "keep_going" }
   | { type: "finish_requested" }
   | { type: "retry" }
+  | { type: "left" }
   | ContextEvent;
 
 export type PracticeStep =
   | { kind: "none" }
-  | { kind: "write"; write: PracticeWrite }
-  | { kind: "round"; request: TutorRequest; count: number; avoid: string[] }
+  | { kind: "write"; write: PracticeWrite; lane: WriteLane }
+  | { kind: "checks"; checks: PracticeCheckCreate[] }
+  | { kind: "exercise"; request: TutorRequest }
+  | { kind: "solve"; request: TutorRequest }
+  | { kind: "review"; request: TutorRequest }
   | { kind: "grade"; request: TutorRequest }
   | { kind: "note"; request: TutorRequest };
 
@@ -121,11 +201,13 @@ export type ExerciseView = {
   typed: boolean;
 };
 
-const KIND_LABELS: Record<PracticeItem["kind"], string> = {
-  choose: "Choose the answer",
-  fix: "Fix the sentence",
-  gap: "Fill the gap",
-  translate: "Say it in English",
+const MAX_CHECK_ROWS = 20;
+
+// INFO: the failure after the last attempt of a slot: today's AI failure with Try again.
+const EXHAUSTED: ChatFailure = {
+  source: "ai",
+  failure: "bad_response",
+  cause: { name: "PracticeChecks", detail: null },
 };
 
 export const RIGHT_TITLE = "Nice one!";
@@ -158,12 +240,27 @@ export function startPractice(input: {
     phase: "creating",
     writes:
       origin.kind === "new" && opened === null ? [{ kind: "create", input: origin.input }] : [],
+    background: [],
+    slots:
+      opened === null
+        ? []
+        : planSlots({
+            positions: missingPositions(opened.items, opened.run.target),
+            focus: input.focus,
+            language: input.language,
+            usedRules: opened.items.map((entry) => entry.rule),
+          }),
+    work: null,
+    held: null,
+    checks: [],
+    checksDue: false,
+    stopped: false,
     failure: null,
     provider: profile.provider,
     limitUsd: profile.monthlyLimitUsd,
     spentUsd: input.spentUsd,
   };
-  return base.writes.length > 0 ? base : settle(base);
+  return schedule(base.writes.length > 0 ? base : settle(base));
 }
 
 // INFO: where a run with no write pending goes next, from its items.
@@ -171,13 +268,50 @@ function settle(s: PracticeRunState): PracticeRunState {
   if (s.run === null) return { ...s, phase: "creating" };
   const next = practiceNext(s.items, s.run.target);
   if (next === "answer") return { ...s, phase: "answering" };
-  if (next === "ask") return { ...s, phase: "asking" };
+  if (next === "ask") return surface({ ...s, phase: "asking" });
   if (next === "offer") return { ...s, phase: "result" };
   // INFO: with no offer the run ends as soon as the result shows.
   if (s.run.finishedAt === null) {
     return { ...s, writes: [...s.writes, { kind: "finish" }], phase: "finishing" };
   }
   return { ...s, phase: "result" };
+}
+
+// INFO: a held background failure shows once the learner is waiting for the exercise.
+function surface(s: PracticeRunState): PracticeRunState {
+  return s.phase === "asking" && s.held !== null ? { ...s, failure: s.held, held: null } : s;
+}
+
+// INFO: a background failure shows at once when the learner is waiting, and is held otherwise.
+function hold(s: PracticeRunState, failure: ChatFailure): PracticeRunState {
+  return s.phase === "asking" ? { ...s, failure } : { ...s, held: failure };
+}
+
+// INFO: the exercises ahead of the learner: unanswered and saved, plus queued for saving.
+function ahead(s: PracticeRunState): number {
+  const queued = s.background.filter((write) => write.kind === "items").length;
+  return s.items.filter((entry) => entry.correct === null).length + queued;
+}
+
+// INFO: starts the next slot when fewer than two exercises are ahead of the learner, so the
+// first shows as soon as it passes and slot N+1 is written while N is answered.
+function schedule(s: PracticeRunState): PracticeRunState {
+  const slot = s.slots[0];
+  if (s.run === null || s.work !== null || slot === undefined || s.stopped) return s;
+  if (s.phase === "result" || s.phase === "finishing" || sendState(s).locked) return s;
+  if (ahead(s) > 1) return s;
+  return {
+    ...s,
+    work: {
+      slot,
+      attempt: 1,
+      stage: "write",
+      exercise: null,
+      generatorModel: PRACTICE_WRITER_MODEL,
+      solverAnswer: null,
+      rejected: [],
+    },
+  };
 }
 
 function afterWrites(s: PracticeRunState): PracticeRunState {
@@ -195,7 +329,7 @@ export function currentItem(s: PracticeRunState): PracticeItem | null {
 function withCost<T extends PracticeRunState>(
   s: T,
   model: SessionUsage["model"],
-  usage: PracticeRound["usage"],
+  usage: TokenUsage,
 ): T {
   return { ...s, spentUsd: round8(s.spentUsd + usageCostUsd(model, usage)) };
 }
@@ -247,7 +381,7 @@ function answerItem(
 function withUsageWrite(
   s: PracticeRunState,
   failure: ChatFailure,
-  usage: PracticeRound["usage"] | undefined,
+  usage: TokenUsage | undefined,
 ): PracticeRunState {
   const failed = { ...s, failure };
   if (usage === undefined) return failed;
@@ -270,13 +404,129 @@ function applyWrite(s: PracticeRunState, event: Extract<PracticeEvent, { type: "
   if (event.noteId !== undefined && done.kind === "note") {
     next = { ...next, openNote: event.noteId, noteRequest: null };
   }
-  if (event.items !== undefined && done.kind === "items") {
-    next = { ...next, items: [...event.items].sort((a, b) => a.position - b.position) };
+  if (event.run !== undefined && done.kind === "create") {
+    next = {
+      ...next,
+      slots: planSlots({
+        positions: missingPositions(next.items, event.run.target),
+        focus: next.focus,
+        language: next.language,
+        usedRules: next.items.map((entry) => entry.rule),
+      }),
+    };
   }
   return writes.length === 0 ? afterWrites(next) : next;
 }
 
-export function practiceReducer(s: PracticeRunState, event: PracticeEvent): PracticeRunState {
+// INFO: a saved item returns every item of the run; the items already on screen stay as they
+// are, because their answers may not be saved yet.
+function mergeItems(local: PracticeItem[], saved: PracticeItem[]): PracticeItem[] {
+  const known = new Set(local.map((entry) => entry.id));
+  return [...local, ...saved.filter((entry) => !known.has(entry.id))].sort(
+    (a, b) => a.position - b.position,
+  );
+}
+
+// INFO: a background write only pops the background queue. It moves the phase only when the
+// learner is waiting, so it never knocks the screen out of grading or the feedback sheet.
+function applyBackground(
+  s: PracticeRunState,
+  event: Extract<PracticeEvent, { type: "write_done" }>,
+): PracticeRunState {
+  const [done, ...background] = s.background;
+  if (done === undefined) return s;
+  let next: PracticeRunState = { ...s, background };
+  if (event.items !== undefined && done.kind === "items") {
+    next = { ...next, items: mergeItems(next.items, event.items) };
+  }
+  return next.phase === "asking" ? settle(next) : next;
+}
+
+// INFO: a billed call counts: its usage is saved in the background lane and its cost added.
+function bill(
+  s: PracticeRunState,
+  model: ModelId,
+  usage: TokenUsage | undefined,
+): PracticeRunState {
+  if (usage === undefined) return s;
+  return {
+    ...withCost(s, model, usage),
+    background: [...s.background, { kind: "usage", usage: usageWrite(model, usage) }],
+  };
+}
+
+// INFO: the rows of a slot wait until the slot ends (it passes or a check rejects it), so they go
+// in one save with the passed item's or right after the rejection, not one call per row.
+function withRows(s: PracticeRunState, ...rows: PracticeCheckCreate[]): PracticeRunState {
+  return { ...s, checks: [...s.checks, ...rows] };
+}
+
+// INFO: the slot passed: its one exercise is queued for saving at its position.
+function passSlot(s: PracticeRunState, work: SlotWork, exercise: PracticeExercise) {
+  const items: PracticeItemCreate[] = [{ ...exercise, position: work.slot.position }];
+  return {
+    ...s,
+    background: [...s.background, { kind: "items" as const, items }],
+    checksDue: true,
+    slots: s.slots.slice(1),
+    work: null,
+  };
+}
+
+// INFO: the slot is written again; after the last attempt the AI failure shows, and Try again
+// starts the slot from attempt one.
+function failAttempt(
+  s: PracticeRunState,
+  work: SlotWork,
+  rejectedPrompt: string | null,
+): PracticeRunState {
+  const rejected = rejectedPrompt === null ? work.rejected : [...work.rejected, rejectedPrompt];
+  const again: SlotWork = {
+    ...work,
+    stage: "write",
+    exercise: null,
+    solverAnswer: null,
+    rejected,
+  };
+  const due = { ...s, checksDue: true };
+  if (work.attempt < MAX_SLOT_ATTEMPTS) {
+    return { ...due, work: { ...again, attempt: work.attempt + 1 } };
+  }
+  return hold({ ...due, work: { ...again, attempt: 1 } }, EXHAUSTED);
+}
+
+// INFO: a bad_response or a refusal is a failed attempt with no check row (there is no exercise
+// to record); any other AI failure does not use up an attempt and Try again resends the stage.
+function stageFailed(
+  s: PracticeRunState,
+  stage: SlotWork["stage"],
+  model: ModelId,
+  event: { failure: ChatFailure; usage?: TokenUsage },
+): PracticeRunState {
+  const work = s.work;
+  if (work === null || work.stage !== stage) return s;
+  const billed = bill(s, model, event.usage);
+  const { failure } = event;
+  if (
+    failure.source === "ai" &&
+    (failure.failure === "bad_response" || failure.failure === "refused")
+  ) {
+    return failAttempt(billed, work, null);
+  }
+  return hold(billed, failure);
+}
+
+// INFO: the prompts the writer must not repeat: the ones rejected for this slot (newest first),
+// the ones queued for saving, then the run's and the recent ones.
+function avoidFor(s: PracticeRunState): string[] {
+  const rejected = [...(s.work?.rejected ?? [])].reverse();
+  const queued = s.background.flatMap((write) =>
+    write.kind === "items" ? write.items.map((entry) => entry.prompt) : [],
+  );
+  return avoidPrompts(s.items, s.recent, s.run?.id ?? null, [...rejected, ...queued]);
+}
+
+function reduce(s: PracticeRunState, event: PracticeEvent): PracticeRunState {
   switch (event.type) {
     case "draft_changed":
       return s.phase === "answering" ? { ...s, draft: event.text } : s;
@@ -311,26 +561,78 @@ export function practiceReducer(s: PracticeRunState, event: PracticeEvent): Prac
         [],
       );
     }
-    case "round_received": {
-      if (s.phase !== "asking" || s.run === null) return s;
-      const exercises = event.round.items.slice(0, roundSize(s.items, s.run.target));
-      const items: PracticeItemCreate[] = exercises.map((exercise, index) => ({
-        ...exercise,
-        position: s.items.length + index,
-      }));
+    case "exercise_written": {
+      const work = s.work;
+      if (work === null || work.stage !== "write") return s;
+      const { draft } = event;
+      const billed = bill(s, draft.model, draft.usage);
+      const checked = codeCheck(draft.exercise, work.slot.kind, avoidFor(s));
+      const row = codeRow({
+        generatorModel: draft.model,
+        exercise: draft.exercise,
+        reason: checked.ok ? null : checked.reason,
+      });
+      const recorded = withRows(billed, row);
+      if (!checked.ok) return failAttempt(recorded, work, draft.exercise.prompt.trim());
       return {
-        ...withCost(s, event.round.model, event.round.usage),
-        failure: null,
-        writes: [
-          ...s.writes,
-          { kind: "items", items },
-          { kind: "usage", usage: usageWrite(event.round.model, event.round.usage) },
-        ],
-        phase: "saving",
+        ...recorded,
+        work: { ...work, stage: "solve", exercise: checked.exercise, generatorModel: draft.model },
       };
     }
-    case "round_failed":
-      return withUsageWrite(s, event.failure, event.usage);
+    case "exercise_failed":
+      return stageFailed(s, "write", PRACTICE_WRITER_MODEL, event);
+    case "exercise_solved": {
+      const work = s.work;
+      if (work === null || work.stage !== "solve" || work.exercise === null) return s;
+      const { solution } = event;
+      const billed = bill(s, solution.model, solution.usage);
+      const verdict = solverVerdict(work.exercise, solution);
+      const recorded = withRows(
+        billed,
+        solverRow({
+          generatorModel: work.generatorModel,
+          checkerModel: solution.model,
+          exercise: work.exercise,
+          answer: solution.answer,
+          reason: verdict.kind === "reject" ? verdict.reason : null,
+        }),
+      );
+      if (verdict.kind === "pass") return passSlot(recorded, work, work.exercise);
+      if (verdict.kind === "reject") return failAttempt(recorded, work, work.exercise.prompt);
+      return {
+        ...recorded,
+        work: { ...work, stage: "review", solverAnswer: verdict.solverAnswer },
+      };
+    }
+    case "solve_failed":
+      return stageFailed(s, "solve", PRACTICE_SOLVER_MODEL, event);
+    case "exercise_reviewed": {
+      const work = s.work;
+      if (work === null || work.stage !== "review" || work.exercise === null) return s;
+      const { review } = event;
+      const billed = bill(s, review.model, review.usage);
+      const verdict = reviewVerdict(review, work.exercise.kind);
+      const recorded = withRows(
+        billed,
+        reviewerRow({
+          generatorModel: work.generatorModel,
+          checkerModel: review.model,
+          exercise: work.exercise,
+          solverAnswer: work.solverAnswer ?? "",
+          verdict,
+        }),
+      );
+      if (verdict.passed) return passSlot(recorded, work, work.exercise);
+      return failAttempt(recorded, work, work.exercise.prompt);
+    }
+    case "review_failed":
+      return stageFailed(s, "review", PRACTICE_REVIEW_MODEL, event);
+    case "checks_saved": {
+      const checks = s.checks.slice(event.count);
+      return { ...s, checks, checksDue: checks.length > 0 };
+    }
+    case "checks_failed":
+      return { ...s, checksDue: false };
     case "grade_received": {
       const item = currentItem(s);
       const text = s.draft.trim();
@@ -343,12 +645,22 @@ export function practiceReducer(s: PracticeRunState, event: PracticeEvent): Prac
         { correct: gradedCorrect(grade), userAnswer: text, explanation },
         [{ kind: "usage", usage: usageWrite(grade.model, grade.usage) }],
       );
-      return { ...withCost(answered, grade.model, grade.usage), draft: "" };
+      const row = graderRow({
+        generatorModel: PRACTICE_WRITER_MODEL,
+        checkerModel: grade.model,
+        exercise: item,
+        flawed: grade.flawed,
+      });
+      return {
+        ...withRows(withCost(answered, grade.model, grade.usage), row),
+        checksDue: true,
+        draft: "",
+      };
     }
     case "grade_failed":
       return withUsageWrite({ ...s, phase: "answering" }, event.failure, event.usage);
     case "write_done":
-      return applyWrite(s, event);
+      return event.lane === "background" ? applyBackground(s, event) : applyWrite(s, event);
     case "write_failed":
       return { ...s, failure: event.failure };
     case "note_requested": {
@@ -406,9 +718,19 @@ export function practiceReducer(s: PracticeRunState, event: PracticeEvent): Prac
       if (practiceNext(s.items, s.run.target) !== "offer") return s;
       const target = keepGoingTarget(s.run.target);
       if (target !== 10 && target !== 15) return s;
+      const first = s.run.target;
       return {
         ...s,
         run: { ...s.run, target },
+        slots: [
+          ...s.slots,
+          ...planSlots({
+            positions: Array.from({ length: target - first }, (_, index) => first + index),
+            focus: s.focus,
+            language: s.language,
+            usedRules: s.items.map((entry) => entry.rule),
+          }),
+        ],
         writes: [{ kind: "target", target }],
         phase: "saving",
       };
@@ -416,13 +738,15 @@ export function practiceReducer(s: PracticeRunState, event: PracticeEvent): Prac
     case "finish_requested":
       if (s.phase !== "result" || s.run === null || s.run.finishedAt !== null) return s;
       return { ...s, writes: [{ kind: "finish" }], phase: "finishing" };
+    case "left":
+      return { ...s, stopped: true };
     case "retry": {
       if (s.failure === null) return s;
       if (s.noteRequest?.status === "failed" && s.failure.source === "ai") {
         return { ...s, failure: null, noteRequest: { ...s.noteRequest, status: "asking" } };
       }
       const base = { ...s, failure: null };
-      if (base.writes.length > 0) return base;
+      if (base.writes.length > 0 || base.background.length > 0) return base;
       const item = currentItem(base);
       if (
         s.failure.source === "ai" &&
@@ -436,30 +760,34 @@ export function practiceReducer(s: PracticeRunState, event: PracticeEvent): Prac
       return settle(base);
     }
     case "context_refreshed":
-    case "context_failed":
-      return withContext(s, event);
+    case "context_failed": {
+      const next = withContext(s, event);
+      const heldKey =
+        event.type === "context_refreshed" &&
+        s.held?.source === "ai" &&
+        (s.held.failure === "invalid_key" || s.held.failure === "missing_key");
+      return heldKey ? { ...next, held: null } : next;
+    }
   }
 }
 
+export function practiceReducer(s: PracticeRunState, event: PracticeEvent): PracticeRunState {
+  return schedule(reduce(s, event));
+}
+
+// INFO: what to do next, by priority: the writes the screen waits on, the background writes,
+// the checks save, then (unless something stops the run or the learner left it) the AI calls the learner waits on
+// (grade, note) and last the background stage of the slot.
 export function practiceStep(s: PracticeRunState): PracticeStep {
   const [write] = s.writes;
-  if (write !== undefined) return { kind: "write", write };
-  if (s.failure !== null || sendState(s).locked || s.run === null) return { kind: "none" };
-  if (s.phase === "asking") {
-    const count = roundSize(s.items, s.run.target);
-    const avoid = avoidPrompts(s.items, s.recent, s.run.id);
-    return {
-      kind: "round",
-      request: roundRequest({
-        focus: s.focus,
-        count,
-        missedRules: missedRules(s.items),
-        language: s.language,
-        avoid,
-      }),
-      count,
-      avoid,
-    };
+  if (write !== undefined) return { kind: "write", write, lane: "screen" };
+  const [queued] = s.background;
+  if (queued !== undefined) return { kind: "write", write: queued, lane: "background" };
+  if (s.checksDue && s.checks.length > 0) {
+    return { kind: "checks", checks: s.checks.slice(0, MAX_CHECK_ROWS) };
+  }
+  if (s.stopped || s.failure !== null || sendState(s).locked || s.run === null) {
+    return { kind: "none" };
   }
   if (s.noteRequest?.status === "asking") {
     const missed = s.items.find((entry) => entry.id === s.noteRequest?.itemId);
@@ -469,10 +797,26 @@ export function practiceStep(s: PracticeRunState): PracticeStep {
   if (s.phase === "grading" && item !== null) {
     return { kind: "grade", request: gradeRequest(item, s.draft.trim()) };
   }
-  return { kind: "none" };
+  const work = s.work;
+  if (work === null || s.held !== null) return { kind: "none" };
+  if (s.phase === "result" || s.phase === "finishing") return { kind: "none" };
+  if (work.stage === "write") {
+    return {
+      kind: "exercise",
+      request: exerciseRequest({
+        slot: work.slot,
+        missedRules: missedRules(s.items),
+        language: s.language,
+        avoid: avoidFor(s),
+      }),
+    };
+  }
+  if (work.exercise === null) return { kind: "none" };
+  if (work.stage === "solve") return { kind: "solve", request: solveRequest(work.exercise) };
+  return { kind: "review", request: reviewRequest(work.exercise, work.solverAnswer ?? "") };
 }
 
-// INFO: after an AI failure the round or the answer is sent again; after a failed save the
+// INFO: after an AI failure the call or the answer is sent again; after a failed save the
 // writes left resume without asking the tutor again.
 export function practiceRetryKind(s: PracticeRunState): "resend" | "resume" {
   return s.failure?.source === "ai" ? "resend" : "resume";
@@ -546,7 +890,7 @@ export function gapFill(s: PracticeRunState): string | null {
   return null;
 }
 
-// INFO: which body the run screen draws: the result, an exercise on screen, or the wait for a round.
+// INFO: which body the run screen draws: the result, an exercise on screen, or the wait for the next exercise.
 export function runBody(s: PracticeRunState): "result" | "exercise" | "generating" {
   if (s.phase === "result" || s.phase === "finishing") return "result";
   const exercising =

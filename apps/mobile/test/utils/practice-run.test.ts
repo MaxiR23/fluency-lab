@@ -3,9 +3,13 @@
 // Tests for the state machine of a practice run.
 //
 // Tested:
-// - practiceStep sends this run's prompts and the recent ones as avoid
-// - startPractice: a new run starts by creating the run; a resumed run settles on its items
-// - practiceReducer and practiceStep: the order of the outside calls of a round and of an answer
+// - practiceStep sends this run's prompts, the queued ones, the rejected ones and the recent ones as avoid
+// - startPractice: a new run starts by creating the run; a resumed run settles on its items and plans only its missing positions
+// - practiceReducer and practiceStep: the order of the outside calls of a slot (write, code check, solver, reviewer), of an answer and of the grader
+// - A slot is written again after a failed check, up to three attempts, then the AI failure with Try again
+// - One exercise ahead: a passed exercise is saved at its position, the next slot is written while the learner answers, and generating shows only when the next one is not ready
+// - A background write never takes a write the screen waits on, and a background AI failure waits until the learner is waiting
+// - The checks save: sent with the item's save or after a rejection, kept when it fails, twenty at a time
 // - A gap answered with the whole sentence is right locally; a flawed grade is saved correct and never escalates
 // - A right pick and a typed match are answered without a tutor call; a typed miss asks the tutor
 // - The cost of every billed call, also of an unusable reply, is added and saved
@@ -23,9 +27,15 @@
 // SEE: apps/mobile/src/utils/practice-run.ts
 
 import { describe, expect, it } from "@jest/globals";
-import { TUTOR_MODEL, usageCostUsd, type PracticeRunWithItems } from "@fluency-lab/shared";
+import {
+  PRACTICE_REVIEW_MODEL,
+  PRACTICE_SOLVER_MODEL,
+  PRACTICE_WRITER_MODEL,
+  TUTOR_MODEL,
+  usageCostUsd,
+  type PracticeRunWithItems,
+} from "@fluency-lab/shared";
 
-import type { PracticeRound } from "@/ai/ai-port";
 import { sendState } from "@/utils/chat-conversation";
 import { missedRules } from "@/utils/practice-escalation";
 import {
@@ -48,11 +58,15 @@ import {
   type PracticeRunState,
 } from "@/utils/practice-run";
 import {
+  exerciseRequest,
   gradeRequest,
-  roundRequest,
+  reviewRequest,
+  solveRequest,
   studyNoteRequest,
   type FocusData,
 } from "@/utils/practice-prompt";
+import { codeRow } from "@/utils/practice-check";
+import { planSlots } from "@/utils/practice-slots";
 import {
   completedProfile,
   practiceItemWith,
@@ -61,8 +75,10 @@ import {
 } from "../helpers/fake-data";
 import {
   answerGradeWith,
-  exerciseWith,
-  practiceRoundWith,
+  exerciseDraftWith,
+  exerciseFor,
+  reviewWith,
+  solutionWith,
   studyNoteReplyWith,
 } from "../helpers/fake-ai";
 
@@ -94,14 +110,14 @@ function fresh(
   });
 }
 
-function resumed(opened: PracticeRunWithItems, spentUsd = 0) {
+function resumed(opened: PracticeRunWithItems, spentUsd = 0, language: string | null = null) {
   return startPractice({
     origin: { kind: "resume", runId: opened.run.id },
     opened,
     profile,
     spentUsd,
     focus,
-    language: null,
+    language,
     recent: [],
   });
 }
@@ -133,53 +149,95 @@ function answering(items = [0, 1, 2, 3, 4].map((p) => item(p)), target: 5 | 10 |
   return resumed(practiceTodayWith(items, { target }));
 }
 
-const round = (count: number): PracticeRound =>
-  practiceRoundWith({
-    items: Array.from({ length: count }, (_, i) => exerciseWith({ prompt: `Q${i} ___` })),
+// INFO: what the hook does: runs every write and checks save the reducer asks for, until the
+// next step is an AI call or nothing. A save of an item answers every item of the run.
+function drain(state: PracticeRunState): PracticeRunState {
+  let current = state;
+  for (let guard = 0; guard < 50; guard += 1) {
+    const step = practiceStep(current);
+    if (step.kind === "checks") {
+      current = apply(current, { type: "checks_saved", count: step.checks.length });
+    } else if (step.kind === "write") {
+      const { write, lane } = step;
+      const items =
+        write.kind === "items"
+          ? [
+              ...current.items,
+              ...write.items.map((created) => item(created.position, null, created)),
+            ]
+          : undefined;
+      const finishedAt = write.kind === "finish" ? "2026-11-05T11:00:00Z" : null;
+      current = apply(current, {
+        type: "write_done",
+        lane,
+        items,
+        run:
+          write.kind === "create"
+            ? practiceRunWith()
+            : write.kind === "finish" && current.run !== null
+              ? { ...current.run, finishedAt }
+              : undefined,
+      });
+    } else {
+      return current;
+    }
+  }
+  throw new Error("drain did not stop");
+}
+
+// INFO: one slot written, solved and (for fix and translate) reviewed, all passing.
+function passSlot(state: PracticeRunState, n: number): PracticeRunState {
+  const kind = state.work?.slot.kind ?? "choose";
+  const exercise = exerciseFor(kind, n);
+  const written = apply(state, {
+    type: "exercise_written",
+    draft: exerciseDraftWith({ exercise }),
   });
+  const solved = apply(written, {
+    type: "exercise_solved",
+    solution: solutionWith({ answer: exercise.accepted[0] ?? "" }),
+  });
+  return solved.work?.stage === "review"
+    ? apply(solved, { type: "exercise_reviewed", review: reviewWith() })
+    : solved;
+}
+
+function workOf(state: PracticeRunState) {
+  if (state.work === null) throw new Error("no slot is being worked");
+  return state;
+}
+
+const created = apply(fresh(), { type: "write_done", run: practiceRunWith() });
+const aiFailure = (failure: "bad_response" | "refused" | "network" | "invalid_key") =>
+  ({ source: "ai", failure }) as const;
+
+// INFO: a run with positions 0 and 1 answered, so the slot being worked is the fix at position 2.
+const fixSlot = () => resumed(practiceTodayWith([item(0, true), item(1, true)], { target: 5 }));
 
 describe("startPractice", () => {
   it("starts by creating the run", () => {
     const state = fresh();
     expect(state.phase).toBe("creating");
+    expect(state.work).toBeNull();
     expect(practiceStep(state)).toEqual({
       kind: "write",
+      lane: "screen",
       write: { kind: "create", input: { focus: "mistakes", target: 5 } },
     });
   });
 
-  it("asks the first round after the run is created", () => {
-    const state = apply(fresh(), { type: "write_done", run: practiceRunWith() });
-    expect(state.phase).toBe("asking");
-    expect(state.run?.id).toBe("run-1");
-    expect(practiceStep(state)).toEqual({
-      kind: "round",
-      request: roundRequest({ focus, count: 5, missedRules: [], language: null, avoid: [] }),
-      avoid: [],
-      count: 5,
-    });
-  });
-
-  it("asks the round step for the count the round needs", () => {
-    const state = resumed(
-      practiceTodayWith([item(0, true), item(1, true), item(2, true)], { target: 5 }),
-    );
-    const step = practiceStep(state);
-    expect(step).toEqual({
-      kind: "round",
-      request: roundRequest({
-        focus,
-        count: 2,
+  it("writes the first slot after the run is created", () => {
+    expect(created.phase).toBe("asking");
+    expect(created.run?.id).toBe("run-1");
+    expect(practiceStep(created)).toEqual({
+      kind: "exercise",
+      request: exerciseRequest({
+        slot: created.slots[0]!,
         missedRules: [],
         language: null,
-        avoid: ["I ___ to Japan twice."],
+        avoid: [],
       }),
-      avoid: ["I ___ to Japan twice."],
-      count: 2,
     });
-    expect(
-      JSON.parse(step.kind === "round" ? (step.request.turns[0]?.text ?? "{}") : "{}").count,
-    ).toBe(4);
   });
 
   it("sends this run's earlier prompts and the recent ones of other runs as avoid", () => {
@@ -201,15 +259,14 @@ describe("startPractice", () => {
     });
     const step = practiceStep(state);
     const expected = ["Second ___.", "First ___.", "Old ___ prompt."];
-    expect(step.kind === "round" && step.avoid).toEqual(expected);
-    const turn = step.kind === "round" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
+    const turn = step.kind === "exercise" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
     expect(turn.avoid).toEqual(expected);
   });
 
   it("sends an empty avoid for a new run with no recent practice", () => {
-    const state = apply(fresh(), { type: "write_done", run: practiceRunWith() });
-    const step = practiceStep(state);
-    expect(step.kind === "round" && step.avoid).toEqual([]);
+    const step = practiceStep(created);
+    const turn = step.kind === "exercise" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
+    expect(turn.avoid).toEqual([]);
   });
 
   it("settles a resumed run on its first unanswered item", () => {
@@ -218,9 +275,10 @@ describe("startPractice", () => {
     expect(currentItem(state)?.id).toBe("item-0");
   });
 
-  it("settles a resumed run with no items on asking the round again", () => {
+  it("settles a resumed run with no items on asking", () => {
     const state = resumed(practiceTodayWith([]));
     expect(state.phase).toBe("asking");
+    expect(practiceStep(state).kind).toBe("exercise");
   });
 
   it("settles a resumed run with all answered but short of the target on asking", () => {
@@ -239,7 +297,11 @@ describe("startPractice", () => {
   it("finishes a resumed run with no miss as soon as the result shows", () => {
     const state = resumed(practiceTodayWith([0, 1, 2, 3, 4].map((p) => item(p, true))));
     expect(state.phase).toBe("finishing");
-    expect(practiceStep(state)).toEqual({ kind: "write", write: { kind: "finish" } });
+    expect(practiceStep(state)).toEqual({
+      kind: "write",
+      lane: "screen",
+      write: { kind: "finish" },
+    });
     const done = apply(state, {
       type: "write_done",
       run: practiceRunWith({ finishedAt: "2026-11-05T11:00:00Z" }),
@@ -252,9 +314,7 @@ describe("startPractice", () => {
     const state = resumed(
       practiceTodayWith(
         [0, 1, 2, 3, 4].map((p) => item(p, false)),
-        {
-          finishedAt: "2026-11-05T11:00:00Z",
-        },
+        { finishedAt: "2026-11-05T11:00:00Z" },
       ),
     );
     expect(state.phase).toBe("result");
@@ -262,126 +322,633 @@ describe("startPractice", () => {
   });
 });
 
-describe("a round", () => {
-  const asking = apply(fresh(), { type: "write_done", run: practiceRunWith() });
-
-  it("saves the items, then the usage", () => {
-    const received = apply(asking, { type: "round_received", round: practiceRoundWith() });
-    expect(received.phase).toBe("saving");
-    expect(received.writes.map((w) => w.kind)).toEqual(["items", "usage"]);
-    const first = received.writes[0];
-    expect(first?.kind === "items" && first.items.map((i) => i.position)).toEqual([0, 1, 2, 3, 4]);
-    expect(practiceStep(received)).toEqual({ kind: "write", write: received.writes[0] });
+describe("planning", () => {
+  it("plans every position of a new run after it is created", () => {
+    expect(created.slots.map((slot) => slot.position)).toEqual([0, 1, 2, 3, 4]);
+    expect(created.slots.map((slot) => slot.kind)).toEqual([
+      "choose",
+      "gap",
+      "fix",
+      "choose",
+      "gap",
+    ]);
+    expect(created.work?.slot).toEqual(created.slots[0]);
   });
 
-  it("adds the round's cost to the spend", () => {
-    const value = practiceRoundWith();
-    const received = apply(asking, { type: "round_received", round: value });
-    expect(received.spentUsd).toBeCloseTo(usageCostUsd(value.model, value.usage), 8);
-    expect(received.writes[1]).toEqual({
-      kind: "usage",
-      usage: { model: TUTOR_MODEL, ...value.usage },
-    });
+  it("plans only the missing positions of a resumed run", () => {
+    const state = resumed(
+      practiceTodayWith([item(0, true), item(1, true), item(3, true)], { target: 5 }),
+    );
+    expect(state.slots.map((slot) => slot.position)).toEqual([2, 4]);
+    expect(state.work?.slot.position).toBe(2);
   });
 
-  it("keeps at most the exercises it asked for", () => {
-    const received = apply(asking, { type: "round_received", round: round(7) });
-    const first = received.writes[0];
-    expect(first?.kind === "items" && first.items).toHaveLength(5);
+  it("plans the device language's translate", () => {
+    const state = resumed(practiceTodayWith([item(0, true), item(1, true)]), 0, "es-AR");
+    expect(state.slots[0]?.kind).toBe("translate");
+    const step = practiceStep(state);
+    expect(step.kind === "exercise" && step.request.system).toContain("es-AR");
   });
 
-  it("shows the saved items and answers the first one after the writes", () => {
-    const received = apply(asking, { type: "round_received", round: practiceRoundWith() });
-    const saved = [0, 1, 2, 3, 4].map((p) => item(p));
-    const midway = apply(received, { type: "write_done", items: saved });
-    expect(midway.phase).toBe("saving");
-    expect(midway.items).toHaveLength(5);
-    const done = apply(midway, { type: "write_done" });
-    expect(done.phase).toBe("answering");
-    expect(currentItem(done)?.id).toBe("item-0");
-  });
-
-  it("asks the next round with the missed rules first", () => {
-    const state = resumed(practiceTodayWith([item(0, false, { rule: "Articles" })], { target: 5 }));
-    expect(state.phase).toBe("asking");
-    expect(practiceStep(state)).toEqual({
-      kind: "round",
-      request: roundRequest({
+  it("plans the next five on keep going", () => {
+    const offer = resumed(
+      practiceTodayWith([0, 1, 2, 3].map((p) => item(p, true)).concat(item(4, false))),
+    );
+    expect(offer.slots).toEqual([]);
+    const state = apply(offer, { type: "keep_going" });
+    expect(state.slots).toEqual(
+      planSlots({
+        positions: [5, 6, 7, 8, 9],
         focus,
-        count: 4,
-        missedRules: ["Articles"],
         language: null,
-        avoid: ["I ___ to Japan twice."],
+        usedRules: [
+          "Present perfect",
+          "Present perfect",
+          "Present perfect",
+          "Present perfect",
+          "Present perfect",
+        ],
       }),
-      avoid: ["I ___ to Japan twice."],
-      count: 4,
+    );
+  });
+});
+
+describe("a slot", () => {
+  it("writes the first slot, then checks it with the code check", () => {
+    const written = apply(created, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise: exerciseFor("choose", 1) }),
+    });
+    expect(workOf(written).work).toMatchObject({ stage: "solve", attempt: 1 });
+    expect(written.checks).toHaveLength(1);
+    expect(written.checks[0]).toMatchObject({ stage: "code", passed: true, reason: null });
+    expect(written.checksDue).toBe(false);
+    const exercise = written.work?.exercise;
+    expect(exercise).toMatchObject({ kind: "choose" });
+    expect(practiceStep(drain(written))).toEqual({
+      kind: "solve",
+      request: solveRequest(exercise!),
     });
   });
 
-  it("asks for translate in the device language", () => {
-    const state = startPractice({
-      origin: { kind: "new", input: { focus: "mistakes", target: 5 } },
-      opened: null,
-      profile,
-      spentUsd: 0,
-      focus,
-      language: "es-AR",
-      recent: [],
+  it("saves the writer's usage with the model that ran it and adds its cost", () => {
+    const draft = exerciseDraftWith({ exercise: exerciseFor("choose", 1) });
+    const written = apply(created, { type: "exercise_written", draft });
+    expect(written.background[0]).toEqual({
+      kind: "usage",
+      usage: { model: PRACTICE_WRITER_MODEL, ...draft.usage },
     });
-    const next = apply(state, { type: "write_done", run: practiceRunWith() });
-    expect(practiceStep(next)).toEqual({
-      kind: "round",
-      request: roundRequest({ focus, count: 5, missedRules: [], language: "es-AR", avoid: [] }),
-      avoid: [],
-      count: 5,
+    expect(written.spentUsd).toBeCloseTo(usageCostUsd(draft.model, draft.usage), 8);
+  });
+
+  it("solves a choose and saves it at its position when the solver matches", () => {
+    const passed = passSlot(created, 1);
+    expect(passed.background.map((write) => write.kind)).toEqual(["usage", "usage", "items"]);
+    const saved = passed.background[2];
+    expect(saved?.kind === "items" && saved.items).toHaveLength(1);
+    expect(saved?.kind === "items" && saved.items[0]).toMatchObject({
+      position: 0,
+      kind: "choose",
+      options: ["have been", "was", "am"],
+    });
+    expect(passed.checks.map((check) => [check.stage, check.passed])).toEqual([
+      ["code", true],
+      ["solver", true],
+    ]);
+    expect(passed.checksDue).toBe(true);
+    expect(passed.slots[0]?.position).toBe(1);
+  });
+
+  it("sends a fix to the reviewer with the solver's answer", () => {
+    const state = fixSlot();
+    expect(state.work?.slot).toMatchObject({ position: 2, kind: "fix" });
+    const written = apply(state, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise: exerciseFor("fix", 9) }),
+    });
+    const solved = apply(written, {
+      type: "exercise_solved",
+      solution: solutionWith({ answer: "She goes to work 9 days a week." }),
+    });
+    expect(workOf(solved).work).toMatchObject({
+      stage: "review",
+      solverAnswer: "She goes to work 9 days a week.",
+    });
+    expect(practiceStep(drain(solved))).toEqual({
+      kind: "review",
+      request: reviewRequest(solved.work!.exercise!, "She goes to work 9 days a week."),
     });
   });
 
-  it("saves the cost of a billed failure and stays on asking", () => {
-    const usage = practiceRoundWith().usage;
-    const failed = apply(asking, {
-      type: "round_failed",
-      failure: { source: "ai", failure: "bad_response" },
+  it("saves a fix the reviewer passes", () => {
+    const passed = passSlot(fixSlot(), 9);
+    const saved = passed.background.find((write) => write.kind === "items");
+    expect(saved?.kind === "items" && saved.items[0]).toMatchObject({ position: 2, kind: "fix" });
+    expect(passed.checks.map((check) => check.stage)).toEqual(["code", "solver", "reviewer"]);
+    expect(passed.checks.every((check) => check.passed)).toBe(true);
+  });
+
+  it("rejects a review whose model said passed with a false boolean", () => {
+    const state = fixSlot();
+    const solved = apply(
+      state,
+      {
+        type: "exercise_written",
+        draft: exerciseDraftWith({ exercise: exerciseFor("fix", 9) }),
+      },
+      {
+        type: "exercise_solved",
+        solution: solutionWith({ answer: "She goes to work 9 days a week." }),
+      },
+      { type: "exercise_reviewed", review: reviewWith({ meaningKept: false, passed: true }) },
+    );
+    expect(solved.background.some((write) => write.kind === "items")).toBe(false);
+    expect(solved.checks[2]).toMatchObject({
+      stage: "reviewer",
+      passed: false,
+      reason: "meaning_kept",
+    });
+    expect(solved.work).toMatchObject({ attempt: 2, stage: "write" });
+  });
+
+  it("writes the slot again after a code rejection, recording the code row", () => {
+    const wrong = exerciseFor("fix", 1);
+    const rejected = apply(created, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise: wrong }),
+    });
+    expect(rejected.checks).toHaveLength(1);
+    expect(rejected.checks[0]).toMatchObject({
+      stage: "code",
+      passed: false,
+      reason: "wrong_kind",
+    });
+    expect(rejected.checksDue).toBe(true);
+    expect(rejected.work).toMatchObject({ attempt: 2, stage: "write", rejected: [wrong.prompt] });
+    const step = practiceStep(drain(rejected));
+    const turn = step.kind === "exercise" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
+    expect(turn.avoid).toContain(wrong.prompt);
+  });
+
+  it("writes the slot again after a solver mismatch and an already-correct fix", () => {
+    const mismatch = apply(
+      created,
+      {
+        type: "exercise_written",
+        draft: exerciseDraftWith({ exercise: exerciseFor("choose", 1) }),
+      },
+      { type: "exercise_solved", solution: solutionWith({ answer: "was" }) },
+    );
+    expect(mismatch.checks[1]).toMatchObject({
+      stage: "solver",
+      passed: false,
+      reason: "solver_mismatch",
+      solverAnswer: "was",
+    });
+    expect(mismatch.work).toMatchObject({ attempt: 2, stage: "write" });
+
+    const already = apply(
+      fixSlot(),
+      {
+        type: "exercise_written",
+        draft: exerciseDraftWith({ exercise: exerciseFor("fix", 9) }),
+      },
+      {
+        type: "exercise_solved",
+        solution: solutionWith({ answer: "She go to work 9 days a week.", alreadyCorrect: true }),
+      },
+    );
+    expect(already.checks[1]).toMatchObject({ passed: false, reason: "solver_already_correct" });
+    expect(already.work).toMatchObject({ attempt: 2, stage: "write" });
+  });
+
+  it("counts a bad_response from the writer as a failed attempt with no check row", () => {
+    const usage = exerciseDraftWith().usage;
+    const failed = apply(created, {
+      type: "exercise_failed",
+      failure: aiFailure("bad_response"),
       usage,
     });
-    expect(failed.writes).toEqual([{ kind: "usage", usage: { model: TUTOR_MODEL, ...usage } }]);
-    expect(failed.spentUsd).toBeGreaterThan(0);
-    expect(failed.phase).toBe("saving");
-    const done = apply(failed, { type: "write_done" });
-    expect(done.phase).toBe("asking");
-    expect(done.failure).toEqual({ source: "ai", failure: "bad_response" });
-    expect(practiceStep(done)).toEqual({ kind: "none" });
+    expect(failed.checks).toEqual([]);
+    expect(failed.work).toMatchObject({ attempt: 2, stage: "write" });
+    expect(failed.background).toEqual([
+      { kind: "usage", usage: { model: PRACTICE_WRITER_MODEL, ...usage } },
+    ]);
+    const refused = apply(created, { type: "exercise_failed", failure: aiFailure("refused") });
+    expect(refused.work).toMatchObject({ attempt: 2 });
+    expect(refused.background).toEqual([]);
   });
 
-  it("fails without a write when the failure was not billed", () => {
-    const failed = apply(asking, {
-      type: "round_failed",
-      failure: { source: "ai", failure: "network" },
+  it("does not use up an attempt on a key or network failure", () => {
+    const failed = apply(created, { type: "exercise_failed", failure: aiFailure("network") });
+    expect(failed.work).toMatchObject({ attempt: 1, stage: "write" });
+    expect(failed.failure).toEqual(aiFailure("network"));
+    expect(practiceStep(failed)).toEqual({ kind: "none" });
+    expect(practiceRetryKind(failed)).toBe("resend");
+    expect(practiceStep(apply(failed, { type: "retry" })).kind).toBe("exercise");
+  });
+
+  it("after the third failed attempt shows the AI failure with Try again", () => {
+    const failed = [1, 2, 3].reduce(
+      (state) => apply(state, { type: "exercise_failed", failure: aiFailure("bad_response") }),
+      created,
+    );
+    expect(failed.failure).toEqual({
+      source: "ai",
+      failure: "bad_response",
+      cause: { name: "PracticeChecks", detail: null },
     });
-    expect(failed.writes).toEqual([]);
-    expect(failed.phase).toBe("asking");
+    expect(practiceRetryKind(failed)).toBe("resend");
     expect(practiceStep(failed)).toEqual({ kind: "none" });
   });
 
-  it("resends after an AI failure and resumes after a write failure", () => {
-    const aiFailed = apply(asking, {
-      type: "round_failed",
-      failure: { source: "ai", failure: "network" },
-    });
-    expect(practiceRetryKind(aiFailed)).toBe("resend");
-    const retried = apply(aiFailed, { type: "retry" });
+  it("Try again after three failures writes the slot from attempt one", () => {
+    const failed = [1, 2, 3].reduce(
+      (state) => apply(state, { type: "exercise_failed", failure: aiFailure("bad_response") }),
+      created,
+    );
+    const retried = apply(failed, { type: "retry" });
     expect(retried.failure).toBeNull();
-    expect(practiceStep(retried).kind).toBe("round");
+    expect(retried.work).toMatchObject({ attempt: 1, stage: "write" });
+    expect(practiceStep(retried).kind).toBe("exercise");
+  });
 
-    const received = apply(asking, { type: "round_received", round: practiceRoundWith() });
-    const writeFailed = apply(received, {
-      type: "write_failed",
-      failure: { source: "data", failure: "network" },
+  it("saves the usage of every solver and reviewer call with its model", () => {
+    const passed = passSlot(fixSlot(), 9);
+    const usages = passed.background.filter((write) => write.kind === "usage");
+    expect(usages.map((write) => write.kind === "usage" && write.usage.model)).toEqual([
+      PRACTICE_WRITER_MODEL,
+      PRACTICE_SOLVER_MODEL,
+      PRACTICE_REVIEW_MODEL,
+    ]);
+    const spent = [exerciseDraftWith(), solutionWith(), reviewWith()].reduce(
+      (sum, call) => sum + usageCostUsd(call.model, call.usage),
+      0,
+    );
+    expect(passed.spentUsd).toBeCloseTo(spent, 8);
+  });
+
+  it("saves the usage of a billed solver failure with the solver model", () => {
+    const written = apply(created, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise: exerciseFor("choose", 1) }),
     });
-    expect(practiceRetryKind(writeFailed)).toBe("resume");
-    const resumedState = apply(writeFailed, { type: "retry" });
-    expect(resumedState.failure).toBeNull();
-    expect(practiceStep(resumedState)).toEqual({ kind: "write", write: received.writes[0] });
+    const usage = solutionWith().usage;
+    const failed = apply(written, {
+      type: "solve_failed",
+      failure: aiFailure("bad_response"),
+      usage,
+    });
+    expect(failed.background.at(-1)).toEqual({
+      kind: "usage",
+      usage: { model: PRACTICE_SOLVER_MODEL, ...usage },
+    });
+    expect(failed.work).toMatchObject({ attempt: 2, stage: "write" });
+  });
+
+  it("holds a reviewer failure at its stage", () => {
+    const written = apply(
+      fixSlot(),
+      {
+        type: "exercise_written",
+        draft: exerciseDraftWith({ exercise: exerciseFor("fix", 9) }),
+      },
+      {
+        type: "exercise_solved",
+        solution: solutionWith({ answer: "She goes to work 9 days a week." }),
+      },
+      { type: "review_failed", failure: aiFailure("network") },
+    );
+    expect(written.work).toMatchObject({ stage: "review", attempt: 1 });
+    expect(written.failure).toEqual(aiFailure("network"));
+  });
+
+  it("ignores a result for a stage that is not being worked", () => {
+    const solved = apply(created, { type: "exercise_solved", solution: solutionWith() });
+    expect(solved).toBe(created);
+  });
+});
+
+describe("one exercise ahead", () => {
+  const onScreen = () => drain(passSlot(created, 1));
+
+  it("shows the first exercise as soon as it is saved", () => {
+    const passed = passSlot(created, 1);
+    expect(passed.phase).toBe("asking");
+    expect(runBody(passed)).toBe("generating");
+    const saved = drain(passed);
+    expect(saved.phase).toBe("answering");
+    expect(runBody(saved)).toBe("exercise");
+    expect(currentItem(saved)?.id).toBe("item-0");
+  });
+
+  it("writes slot N+1 while the learner answers N", () => {
+    const state = onScreen();
+    const step = practiceStep(state);
+    expect(step.kind).toBe("exercise");
+    expect(state.work?.slot.position).toBe(1);
+    const turn = step.kind === "exercise" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
+    expect(turn.kind).toBe("gap");
+    expect(turn.avoid).toEqual([exerciseFor("choose", 1).prompt]);
+  });
+
+  it("stops writing once one exercise is ready ahead", () => {
+    const state = drain(passSlot(onScreen(), 2));
+    expect(state.items.map((entry) => entry.correct)).toEqual([null, null]);
+    expect(state.work).toBeNull();
+    expect(practiceStep(state)).toEqual({ kind: "none" });
+  });
+
+  it("draws generating only when the next exercise is not ready", () => {
+    const ready = drain(passSlot(onScreen(), 2));
+    const afterReady = apply(
+      ready,
+      { type: "picked", option: "have been" },
+      { type: "write_done" },
+      { type: "continue" },
+    );
+    expect(afterReady.phase).toBe("answering");
+    expect(currentItem(afterReady)?.id).toBe("item-1");
+    expect(runBody(afterReady)).toBe("exercise");
+
+    const notReady = apply(
+      onScreen(),
+      { type: "picked", option: "have been" },
+      { type: "write_done" },
+      { type: "continue" },
+    );
+    expect(notReady.phase).toBe("asking");
+    expect(runBody(notReady)).toBe("generating");
+  });
+
+  it("puts the screen's answer write before the background write", () => {
+    const queued = passSlot(onScreen(), 2);
+    expect(queued.background.length).toBeGreaterThan(0);
+    const picked = apply(queued, { type: "picked", option: "have been" });
+    const step = practiceStep(picked);
+    expect(step).toMatchObject({ kind: "write", lane: "screen", write: { kind: "answer" } });
+  });
+
+  it("a background write_done pops only the background queue", () => {
+    const picked = apply(passSlot(onScreen(), 2), { type: "picked", option: "have been" });
+    const next = apply(picked, { type: "write_done", lane: "background" });
+    expect(next.background).toHaveLength(picked.background.length - 1);
+    expect(next.writes).toEqual(picked.writes);
+    expect(practiceStep(next)).toMatchObject({ kind: "write", lane: "screen" });
+  });
+
+  it("a background write_done keeps the screen grading and on the sheet", () => {
+    const typed = resumed(practiceTodayWith([typedItem(0)], { target: 5 }));
+    const queued = passSlot(typed, 1);
+    const grading = apply(
+      queued,
+      { type: "draft_changed", text: "I have never visited Japan." },
+      { type: "check_started" },
+    );
+    expect(grading.phase).toBe("grading");
+    let state = grading;
+    while (state.background.length > 0) {
+      const head = state.background[0];
+      state = apply(state, {
+        type: "write_done",
+        lane: "background",
+        items: head?.kind === "items" ? [typedItem(0), item(1, null, head.items[0])] : undefined,
+      });
+    }
+    expect(state.phase).toBe("grading");
+    expect(state.items.map((entry) => entry.id)).toEqual(["item-0", "item-1"]);
+
+    const sheet = apply(
+      resumed(practiceTodayWith([item(0)], { target: 5 })),
+      { type: "picked", option: "was" },
+      { type: "write_done" },
+    );
+    expect(sheet.phase).toBe("feedback");
+    const afterBackground = apply(sheet, { type: "write_done", lane: "background" });
+    expect(afterBackground.phase).toBe("feedback");
+  });
+
+  it("keeps a local answer when a background save returns the item unanswered", () => {
+    const state = passSlot(onScreen(), 2);
+    const answered = apply(state, { type: "picked", option: "was" });
+    let merged = answered;
+    while (merged.background.length > 0) {
+      const head = merged.background[0];
+      merged = apply(merged, {
+        type: "write_done",
+        lane: "background",
+        items: head?.kind === "items" ? [item(0), item(1, null, head.items[0])] : undefined,
+      });
+    }
+    expect(merged.items[0]).toMatchObject({ correct: false, userAnswer: "was" });
+    expect(merged.items).toHaveLength(2);
+  });
+
+  it("grades before the next background AI step", () => {
+    const typed = resumed(practiceTodayWith([typedItem(0)], { target: 5 }));
+    expect(typed.work?.stage).toBe("write");
+    const grading = apply(
+      typed,
+      { type: "draft_changed", text: "I have never visited Japan." },
+      { type: "check_started" },
+    );
+    expect(practiceStep(grading).kind).toBe("grade");
+  });
+
+  it("holds a background AI failure until the learner waits for that slot", () => {
+    const state = onScreen();
+    const held = apply(state, { type: "exercise_failed", failure: aiFailure("network") });
+    expect(held.held).toEqual(aiFailure("network"));
+    expect(held.failure).toBeNull();
+    expect(held.phase).toBe("answering");
+    expect(practiceStep(held)).toEqual({ kind: "none" });
+    const waiting = apply(
+      held,
+      { type: "picked", option: "have been" },
+      { type: "write_done" },
+      { type: "continue" },
+    );
+    expect(waiting.phase).toBe("asking");
+    expect(waiting.failure).toEqual(aiFailure("network"));
+    expect(waiting.held).toBeNull();
+    const retried = apply(waiting, { type: "retry" });
+    expect(practiceStep(retried).kind).toBe("exercise");
+  });
+
+  it("shows a background failure at once when the learner is waiting", () => {
+    const failed = apply(created, { type: "exercise_failed", failure: aiFailure("network") });
+    expect(failed.failure).toEqual(aiFailure("network"));
+    expect(failed.held).toBeNull();
+  });
+
+  it("holds the third failed attempt until the learner waits", () => {
+    const failed = [1, 2, 3].reduce(
+      (state) => apply(state, { type: "exercise_failed", failure: aiFailure("bad_response") }),
+      onScreen(),
+    );
+    expect(failed.failure).toBeNull();
+    expect(failed.held).toMatchObject({ source: "ai", cause: { name: "PracticeChecks" } });
+  });
+});
+
+describe("leaving the run", () => {
+  const left = () => apply(created, { type: "left" });
+
+  it("finishes the call in flight, saves its usage and starts no other call", () => {
+    const written = apply(left(), {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise: exerciseFor("choose", 1) }),
+    });
+    expect(written.work?.stage).toBe("solve");
+    expect(written.background.some((write) => write.kind === "usage")).toBe(true);
+    const saved = drain(written);
+    expect(saved.background).toEqual([]);
+    expect(practiceStep(saved)).toEqual({ kind: "none" });
+  });
+
+  it("schedules no new slot when the slot in flight passes", () => {
+    const passed = drain(passSlot(left(), 1));
+    expect(passed.work).toBeNull();
+    expect(passed.slots.length).toBeGreaterThan(0);
+    expect(passed.items).toHaveLength(1);
+    expect(practiceStep(passed)).toEqual({ kind: "none" });
+  });
+
+  it("sends no grade call after leaving", () => {
+    const typed = resumed(practiceTodayWith([typedItem(0)], { target: 5 }));
+    const grading = apply(
+      typed,
+      { type: "draft_changed", text: "I have never visited Japan." },
+      { type: "check_started" },
+      { type: "left" },
+    );
+    expect(grading.phase).toBe("grading");
+    expect(practiceStep(grading)).toEqual({ kind: "none" });
+  });
+});
+
+describe("the checks save", () => {
+  function writesDone(state: PracticeRunState): PracticeRunState {
+    let current = state;
+    while (practiceStep(current).kind === "write") {
+      current = apply(current, { type: "write_done", lane: "background", items: [item(0)] });
+    }
+    return current;
+  }
+
+  it("sends the checks after the passed item's save", () => {
+    const passed = passSlot(created, 1);
+    expect(practiceStep(passed).kind).toBe("write");
+    const step = practiceStep(writesDone(passed));
+    expect(step).toMatchObject({ kind: "checks" });
+    expect(step.kind === "checks" && step.checks.map((check) => check.stage)).toEqual([
+      "code",
+      "solver",
+    ]);
+  });
+
+  it("sends the checks right after a rejection", () => {
+    const rejected = apply(created, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise: exerciseFor("fix", 1) }),
+    });
+    const step = practiceStep(writesDone(rejected));
+    expect(step.kind === "checks" && step.checks[0]).toMatchObject({
+      stage: "code",
+      passed: false,
+    });
+  });
+
+  it("keeps the checks and goes on when their save fails", () => {
+    const rejected = writesDone(
+      apply(created, {
+        type: "exercise_written",
+        draft: exerciseDraftWith({ exercise: exerciseFor("fix", 1) }),
+      }),
+    );
+    const failed = apply(rejected, { type: "checks_failed" });
+    expect(failed.failure).toBeNull();
+    expect(failed.checks).toHaveLength(1);
+    expect(failed.checksDue).toBe(false);
+    expect(practiceStep(failed).kind).toBe("exercise");
+  });
+
+  it("sends the kept checks with the next save", () => {
+    const kept = apply(
+      writesDone(
+        apply(created, {
+          type: "exercise_written",
+          draft: exerciseDraftWith({ exercise: exerciseFor("fix", 1) }),
+        }),
+      ),
+      { type: "checks_failed" },
+    );
+    const next = writesDone(
+      apply(kept, {
+        type: "exercise_written",
+        draft: exerciseDraftWith({ exercise: exerciseFor("fix", 2) }),
+      }),
+    );
+    const step = practiceStep(next);
+    expect(step.kind === "checks" && step.checks).toHaveLength(2);
+  });
+
+  it("drops the saved rows and keeps checksDue only while rows are left", () => {
+    const rows = Array.from({ length: 3 }, () =>
+      codeRow({ generatorModel: TUTOR_MODEL, exercise: exerciseFor("choose", 1), reason: null }),
+    );
+    const state = { ...created, checks: rows, checksDue: true };
+    const some = apply(state, { type: "checks_saved", count: 2 });
+    expect(some.checks).toHaveLength(1);
+    expect(some.checksDue).toBe(true);
+    const all = apply(state, { type: "checks_saved", count: 3 });
+    expect(all.checks).toEqual([]);
+    expect(all.checksDue).toBe(false);
+  });
+
+  it("sends at most twenty rows at a time", () => {
+    const rows = Array.from({ length: 25 }, () =>
+      codeRow({ generatorModel: TUTOR_MODEL, exercise: exerciseFor("choose", 1), reason: null }),
+    );
+    const state = { ...created, checks: rows, checksDue: true };
+    const step = practiceStep(state);
+    expect(step.kind === "checks" && step.checks).toHaveLength(20);
+    const after = apply(state, { type: "checks_saved", count: 20 });
+    expect(after.checks).toHaveLength(5);
+    expect(after.checksDue).toBe(true);
+  });
+});
+
+describe("the grader", () => {
+  const grading = () =>
+    apply(
+      answering([0, 1, 2, 3].map((p) => item(p, true)).concat(typedItem(4))),
+      { type: "draft_changed", text: "I have never visited Japan." },
+      { type: "check_started" },
+    );
+
+  it("records a grader check passed false and keeps the verdict correct on a flawed grade", () => {
+    const state = apply(grading(), {
+      type: "grade_received",
+      grade: answerGradeWith({ correct: false, flawed: true, explanation: "Two answers fit." }),
+    });
+    expect(state.items[4]).toMatchObject({ correct: true });
+    expect(state.checks.at(-1)).toMatchObject({
+      stage: "grader",
+      passed: false,
+      reason: "grader_flawed",
+      checkerModel: TUTOR_MODEL,
+    });
+    expect(state.checksDue).toBe(true);
+  });
+
+  it("records a grader check passed true on a normal grade", () => {
+    const state = apply(grading(), {
+      type: "grade_received",
+      grade: answerGradeWith({ correct: false, flawed: false }),
+    });
+    expect(state.items[4]).toMatchObject({ correct: false });
+    expect(state.checks.at(-1)).toMatchObject({ stage: "grader", passed: true, reason: null });
   });
 });
 
@@ -393,6 +960,7 @@ describe("answering", () => {
     expect(state.phase).toBe("saving");
     expect(practiceStep(state)).toEqual({
       kind: "write",
+      lane: "screen",
       write: {
         kind: "answer",
         itemId: "item-0",
@@ -686,7 +1254,11 @@ describe("the end of a round", () => {
     expect(state.phase).toBe("finishing");
     expect(runOutcome(state)).toBe("finished");
     expect(missedRules(state.items)).toEqual([]);
-    expect(practiceStep(state)).toEqual({ kind: "write", write: { kind: "finish" } });
+    expect(practiceStep(state)).toEqual({
+      kind: "write",
+      lane: "screen",
+      write: { kind: "finish" },
+    });
   });
 
   it("finishes the run with no offer when nothing was missed", () => {
@@ -697,7 +1269,11 @@ describe("the end of a round", () => {
       { type: "continue" },
     );
     expect(state.phase).toBe("finishing");
-    expect(practiceStep(state)).toEqual({ kind: "write", write: { kind: "finish" } });
+    expect(practiceStep(state)).toEqual({
+      kind: "write",
+      lane: "screen",
+      write: { kind: "finish" },
+    });
   });
 
   it("has no offer at fifteen", () => {
@@ -721,21 +1297,23 @@ describe("the end of a round", () => {
     const state = apply(offer, { type: "keep_going" });
     expect(state.run?.target).toBe(10);
     expect(state.phase).toBe("saving");
-    expect(practiceStep(state)).toEqual({ kind: "write", write: { kind: "target", target: 10 } });
+    expect(practiceStep(state)).toEqual({
+      kind: "write",
+      lane: "screen",
+      write: { kind: "target", target: 10 },
+    });
     const saved = apply(state, { type: "write_done", run: practiceRunWith({ target: 10 }) });
     expect(saved.phase).toBe("asking");
     expect(practiceStep(saved)).toEqual({
-      kind: "round",
-      request: roundRequest({
-        focus,
-        count: 5,
+      kind: "exercise",
+      request: exerciseRequest({
+        slot: saved.slots[0]!,
         missedRules: ["Present perfect"],
         language: null,
         avoid: ["I ___ to Japan twice."],
       }),
-      avoid: ["I ___ to Japan twice."],
-      count: 5,
     });
+    expect(saved.slots[0]?.position).toBe(5);
   });
 
   it("ignores keep going when there is no offer", () => {
@@ -749,7 +1327,11 @@ describe("the end of a round", () => {
     );
     const state = apply(offer, { type: "finish_requested" });
     expect(state.phase).toBe("finishing");
-    expect(practiceStep(state)).toEqual({ kind: "write", write: { kind: "finish" } });
+    expect(practiceStep(state)).toEqual({
+      kind: "write",
+      lane: "screen",
+      write: { kind: "finish" },
+    });
     const done = apply(state, {
       type: "write_done",
       run: practiceRunWith({ finishedAt: "2026-11-05T11:00:00Z" }),
@@ -770,16 +1352,30 @@ describe("the end of a round", () => {
 });
 
 describe("the spend", () => {
-  it("does not ask while the spend is blocked", () => {
+  it("does not start a slot while the spend is blocked but still saves its writes", () => {
     const state = apply(fresh({ spentUsd: 10 }), { type: "write_done", run: practiceRunWith() });
     expect(sendState(state).locked).toBe(true);
+    expect(state.work).toBeNull();
     expect(practiceStep(state)).toEqual({ kind: "none" });
+    const usage = {
+      model: TUTOR_MODEL,
+      inputTokens: 1,
+      outputTokens: 1,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+    } as const;
+    const queued = { ...state, background: [{ kind: "usage" as const, usage }] };
+    expect(practiceStep(queued)).toEqual({
+      kind: "write",
+      lane: "background",
+      write: { kind: "usage", usage },
+    });
   });
 
   it("warns at 80% and keeps asking", () => {
     const state = apply(fresh({ spentUsd: 8 }), { type: "write_done", run: practiceRunWith() });
     expect(sendState(state)).toEqual({ locked: false, notice: "warning" });
-    expect(practiceStep(state).kind).toBe("round");
+    expect(practiceStep(state).kind).toBe("exercise");
   });
 
   it("locks answering when blocked", () => {
@@ -792,7 +1388,7 @@ describe("the spend", () => {
 
   it("still saves a write while blocked", () => {
     const state = apply(fresh({ spentUsd: 10 }));
-    expect(practiceStep(state).kind).toBe("write");
+    expect(practiceStep(state)).toMatchObject({ kind: "write", lane: "screen" });
   });
 
   it("locks the run for an OpenAI provider", () => {
@@ -809,8 +1405,8 @@ describe("the spend", () => {
   });
 
   it("refreshes the context and clears a key failure", () => {
-    const failed = apply(apply(fresh(), { type: "write_done", run: practiceRunWith() }), {
-      type: "round_failed",
+    const failed = apply(created, {
+      type: "exercise_failed",
       failure: { source: "ai", failure: "invalid_key" },
     });
     const refreshed = apply(failed, {
@@ -821,7 +1417,23 @@ describe("the spend", () => {
     });
     expect(refreshed.failure).toBeNull();
     expect(refreshed.spentUsd).toBe(1);
-    expect(practiceStep(refreshed).kind).toBe("round");
+    expect(practiceStep(refreshed).kind).toBe("exercise");
+  });
+
+  it("also clears a held key failure", () => {
+    const held = apply(drain(passSlot(created, 1)), {
+      type: "exercise_failed",
+      failure: { source: "ai", failure: "invalid_key" },
+    });
+    expect(held.held).not.toBeNull();
+    const refreshed = apply(held, {
+      type: "context_refreshed",
+      provider: "claude",
+      limitUsd: 10,
+      spentUsd: 1,
+    });
+    expect(refreshed.held).toBeNull();
+    expect(practiceStep(refreshed).kind).toBe("exercise");
   });
 });
 

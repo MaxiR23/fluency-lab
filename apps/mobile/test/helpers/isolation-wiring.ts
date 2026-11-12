@@ -4,10 +4,11 @@
 // scripted bodies. The key is generated at run time and the adapter reads it
 // through the fake key port, as src/ai/index.ts does.
 
-import { TUTOR_MODEL } from "@fluency-lab/shared";
+import { PRACTICE_KINDS, TUTOR_MODEL } from "@fluency-lab/shared";
 
 import { createClaudeAi } from "@/ai/claude-ai";
 import { createHonoData } from "@/data/hono-data";
+import { exerciseFor } from "./fake-ai";
 import { fakeKeys } from "./fake-keys";
 import { generatedSecret } from "./generated-secret";
 
@@ -64,32 +65,45 @@ const threadRowBody = {
   createdAt: stamp,
 };
 
-const fixExercise = {
-  kind: "fix",
-  rule: "Present perfect",
-  prompt: "I never been to Japan.",
-  options: [],
-  accepted: ["I've never been to Japan."],
-  explanation: "Use the present perfect for an experience.",
-  source: "",
+const reviewAllTrue = {
+  singleAnswer: true,
+  meaningKept: true,
+  answerNotInPrompt: true,
+  oneRealMistake: true,
+  naturalEnglish: true,
+  solverAnswerAccepted: true,
+  passed: true,
+  reason: "",
 };
 
-const otherFixes = [
-  ["Third person", "She never go to school.", "She never goes to school."],
-  ["Third person", "He don't like tea.", "He doesn't like tea."],
-  ["Past simple", "We never was late.", "We were never late."],
-  ["Past simple", "They did not went home.", "They did not go home."],
-].map(([rule, prompt, accepted]) => ({
-  ...fixExercise,
-  rule,
-  prompt,
-  accepted: [accepted],
-}));
+// INFO: the accepted answer of each exercise the writer was asked for, by prompt, for the solver.
+const issued = new Map<string, string>();
+let written = 0;
 
-// INFO: the provider's answer to a practice round: five fix exercises, each with its own
-// prompt and at most two of a rule, so the round validation keeps all five.
-export function providerRoundSuccess(): Response {
-  return providerBody({ items: [fixExercise, ...otherFixes] });
+// INFO: the provider's answer to any practice call, told apart by the required keys of the
+// schema in the request body: the writer, the blind solver, the reviewer, the grader or the
+// study note. The writer answers an exercise of the kind in its request, each with its own prompt.
+export function providerPracticeAnswer(body: string): Response {
+  const sent = JSON.parse(body) as {
+    output_config: { format: { schema: { required: string[] } } };
+    messages: { content: string }[];
+  };
+  const required = sent.output_config.format.schema.required;
+  const turn = JSON.parse(sent.messages[0]?.content ?? "{}") as { kind?: string; prompt?: string };
+  if (required.includes("solverAnswerAccepted")) return providerBody(reviewAllTrue);
+  if (required.includes("alreadyCorrect")) {
+    return providerBody({ answer: issued.get(turn.prompt ?? "") ?? "", alreadyCorrect: false });
+  }
+  if (required.includes("flawed")) return providerGradeSuccess();
+  if (required.includes("columns")) return providerNoteSuccess();
+  if (required.includes("accepted")) {
+    written += 1;
+    const kind = PRACTICE_KINDS.find((entry) => entry === turn.kind) ?? "choose";
+    const exercise = exerciseFor(kind, written);
+    issued.set(exercise.prompt, exercise.accepted[0] ?? "");
+    return providerBody(exercise);
+  }
+  return providerSuccess();
 }
 
 // INFO: the provider's answer to the grading of a typed answer.
@@ -134,21 +148,36 @@ const practiceRunBody = {
   createdAt: stamp,
   finishedAt: null,
 };
-const practiceItemBody = (position: number) => ({
-  id: `item-${position}`,
+type PostedItem = {
+  position: number;
+  kind: string;
+  rule: string;
+  prompt: string;
+  options: string[] | null;
+  accepted: string[];
+  explanation: string;
+  source: string | null;
+};
+
+const practiceItemBody = (posted: PostedItem) => ({
+  ...posted,
+  id: `item-${posted.position}`,
   runId: "run-1",
-  position,
-  kind: "fix",
-  rule: "Present perfect",
-  prompt: "I never been to Japan.",
-  options: null,
-  accepted: ["I've never been to Japan."],
-  explanation: "Use the present perfect for an experience.",
-  source: null,
   userAnswer: null,
   correct: null,
   answeredAt: null,
 });
+
+// INFO: every item posted so far, by position, as the API answers a save: the whole run.
+function savedItems() {
+  const byPosition = new Map<number, PostedItem>();
+  for (const entry of recorded) {
+    if (entry.method !== "POST" || !entry.url.endsWith("/items")) continue;
+    const sent = JSON.parse(entry.body) as { items: PostedItem[] };
+    for (const posted of sent.items) byPosition.set(posted.position, posted);
+  }
+  return [...byPosition.values()].sort((a, b) => a.position - b.position).map(practiceItemBody);
+}
 
 function providerBody(payload: unknown): Response {
   return new Response(
@@ -189,7 +218,7 @@ export function providerSuccess(): Response {
 }
 
 // INFO: the test swaps this to script the provider's answer.
-export const provider: { answer: () => Response } = { answer: providerSuccess };
+export const provider: { answer: (body: string) => Response } = { answer: providerSuccess };
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -234,14 +263,29 @@ function apiAnswer(method: string, pathname: string): Response {
   if (pathname === "/notes" && method === "POST") return json(storedNoteBody, 201);
   if (pathname === "/notes/note-1" && method === "GET") return json(storedNoteBody);
   if (pathname === "/practice/runs" && method === "POST") return json(practiceRunBody, 201);
-  if (pathname.endsWith("/items") && method === "POST") {
-    return json({ items: [0, 1, 2, 3, 4].map(practiceItemBody) }, 201);
+  if (pathname.endsWith("/items") && method === "POST") return json({ items: savedItems() }, 201);
+  if (pathname.startsWith("/practice/runs/") && pathname.endsWith("/checks")) {
+    const sent = JSON.parse(recorded[recorded.length - 1]?.body ?? "{}") as { checks: unknown[] };
+    return json({ count: sent.checks.length }, 201);
   }
   if (pathname.startsWith("/practice/runs/") && pathname.endsWith("/usage")) {
     return json(practiceRunBody);
   }
   if (pathname.startsWith("/practice/items/") && pathname.endsWith("/answer")) {
-    return json({ ...practiceItemBody(0), userAnswer: "x", correct: false });
+    return json({
+      ...practiceItemBody({
+        position: 0,
+        kind: "choose",
+        rule: "Present perfect",
+        prompt: "I ___ to Japan twice.",
+        options: ["have been", "was", "am"],
+        accepted: ["have been"],
+        explanation: "Because of the rule.",
+        source: null,
+      }),
+      userAnswer: "x",
+      correct: false,
+    });
   }
   if (pathname === "/sessions/spend") return json({ monthStart: "2026-11-01", spentUsd: 0 });
   if (pathname === "/sessions/active") return json({ activeSession: null });
@@ -270,7 +314,9 @@ const fetchFn: typeof fetch = async (input, init) => {
     body: await request.text(),
   });
   const url = new URL(request.url);
-  if (url.origin === "https://api.anthropic.com") return provider.answer();
+  if (url.origin === "https://api.anthropic.com") {
+    return provider.answer(recorded[recorded.length - 1]?.body ?? "");
+  }
   return apiAnswer(request.method, url.pathname);
 };
 

@@ -13,6 +13,7 @@ import {
   notePageSchema,
   openSessionsResponseSchema,
   practiceItemSchema,
+  practiceChecksSavedSchema,
   practiceItemsResponseSchema,
   practiceRunSchema,
   practiceRunWithItemsSchema,
@@ -239,6 +240,12 @@ export function createHonoData(config: HonoDataConfig): DataPort {
       );
       return outcome.ok ? { ok: true, value: outcome.value.items } : outcome;
     },
+    addPracticeChecks: (runId, checks) =>
+      call(
+        (client) =>
+          client.practice.runs[":id"].checks.$post({ param: { id: runId }, json: { checks } }),
+        practiceChecksSavedSchema,
+      ),
     answerPracticeItem: (itemId, answer) =>
       call(
         (client) =>

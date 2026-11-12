@@ -5,6 +5,12 @@ export const MODEL_IDS = [TUTOR_MODEL] as const;
 
 export type ModelId = (typeof MODEL_IDS)[number];
 
+// INFO: the model of each practice stage. Moving one check to another model
+// means changing its constant here and adding the price to MODEL_PRICES.
+export const PRACTICE_WRITER_MODEL: ModelId = TUTOR_MODEL;
+export const PRACTICE_SOLVER_MODEL: ModelId = TUTOR_MODEL;
+export const PRACTICE_REVIEW_MODEL: ModelId = TUTOR_MODEL;
+
 export type TokenUsage = {
   inputTokens: number;
   outputTokens: number;

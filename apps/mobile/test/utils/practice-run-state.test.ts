@@ -3,7 +3,7 @@
 // Tests for the view of the practice run screen, built from the reads it needs.
 //
 // Tested:
-// - practiceRunView: loading, no key, failed and ready for a new run and for a resumed one
+// - practiceRunView: loading, no key, failed and ready for a new run and for a resumed one, which plans its missing positions
 // - practiceRunView fails on the recent read and puts the rules not practiced recently first
 // - practiceNotice: the notice under the exercise
 //
@@ -27,7 +27,7 @@ import {
   practiceNotice,
   practiceRunView,
 } from "@/utils/practice-run-state";
-import { roundRequest } from "@/utils/practice-prompt";
+import { exerciseRequest } from "@/utils/practice-prompt";
 import { practiceStep } from "@/utils/practice-run";
 import {
   completedProfile,
@@ -178,7 +178,7 @@ describe("practiceRunView", () => {
     expect(view.kind === "ready" && view.run.items).toHaveLength(1);
   });
 
-  it("is ready for a run with no items and asks the round again", () => {
+  it("is ready for a run with no items and writes the exercise for position 0 again", () => {
     const view = practiceRunView({
       ...base,
       origin: { kind: "resume", runId: "run-1" },
@@ -187,17 +187,15 @@ describe("practiceRunView", () => {
     expect(view.kind).toBe("ready");
     if (view.kind !== "ready") return;
     expect(view.run.phase).toBe("asking");
+    expect(view.run.slots.map((slot) => slot.position)).toEqual([0, 1, 2, 3, 4]);
     expect(practiceStep(view.run)).toEqual({
-      kind: "round",
-      request: roundRequest({
-        focus: view.run.focus,
-        count: 5,
+      kind: "exercise",
+      request: exerciseRequest({
+        slot: view.run.slots[0]!,
         missedRules: [],
         language: null,
         avoid: [],
       }),
-      count: 5,
-      avoid: [],
     });
   });
 

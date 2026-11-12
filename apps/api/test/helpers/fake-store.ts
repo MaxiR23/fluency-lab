@@ -24,6 +24,7 @@ export function createFakeStore() {
     createPracticeRun: vi.fn<UserStore["createPracticeRun"]>(),
     getPracticeRun: vi.fn<UserStore["getPracticeRun"]>(),
     addPracticeItems: vi.fn<UserStore["addPracticeItems"]>(),
+    addPracticeChecks: vi.fn<UserStore["addPracticeChecks"]>(),
     answerPracticeItem: vi.fn<UserStore["answerPracticeItem"]>(),
     addPracticeCost: vi.fn<UserStore["addPracticeCost"]>(),
     setPracticeTarget: vi.fn<UserStore["setPracticeTarget"]>(),

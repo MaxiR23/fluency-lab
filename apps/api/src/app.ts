@@ -5,6 +5,7 @@ import {
   noteIdParamSchema,
   practiceAnswerSchema,
   practiceItemIdParamSchema,
+  practiceChecksCreateSchema,
   practiceItemsCreateSchema,
   practiceRunCreateSchema,
   practiceRunIdParamSchema,
@@ -693,6 +694,24 @@ export function createApp(config: { auth: AuthConfig; store: Store; now?: () => 
         }
         if (outcome.value === null) return c.json({ error: "not_found" }, 404);
         return c.json({ items: outcome.value }, 201);
+      },
+    )
+    .post(
+      "/practice/runs/:id/checks",
+      auth,
+      caller,
+      zValidator("param", practiceRunIdParamSchema, invalidInput),
+      zValidator("json", practiceChecksCreateSchema, invalidInput),
+      async (c) => {
+        const outcome = await config.store
+          .forUser(c.get("caller"))
+          .addPracticeChecks(c.req.valid("param").id, c.req.valid("json").checks);
+        if (!outcome.ok) {
+          const { status, body } = failureResponse(outcome.failure);
+          return c.json(body, status);
+        }
+        if (outcome.value === null) return c.json({ error: "not_found" }, 404);
+        return c.json({ count: outcome.value }, 201);
       },
     )
     .post(

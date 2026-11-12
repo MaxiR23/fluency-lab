@@ -8,7 +8,7 @@
 // deleteAccount with success, so a signed in user lands on Home, and getSessionSummary with an
 // empty ended session (Summary reads it). Progress reads all five of getMonthProgress, listHistory,
 // listMistakes, listWords and listNotes: zeros and empty pages. Thread reads openThread: a thread with no
-// messages on a learner message with two corrections. Home also reads getTodayPractice: no run today. Practice also reads listRecentPrompts: none. setSessionContext answers the default session with the summary and the point it was given. setSessionTitle answers the default session of that id with the title and source it was given.
+// messages on a learner message with two corrections. Home also reads getTodayPractice: no run today. Practice also reads listRecentPrompts: none. addPracticeChecks answers the count of the rows it was given, and addPracticeItems the items saved so far, by position. setSessionContext answers the default session with the summary and the point it was given. setSessionTitle answers the default session of that id with the title and source it was given.
 
 import { jest } from "@jest/globals";
 import type {
@@ -64,6 +64,7 @@ export const fakeData = {
   createPracticeRun: jest.fn<DataPort["createPracticeRun"]>(),
   openPracticeRun: jest.fn<DataPort["openPracticeRun"]>(),
   addPracticeItems: jest.fn<DataPort["addPracticeItems"]>(),
+  addPracticeChecks: jest.fn<DataPort["addPracticeChecks"]>(),
   answerPracticeItem: jest.fn<DataPort["answerPracticeItem"]>(),
   addPracticeUsage: jest.fn<DataPort["addPracticeUsage"]>(),
   setPracticeTarget: jest.fn<DataPort["setPracticeTarget"]>(),
@@ -364,6 +365,24 @@ export function resetFakeData(): void {
   fakeData.openThread.mockResolvedValue({ ok: true, value: threadWith() });
   fakeData.getTodayPractice.mockResolvedValue({ ok: true, value: null });
   fakeData.listRecentPrompts.mockResolvedValue({ ok: true, value: [] });
+  // INFO: a save answers every item saved so far in this test, by position (ids item-<position>).
+  const savedItems = new Map<number, PracticeItem>();
+  fakeData.addPracticeItems.mockImplementation(async (runId, items) => {
+    for (const created of items) {
+      savedItems.set(
+        created.position,
+        practiceItemWith({ ...created, id: `item-${created.position}`, runId }),
+      );
+    }
+    return {
+      ok: true,
+      value: [...savedItems.values()].sort((a, b) => a.position - b.position),
+    };
+  });
+  fakeData.addPracticeChecks.mockImplementation(async (_runId, checks) => ({
+    ok: true,
+    value: { count: checks.length },
+  }));
   fakeData.listNotes.mockResolvedValue({
     ok: true,
     value: { items: [], nextOffset: null, today: "2026-11-05" },

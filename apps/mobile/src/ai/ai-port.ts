@@ -1,6 +1,7 @@
 import type {
   Correction,
   ModelId,
+  PracticeExercisePayload,
   PracticeItemCreate,
   StudyNoteDraft,
   TokenUsage,
@@ -34,11 +35,34 @@ export type ThreadReply = {
   usage: TokenUsage;
 };
 
-// INFO: one exercise of a round, as it is saved: the position is set when it is saved.
+// INFO: one exercise, as it is saved: the position is set when it is saved.
 export type PracticeExercise = Omit<PracticeItemCreate, "position">;
 
-export type PracticeRound = {
-  items: PracticeExercise[];
+// INFO: the exercise as the writer wrote it, loosely typed: the app checks it before it is saved.
+export type PracticeExerciseDraft = {
+  exercise: PracticeExercisePayload;
+  model: ModelId;
+  usage: TokenUsage;
+};
+
+// INFO: answer is empty when the solver found none.
+export type ExerciseSolution = {
+  answer: string;
+  alreadyCorrect: boolean;
+  model: ModelId;
+  usage: TokenUsage;
+};
+
+// INFO: passed is recomputed from the six booleans; reason is null when the reviewer gave none.
+export type ExerciseReview = {
+  singleAnswer: boolean;
+  meaningKept: boolean;
+  answerNotInPrompt: boolean;
+  oneRealMistake: boolean;
+  naturalEnglish: boolean;
+  solverAnswerAccepted: boolean;
+  passed: boolean;
+  reason: string | null;
   model: ModelId;
   usage: TokenUsage;
 };
@@ -89,13 +113,12 @@ export type AiPort = {
   reply(request: TutorRequest): Promise<AiOutcome>;
   // INFO: a thread reply with no new words and no withdrawals is the expected empty, a success.
   replyInThread(request: TutorRequest): Promise<ThreadAiOutcome>;
-  // INFO: no expected empty for a round: a round with fewer usable exercises than count, after
-  // dropping the prompts in avoid, is a bad_response.
-  practiceRound(
-    request: TutorRequest,
-    count: number,
-    avoid: readonly string[],
-  ): Promise<AiResult<PracticeRound>>;
+  // INFO: an exercise with empty options and an empty source is the expected empty: a success.
+  practiceExercise(request: TutorRequest): Promise<AiResult<PracticeExerciseDraft>>;
+  // INFO: an empty answer is the expected empty: a success.
+  solveExercise(request: TutorRequest): Promise<AiResult<ExerciseSolution>>;
+  // INFO: an empty reason is the expected empty: reason is null.
+  reviewExercise(request: TutorRequest): Promise<AiResult<ExerciseReview>>;
   // INFO: an answer with no explanation is the expected empty: explanation is null.
   gradeAnswer(request: TutorRequest): Promise<AiResult<AnswerGrade>>;
   // INFO: no expected empty: a note that cannot be used is a bad_response.

@@ -1,16 +1,16 @@
 // apps/mobile/test/utils/practice-prompt.test.ts
 //
-// Tests for the prompts of a practice round and of the grading of an answer.
+// Tests for the prompts of a practice exercise, its solver and reviewer, and of the grading of an answer.
 //
 // Tested:
-// - focusDataFrom picks the focus data a round sends
-// - roundRequest sends the focus data, the count, the missed rules and the language, and nothing else
-// - roundRequest states the generation rules and asks for two spare exercises
-// - roundRequest sends the avoid list
-// - avoidPrompts builds it from the run and the recent prompts
+// - focusDataFrom picks the focus data a run sends
+// - exerciseRequest sends only the slot's kind, target and avoid list, with the rules of that kind
+// - solveRequest sends what the learner sees and reviewRequest adds the accepted answers and the solver's answer
+// - RULE_PRACTICE_GRADE asks for one short sentence to the learner
+// - avoidPrompts builds the avoid list from the run, the queue, the rejected prompts and the recent prompts
 // - focusDataFrom sends the raw id of a topic outside the catalog
 // - rotateMistakes puts the rules not practiced recently first
-// - focusDataFrom and roundRequest carry a note as the focus of a note round
+// - focusDataFrom carries a note as the focus of a note run
 // - studyNoteRequest asks for one study note on the missed item's rule and sends nothing personal
 // - gradeRequest sends the exercise, the accepted answers and the learner's answer only
 //
@@ -23,27 +23,36 @@
 
 import { describe, expect, it } from "@jest/globals";
 
+import { PRACTICE_KINDS, type PracticeKind } from "@fluency-lab/shared";
+
+import type { PracticeSlot, SlotTarget } from "@/utils/practice-slots";
 import {
-  ROUND_SPARE,
-  RULE_PRACTICE_AVOID,
-  RULE_PRACTICE_NO_ANSWER,
-  RULE_PRACTICE_PER_RULE,
+  KIND_LABELS,
   RULE_PRACTICE_ANSWERABLE,
+  RULE_PRACTICE_AVOID,
   RULE_PRACTICE_CHOOSE,
   RULE_PRACTICE_FIX,
+  RULE_PRACTICE_FIX_SOURCE,
   RULE_PRACTICE_GAP,
   RULE_PRACTICE_GRADE,
+  RULE_PRACTICE_KIND,
+  RULE_PRACTICE_NO_ANSWER,
   RULE_PRACTICE_NOTE,
-  RULE_STUDY_NOTE,
-  RULE_PRACTICE_KINDS,
-  RULE_PRACTICE_NO_TRANSLATE,
+  RULE_PRACTICE_OPEN_TARGET,
+  RULE_PRACTICE_REVIEW,
   RULE_PRACTICE_RULE,
   RULE_PRACTICE_RULE_WORDS,
+  RULE_PRACTICE_SOLVE,
+  RULE_PRACTICE_TARGET_RULE,
+  RULE_STUDY_NOTE,
   avoidPrompts,
+  exerciseRequest,
   focusDataFrom,
   gradeRequest,
+  missedRulesLine,
+  reviewRequest,
   rotateMistakes,
-  roundRequest,
+  solveRequest,
   studyNoteRequest,
   translateRule,
 } from "@/utils/practice-prompt";
@@ -126,83 +135,163 @@ describe("focusDataFrom", () => {
   });
 });
 
-describe("roundRequest", () => {
+describe("exerciseRequest", () => {
+  const slotOf = (kind: PracticeKind, target: SlotTarget, position = 0): PracticeSlot => ({
+    position,
+    kind,
+    target,
+  });
+  const wordSlot = slotOf("gap", { focus: "words", word: "definitely" });
+  const mistakeSlot = (rule: string | null) =>
+    slotOf("fix", {
+      focus: "mistakes",
+      correction: { original: "I never been", corrected: "I've never been", rule },
+    });
   const base = {
-    focus: { kind: "words" as const, words: ["definitely"] },
-    count: 5,
+    slot: wordSlot,
     missedRules: [] as string[],
     language: null,
     avoid: [] as string[],
   };
 
-  it("sends the focus data and the count in one user turn", () => {
-    const request = roundRequest(base);
-    expect(userTurn(request)).toEqual({ focus: base.focus, count: 5 + ROUND_SPARE, avoid: [] });
+  it("sends only the slot's kind, target and the avoid list", () => {
+    const request = exerciseRequest({ ...base, avoid: ["I ___ (be) there."] });
+    expect(userTurn(request)).toEqual({
+      kind: "gap",
+      target: { focus: "words", word: "definitely" },
+      avoid: ["I ___ (be) there."],
+    });
   });
 
-  it("asks for two more than the round needs", () => {
-    expect(ROUND_SPARE).toBe(2);
-    expect(userTurn(roundRequest({ ...base, count: 3 })).count).toBe(5);
+  it("sends an empty avoid on the first exercise of a new run", () => {
+    expect(userTurn(exerciseRequest(base)).avoid).toEqual([]);
   });
 
-  it("states the generation rules in every round", () => {
-    const requests = [
-      roundRequest(base),
-      roundRequest({ ...base, focus: { kind: "mistakes", corrections: [] } }),
-      roundRequest({
-        ...base,
-        focus: {
-          kind: "note",
-          note: {
-            kind: "table",
-            title: "Future forms",
-            topic: "Going to, will",
-            content: {
-              columns: ["Form", "When", "Example"],
-              rows: [["going to", "plans", "I'm going to study."]],
-              remember: "Plans use going to.",
-            },
-          },
-        },
-      }),
-      roundRequest({ ...base, language: "es-AR" }),
+  it("states the rules of the slot's kind and not the other kinds'", () => {
+    const rulesByKind: Record<PracticeKind, string[]> = {
+      fix: [RULE_PRACTICE_FIX, RULE_PRACTICE_FIX_SOURCE],
+      gap: [RULE_PRACTICE_GAP],
+      choose: [RULE_PRACTICE_CHOOSE],
+      translate: [],
+    };
+    const everyRule = [
+      RULE_PRACTICE_FIX,
+      RULE_PRACTICE_FIX_SOURCE,
+      RULE_PRACTICE_GAP,
+      RULE_PRACTICE_CHOOSE,
     ];
-    for (const { system } of requests) {
+    for (const kind of PRACTICE_KINDS) {
+      const { system } = exerciseRequest({
+        ...base,
+        slot: slotOf(kind, { focus: "topic", topic: "Articles", level: null }),
+        language: "es",
+      });
+      expect(system).toContain(RULE_PRACTICE_KIND[kind]);
+      for (const rule of rulesByKind[kind]) expect(system).toContain(rule);
+      for (const rule of everyRule.filter((entry) => !rulesByKind[kind].includes(entry))) {
+        expect(system).not.toContain(rule);
+      }
+      for (const other of PRACTICE_KINDS.filter((entry) => entry !== kind)) {
+        expect(system).not.toContain(RULE_PRACTICE_KIND[other]);
+      }
       expect(system).toContain(RULE_PRACTICE_ANSWERABLE);
-      expect(system).toContain(RULE_PRACTICE_FIX);
-      expect(system).toContain(RULE_PRACTICE_GAP);
-      expect(system).toContain(RULE_PRACTICE_CHOOSE);
       expect(system).toContain(RULE_PRACTICE_NO_ANSWER);
       expect(system).toContain(RULE_PRACTICE_AVOID);
-      expect(system).toContain(RULE_PRACTICE_PER_RULE);
+      expect(system).toContain(RULE_NO_KEY);
     }
+  });
+
+  it("asks a translate in the device language with no names and no loanwords", () => {
+    const { system } = exerciseRequest({
+      ...base,
+      slot: slotOf("translate", { focus: "topic", topic: "Articles", level: null }),
+      language: "es-AR",
+    });
+    expect(system).toContain(translateRule("es-AR"));
+    expect(translateRule("es-AR")).toContain("es-AR");
+    expect(translateRule("es-AR")).toContain("no names");
+    expect(translateRule("es-AR")).toContain("no loanwords");
+    expect(system).not.toContain("at most one");
+  });
+
+  it("has no translate line for the other kinds", () => {
+    expect(exerciseRequest(base).system).not.toContain("language with this tag");
+  });
+
+  it("has no mix, per-round cap or spare line", () => {
+    const { system } = exerciseRequest(base);
+    expect(system).not.toContain("Mix the kinds");
+    expect(system).not.toContain("At most two exercises");
+    expect(system).not.toContain("Within a round");
+    expect(system).not.toContain("spare");
+  });
+
+  it("uses the words rule line for a words slot", () => {
+    expect(exerciseRequest(base).system).toContain(RULE_PRACTICE_RULE_WORDS);
+    expect(exerciseRequest(base).system).not.toContain(RULE_PRACTICE_RULE);
+    expect(exerciseRequest({ ...base, slot: mistakeSlot("Articles") }).system).toContain(
+      RULE_PRACTICE_RULE,
+    );
+  });
+
+  it("asks for the target's rule as written when the target names one", () => {
+    expect(exerciseRequest({ ...base, slot: mistakeSlot("Articles") }).system).toContain(
+      RULE_PRACTICE_TARGET_RULE,
+    );
+    expect(exerciseRequest(base).system).toContain(RULE_PRACTICE_TARGET_RULE);
+    expect(exerciseRequest({ ...base, slot: mistakeSlot(null) }).system).not.toContain(
+      RULE_PRACTICE_TARGET_RULE,
+    );
+  });
+
+  it("asks for another point for an open target", () => {
+    const open = slotOf("fix", { focus: "mistakes", correction: null });
+    const { system } = exerciseRequest({ ...base, slot: open });
+    expect(system).toContain(RULE_PRACTICE_OPEN_TARGET);
+    expect(system).not.toContain(RULE_PRACTICE_TARGET_RULE);
+    expect(
+      exerciseRequest({ ...base, slot: slotOf("gap", { focus: "words", word: null }) }).system,
+    ).toContain(RULE_PRACTICE_OPEN_TARGET);
+    expect(exerciseRequest(base).system).not.toContain(RULE_PRACTICE_OPEN_TARGET);
+  });
+
+  it("adds the missed rules line only when there are missed rules", () => {
+    const { system } = exerciseRequest({ ...base, missedRules: ["Articles", "Present perfect"] });
+    expect(system).toContain(missedRulesLine(["Articles", "Present perfect"]));
+    expect(system.indexOf("Articles")).toBeLessThan(system.indexOf(RULE_PRACTICE_KIND.gap));
+    expect(exerciseRequest(base).system.toLowerCase()).not.toContain("missed");
+  });
+
+  it("carries the note line for a note slot", () => {
+    const note = {
+      kind: "table" as const,
+      title: "Future forms",
+      topic: "Going to, will",
+      content: {
+        columns: ["Form", "When", "Example"] as [string, string, string],
+        rows: [["going to", "plans", "I'm going to study."]] as [string, string, string][],
+        remember: "Plans use going to.",
+      },
+    };
+    const request = exerciseRequest({ ...base, slot: slotOf("gap", { focus: "note", note }) });
+    expect(request.system).toContain(RULE_PRACTICE_NOTE);
+    expect(request.system).toContain(RULE_PRACTICE_RULE);
+    expect(userTurn(request)).toEqual({ kind: "gap", target: { focus: "note", note }, avoid: [] });
+    expect(exerciseRequest(base).system).not.toContain(RULE_PRACTICE_NOTE);
   });
 
   it("asks a gap to carry the base verb and not in parentheses", () => {
     expect(RULE_PRACTICE_GAP).toContain("(not / can)");
     expect(RULE_PRACTICE_GAP).toContain('"not"');
+    expect(RULE_PRACTICE_GAP).toContain('"(go)" for "went"');
+    expect(RULE_PRACTICE_GAP).toContain("bare base form");
     expect(RULE_PRACTICE_ANSWERABLE).toContain("polarity");
     expect(RULE_PRACTICE_ANSWERABLE).toContain("exactly one answer");
   });
 
-  it("asks a gap to show the base verb only for a different form and never the bare form", () => {
-    expect(RULE_PRACTICE_GAP).toContain('"(go)" for "went"');
-    expect(RULE_PRACTICE_GAP).toContain("bare base form");
-  });
-
-  it("asks for no answer in the prompt, no reuse of avoid and two items per rule at most", () => {
+  it("asks for no answer in the prompt and no reuse of avoid", () => {
     expect(RULE_PRACTICE_NO_ANSWER).toContain("No prompt contains its accepted answer");
     expect(RULE_PRACTICE_AVOID).toContain("never reuse one of those prompts");
-    expect(RULE_PRACTICE_PER_RULE).toContain("At most two exercises");
-  });
-
-  it("sends the avoid list in the user turn", () => {
-    const request = roundRequest({ ...base, avoid: ["I ___ (be) there."] });
-    expect(userTurn(request).avoid).toEqual(["I ___ (be) there."]);
-  });
-
-  it("sends an empty avoid on the first round of a new run", () => {
-    expect(userTurn(roundRequest(base)).avoid).toEqual([]);
   });
 
   it("asks a fix to hold one real mistake and keep the learner's meaning", () => {
@@ -210,62 +299,119 @@ describe("roundRequest", () => {
     expect(RULE_PRACTICE_FIX).toContain("negation");
   });
 
+  it("sends no name, goals, interests or chat text", () => {
+    const request = exerciseRequest(base);
+    const everything = `${request.system}\n${request.turns.map((turn) => turn.text).join("\n")}`;
+    expect(everything).not.toContain("private sentence");
+    expect(everything.toLowerCase()).not.toContain("goals");
+    expect(everything.toLowerCase()).not.toMatch(/\bname\b/);
+    expect(Object.keys(userTurn(request)).sort()).toEqual(["avoid", "kind", "target"]);
+  });
+});
+
+describe("solveRequest", () => {
+  const exercise = {
+    kind: "choose" as const,
+    rule: "Present perfect",
+    prompt: "I ___ to Japan twice.",
+    options: ["have been", "was", "am"],
+    accepted: ["have been"],
+    explanation: "Experience.",
+    source: null,
+  };
+
+  it("sends only the kind, its instruction, the prompt and the options", () => {
+    const request = solveRequest(exercise);
+    expect(request.system).toContain(RULE_PRACTICE_SOLVE);
+    expect(request.system).toContain(RULE_NO_KEY);
+    const turn = userTurn(request);
+    expect(turn).toEqual({
+      kind: "choose",
+      instruction: KIND_LABELS.choose,
+      prompt: "I ___ to Japan twice.",
+      options: ["have been", "was", "am"],
+    });
+    expect(turn).not.toHaveProperty("accepted");
+    expect(turn).not.toHaveProperty("rule");
+    expect(turn).not.toHaveProperty("explanation");
+  });
+
+  it("sends empty options for a kind with none", () => {
+    const turn = userTurn(
+      solveRequest({ ...exercise, kind: "fix", options: null, prompt: "She go home." }),
+    );
+    expect(turn.options).toEqual([]);
+    expect(turn.instruction).toBe(KIND_LABELS.fix);
+  });
+
+  it("is a single user turn with no history", () => {
+    expect(solveRequest(exercise).turns).toHaveLength(1);
+    expect(solveRequest(exercise).turns[0]?.role).toBe("user");
+  });
+});
+
+describe("reviewRequest", () => {
+  const exercise = {
+    kind: "fix" as const,
+    rule: "Third person s",
+    prompt: "She go to work.",
+    options: null,
+    accepted: ["She goes to work."],
+    explanation: "Add s.",
+    source: "She go to work.",
+  };
+
+  it("sends the exercise with its accepted answers and the solver's answer", () => {
+    const request = reviewRequest(exercise, "She goes to work.");
+    expect(request.system).toContain(RULE_PRACTICE_REVIEW);
+    expect(request.system).toContain(RULE_NO_KEY);
+    expect(userTurn(request)).toEqual({
+      kind: "fix",
+      instruction: KIND_LABELS.fix,
+      rule: "Third person s",
+      prompt: "She go to work.",
+      options: [],
+      accepted: ["She goes to work."],
+      explanation: "Add s.",
+      solverAnswer: "She goes to work.",
+    });
+  });
+
+  it("defines each boolean in order", () => {
+    const order = [
+      "singleAnswer",
+      "meaningKept",
+      "answerNotInPrompt",
+      "oneRealMistake",
+      "naturalEnglish",
+      "solverAnswerAccepted",
+      "passed",
+    ].map((name) => RULE_PRACTICE_REVIEW.indexOf(name));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it("is a single user turn with no history", () => {
+    expect(reviewRequest(exercise, "x").turns).toHaveLength(1);
+  });
+});
+
+describe("RULE_PRACTICE_GRADE", () => {
   it("asks the grader to judge the visible prompt and to flag a flawed exercise", () => {
     expect(RULE_PRACTICE_GRADE).toContain("flawed");
     expect(RULE_PRACTICE_GRADE).toContain("examples");
     expect(RULE_PRACTICE_GRADE).toContain("___");
   });
 
-  it("sends no name, goals, interests or chat text", () => {
-    const request = roundRequest({
-      ...base,
-      focus: focusDataFrom("words", null, mistakes(0), words(2), "beginner", null, []),
-    });
-    const everything = `${request.system}\n${request.turns.map((turn) => turn.text).join("\n")}`;
-    expect(everything).not.toContain("private sentence");
-    expect(everything.toLowerCase()).not.toContain("goals");
-    expect(everything.toLowerCase()).not.toContain("name");
-    expect(Object.keys(userTurn(request)).sort()).toEqual(["avoid", "count", "focus"]);
+  it("asks for one short sentence to the learner about their answer", () => {
+    expect(RULE_PRACTICE_GRADE).toContain("one short sentence");
+    expect(RULE_PRACTICE_GRADE).toContain("to the learner");
   });
 
-  it("states the rules of the four kinds and never asks for an API key", () => {
-    const { system } = roundRequest(base);
-    expect(system).toContain(RULE_PRACTICE_KINDS);
-    expect(system).toContain(RULE_NO_KEY);
-  });
-
-  it("names the rule as the word for the words focus and as a grammar point otherwise", () => {
-    expect(roundRequest(base).system).toContain(RULE_PRACTICE_RULE_WORDS);
-    expect(roundRequest(base).system).not.toContain(RULE_PRACTICE_RULE);
-    const mistakesRequest = roundRequest({
-      ...base,
-      focus: { kind: "mistakes", corrections: [] },
-    });
-    expect(mistakesRequest.system).toContain(RULE_PRACTICE_RULE);
-    expect(mistakesRequest.system).not.toContain(RULE_PRACTICE_RULE_WORDS);
-  });
-
-  it("lists the missed rules first when there are any", () => {
-    const { system } = roundRequest({ ...base, missedRules: ["Articles", "Present perfect"] });
-    expect(system).toContain("Articles");
-    expect(system).toContain("Present perfect");
-    expect(system.indexOf("Articles")).toBeLessThan(system.indexOf(RULE_PRACTICE_KINDS));
-  });
-
-  it("does not mention missed rules when there are none", () => {
-    expect(roundRequest(base).system.toLowerCase()).not.toContain("missed");
-  });
-
-  it("asks for translate in the device language", () => {
-    const { system } = roundRequest({ ...base, language: "es-AR" });
-    expect(system).toContain(translateRule("es-AR"));
-    expect(system).toContain("es-AR");
-    expect(system).not.toContain(RULE_PRACTICE_NO_TRANSLATE);
-  });
-
-  it("asks only for choose, fix and gap with no language", () => {
-    const { system } = roundRequest(base);
-    expect(system).toContain(RULE_PRACTICE_NO_TRANSLATE);
+  it("forbids naming the exercise, the prompt, the accepted answers or the learner in the third person", () => {
+    expect(RULE_PRACTICE_GRADE).toContain("Never mention the exercise, the prompt");
+    expect(RULE_PRACTICE_GRADE).toContain("accepted answers");
+    expect(RULE_PRACTICE_GRADE).toContain("the learner in the third person");
   });
 });
 
@@ -338,62 +484,9 @@ describe("study notes", () => {
     expect(userTurn(studyNoteRequest({ ...item, accepted: [] })).answer).toBe("");
   });
 
-  it("sends the note's kind, title, topic and content as the focus of a note round", () => {
+  it("sends the note as the focus data of a note round", () => {
     const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft, []);
     expect(data).toEqual({ kind: "note", note: draft });
-    const request = roundRequest({
-      focus: data,
-      count: 5,
-      missedRules: [],
-      language: null,
-      avoid: [],
-    });
-    expect(userTurn(request)).toEqual({
-      focus: {
-        kind: "note",
-        note: {
-          kind: "table",
-          title: "Future forms",
-          topic: "Going to, will",
-          content: draft.content,
-        },
-      },
-      count: 5 + ROUND_SPARE,
-      avoid: [],
-    });
-  });
-
-  it("asks a note round to practice the rules of the note", () => {
-    const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft, []);
-    const note = roundRequest({
-      focus: data,
-      count: 5,
-      missedRules: [],
-      language: null,
-      avoid: [],
-    });
-    expect(note.system).toContain(RULE_PRACTICE_NOTE);
-    const other = roundRequest({
-      focus: focusDataFrom("mistakes", null, mistakes(1), words(0), null, null, []),
-      count: 5,
-      missedRules: [],
-      language: null,
-      avoid: [],
-    });
-    expect(other.system).not.toContain(RULE_PRACTICE_NOTE);
-  });
-
-  it("uses the grammar rule line for a note round", () => {
-    const data = focusDataFrom("note", null, mistakes(0), words(0), null, draft, []);
-    const note = roundRequest({
-      focus: data,
-      count: 5,
-      missedRules: [],
-      language: null,
-      avoid: [],
-    });
-    expect(note.system).toContain(RULE_PRACTICE_RULE);
-    expect(note.system).not.toContain(RULE_PRACTICE_RULE_WORDS);
   });
 });
 
@@ -439,6 +532,12 @@ describe("avoidPrompts", () => {
 
   it("is [] with no items and no recent prompts", () => {
     expect(avoidPrompts([], [], null)).toEqual([]);
+  });
+
+  it("adds the queued items and the rejected prompts of the slot", () => {
+    expect(
+      avoidPrompts(own, recent("Old ___."), null, ["Queued ___.", "Rejected ___.", "first ___"]),
+    ).toEqual(["Queued ___.", "Rejected ___.", "first ___", "Second ___.", "Old ___."]);
   });
 });
 

@@ -523,6 +523,32 @@ export function createSupabaseStore(config: StoreConfig, timeoutMs: number = DB_
           return readPage(all, toPracticeItem);
         },
 
+        async addPracticeChecks(runId, checks) {
+          const visible = await client
+            .from("practice_runs")
+            .select("id")
+            .eq("id", runId)
+            .maybeSingle();
+          const visibleFailure = failureOf(visible);
+          if (visibleFailure !== null) return visibleFailure;
+          if (visible.data === null) return { ok: true, value: null };
+          const saved = await client.from("practice_checks").insert(
+            checks.map((row) => ({
+              run_id: runId,
+              stage: row.stage,
+              generator_model: row.generatorModel,
+              checker_model: row.checkerModel,
+              passed: row.passed,
+              reason: row.reason,
+              solver_answer: row.solverAnswer,
+              exercise: row.exercise,
+            })),
+          );
+          const savedFailure = failureOf(saved);
+          if (savedFailure !== null) return savedFailure;
+          return { ok: true, value: checks.length };
+        },
+
         async answerPracticeItem(itemId, answer, answeredAt) {
           const result = await client
             .from("practice_items")

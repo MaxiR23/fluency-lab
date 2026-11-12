@@ -5,6 +5,7 @@ import {
   LEVELS,
   MESSAGE_ROLES,
   NOTE_KINDS,
+  PRACTICE_CHECK_STAGES,
   PRACTICE_FOCUSES,
   PRACTICE_KINDS,
   PROVIDERS,
@@ -504,22 +505,69 @@ export type RecentPrompt = z.infer<typeof recentPromptsSchema>["items"][number];
 
 export const practiceItemsResponseSchema = z.object({ items: z.array(practiceItemSchema) });
 
-// INFO: the shape of the structured output of a practice round. It is parsed
-// loosely here and normalized by the app before it is saved. options is an
-// empty array and source an empty string when they do not apply.
-export const practiceRoundSchema = z.object({
-  items: z.array(
-    z.object({
-      kind: z.string(),
-      rule: z.string(),
-      prompt: z.string(),
-      options: z.array(z.string()),
-      accepted: z.array(z.string()),
-      explanation: z.string(),
-      source: z.string(),
-    }),
-  ),
+// INFO: the shape of the structured output of one practice exercise. It is
+// parsed loosely here and checked by the app before it is saved. options is
+// an empty array and source an empty string when they do not apply.
+export const practiceExercisePayloadSchema = z.object({
+  kind: z.string(),
+  rule: z.string(),
+  prompt: z.string(),
+  options: z.array(z.string()),
+  accepted: z.array(z.string()),
+  explanation: z.string(),
+  source: z.string(),
 });
+
+// INFO: the structured output of the blind solver. answer is empty when it has none.
+export const practiceSolutionSchema = z.object({
+  answer: z.string(),
+  alreadyCorrect: z.boolean(),
+});
+
+// INFO: the structured output of the reviewer, in the order the model writes
+// it: the checks before passed and reason. The app recomputes passed.
+export const practiceReviewSchema = z.object({
+  singleAnswer: z.boolean(),
+  meaningKept: z.boolean(),
+  answerNotInPrompt: z.boolean(),
+  oneRealMistake: z.boolean(),
+  naturalEnglish: z.boolean(),
+  solverAnswerAccepted: z.boolean(),
+  passed: z.boolean(),
+  reason: z.string(),
+});
+
+// INFO: the exercise of a check row, bounded so a row can never be too big to save.
+const checkText = z.string().max(1000);
+export const practiceCheckExerciseSchema = z.strictObject({
+  kind: z.string().max(40),
+  rule: checkText,
+  prompt: checkText,
+  options: z.array(checkText).max(10),
+  accepted: z.array(checkText).max(10),
+  explanation: checkText,
+  source: checkText,
+});
+
+// INFO: the same rules as the SQL checks of practice_checks.
+export const practiceCheckCreateSchema = z
+  .strictObject({
+    stage: z.enum(PRACTICE_CHECK_STAGES),
+    generatorModel: z.enum(MODEL_IDS),
+    checkerModel: z.enum(MODEL_IDS).nullable(),
+    passed: z.boolean(),
+    reason: z.string().min(1).max(300).nullable(),
+    solverAnswer: z.string().min(1).max(300).nullable(),
+    exercise: practiceCheckExerciseSchema,
+  })
+  .refine((row) => (row.stage === "code") === (row.checkerModel === null))
+  .refine((row) => row.passed || row.reason !== null);
+
+export const practiceChecksCreateSchema = z.strictObject({
+  checks: z.array(practiceCheckCreateSchema).min(1).max(20),
+});
+
+export const practiceChecksSavedSchema = z.object({ count: z.int().min(1).max(20) });
 
 export const answerGradeSchema = z.object({
   flawed: z.boolean(),
@@ -572,7 +620,11 @@ export type PracticeAnswer = z.infer<typeof practiceAnswerSchema>;
 export type PracticeRun = z.infer<typeof practiceRunSchema>;
 export type PracticeItem = z.infer<typeof practiceItemSchema>;
 export type PracticeRunWithItems = z.infer<typeof practiceRunWithItemsSchema>;
-export type PracticeRoundPayload = z.infer<typeof practiceRoundSchema>;
+export type PracticeExercisePayload = z.infer<typeof practiceExercisePayloadSchema>;
+export type PracticeSolutionPayload = z.infer<typeof practiceSolutionSchema>;
+export type PracticeReviewPayload = z.infer<typeof practiceReviewSchema>;
+export type PracticeCheckCreate = z.infer<typeof practiceCheckCreateSchema>;
+export type PracticeChecksSaved = z.infer<typeof practiceChecksSavedSchema>;
 export type AnswerGradePayload = z.infer<typeof answerGradeSchema>;
 export type StudyNoteShape = z.infer<typeof studyNoteShapeSchema>;
 export type StudyNoteCreate = z.infer<typeof studyNoteCreateSchema>;
