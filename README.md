@@ -37,16 +37,41 @@ map, the palette and the Home design are decided.
   and its secure-store adapter), `utils/` (pure functions)
 - App identifier: `com.maxirebolo.fluencylab`
 - Practice writes one exercise per AI call and checks it before it is shown: a code check, a blind
-  solver, then (for a fix and a translate) a reviewer; every check is stored in `practice_checks`.
-  Why: prompt chaining, one focused task per call (generate, then review). Choices of the plan:
+  solver, then a reviewer for every kind; every check is stored in `practice_checks`.
+  Why: prompt chaining, one focused task per call (generate, then review). Choices:
   - D1: the kind order is fixed by position (`choose, gap, fix` with no device language, a
     six-position cycle with translates when there is one), so no three slots in a row hold two translates.
+    A usage contrast topic (`CONTRAST_TOPIC_IDS`) plans only choose and fix (and its translates):
+    both forms of a gap or a fix are often grammatical there.
   - D2: a rule or word is capped at 2 slots; when every target is capped the slot gets an open target.
   - D3: an AI failure of the background slot is held until the learner is waiting for that exercise.
-  - D4: `bad_response` and `refused` from the writer count as a failed attempt with no check row;
-    any other AI failure does not, and Try again resends the stage.
+  - D4: `bad_response` and `refused` from the writer, the solver or the reviewer count as a failed
+    attempt with no check row; any other AI failure does not, and Try again resends the stage.
   - D5: a reviewer row's reason is the code of the first false boolean plus the model's reason, cut to 300.
   - D6: every grader verdict gets a row; `passed` is `!flawed`, with reason `grader_flawed`.
+  - D7: a kind that fails 3 attempts on a slot is dead for the run; the slot falls back to the next
+    kind not tried (choose, gap, fix; choose, fix on a contrast topic; never translate), and a later
+    slot planned with a dead kind starts on the first fallback kind not dead. When every kind fails
+    the slot starts a second round on its planned kind and the topic's next point; the AI failure
+    shows only after 2 rounds, and Try again starts 2 more. Why: on a device test the learner tapped
+    Try again 8 times on one slot.
+  - D8: each write of a run gets its scenario from code, write n taking
+    `SCENARIOS[(offset + 7n) % 24]`, so no scenario comes back within 24 writes, Try again included.
+    The writer gets no avoid list and no forced subject. Why: the same request brought back the same
+    sentence.
+  - D9: a prompt is rejected as `similar_prompt` when it and a prompt the learner has seen or will see
+    share at least half of the union of their content words (no stop, time, weekday or number words,
+    at least 3 each). The slot's rejected prompts count only for an exact repeat. Why: comparing with
+    half of the smaller prompt rejected most timetable sentences for their time words.
+  - D10: a grammar topic is practiced through its points (`TOPIC_POINTS`), one per slot in order from
+    a start fixed per run. The code sets the rule label (the point's label, or the learner's rule for
+    a correction) and keeps source only for a fix on a learner's correction.
+  - D11: only a choose is held to a single answer. A gap, a fix and a translate pass on meaning,
+    answer not in the prompt and natural English (and one real mistake for a fix), and a solver
+    answer the reviewer accepts joins accepted. Why: the grader accepts any right answer to a typed
+    kind, so only a choose can mark a right answer wrong.
+  - D12: a choose option or a gap answer that repeats the word right before or after the gap is
+    rejected as `gap_word_doubled` ("has gone to to").
 
 ## Pending
 
