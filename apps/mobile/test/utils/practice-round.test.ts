@@ -4,6 +4,7 @@
 //
 // Tested:
 // - toExercise trims, maps and rejects an exercise that breaks a rule of its kind or a limit, each with its reason code
+// - toExercise rejects a choose option or a gap answer that repeats the word before or after the gap
 // - hintGivesAnswer and promptShowsAnswer find a gap or a translate that shows its answer
 // - ruleKey compares rules trimmed and case-insensitive
 // - isNegative finds the polarity of a sentence
@@ -85,6 +86,74 @@ function reasonOf(raw: Raw) {
   const result = toExercise(raw);
   return result.ok ? null : result.reason;
 }
+
+describe("toExercise and a word doubled around the gap", () => {
+  const supermarket = "She ___ to the supermarket twice this week.";
+
+  it("rejects a choose whose options end with the word after the gap", () => {
+    expect(
+      reasonOf({
+        ...choose,
+        prompt: supermarket,
+        options: ["has been to", "has gone to", "has went to"],
+        accepted: ["has been to"],
+      }),
+    ).toBe("gap_word_doubled");
+  });
+
+  it("passes the same choose when the options leave the word to the sentence", () => {
+    expect(
+      reasonOf({
+        ...choose,
+        prompt: supermarket,
+        options: ["has been", "has gone", "has went"],
+        accepted: ["has been"],
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects a gap whose accepted answer ends with the word after the cue", () => {
+    const museum = { ...gap, prompt: "We ___ (go) to the museum.", accepted: ["have gone to"] };
+    expect(reasonOf(museum)).toBe("gap_word_doubled");
+    expect(reasonOf({ ...museum, accepted: ["have gone"] })).toBeNull();
+  });
+
+  it("rejects an answer that starts with the word before the gap", () => {
+    expect(reasonOf({ ...gap, prompt: "I have ___ (be) to Rome.", accepted: ["have been"] })).toBe(
+      "gap_word_doubled",
+    );
+  });
+
+  it("does not reject a gap at the start or the end of the prompt for a missing neighbour", () => {
+    expect(
+      reasonOf({
+        ...choose,
+        prompt: "___ you ever been to Rome?",
+        options: ["Have", "Has", "Did"],
+        accepted: ["Have"],
+      }),
+    ).toBeNull();
+    expect(
+      reasonOf({
+        ...choose,
+        prompt: "By next year she ___",
+        options: ["will have left", "leaves", "left"],
+        accepted: ["will have left"],
+      }),
+    ).toBeNull();
+  });
+
+  it("compares whole words, not parts of them", () => {
+    expect(
+      reasonOf({
+        ...choose,
+        prompt: "She ___ together with us.",
+        options: ["went", "goes", "go"],
+        accepted: ["went"],
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("toExercise", () => {
   it("maps a valid exercise of each kind", () => {

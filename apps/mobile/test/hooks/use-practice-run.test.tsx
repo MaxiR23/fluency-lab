@@ -4,7 +4,7 @@
 //
 // Tested:
 // - The key, the profile, the spend, the run and the focus data read from their ports; no key and each failure
-// - A new run is created, the first exercise is written with the slot's target, kind and avoid only, solved, and saved with its usage
+// - A new run is created, the first exercise is written with the slot's target, kind and seed only, solved, and saved with its usage
 // - The next exercise is written in the background while the first is on screen, and the checks of each slot are sent
 // - A failed checks save does not block and is sent with the next save
 // - A right pick and a typed match are answered with no tutor call; a typed miss asks the tutor
@@ -13,7 +13,7 @@
 // - One chain at a time: a pick during a background call is saved by the same chain
 // - A note run reads its note and sends it in the writer call; a missed exercise makes a study note, saves it with no session, adds its usage to the run and opens it, also while the background chain runs
 // - Keep going, finish and stop; update key
-// - Reads the recent prompts and sends them as avoid
+// - Reads the recent prompts and rejects a written prompt that repeats one
 // - Regaining focus re-reads the context
 //
 // What is covered:
@@ -36,6 +36,7 @@ import type { PracticeOrigin } from "@/utils/practice-focus";
 import {
   answerGradeWith,
   exerciseDraftWith,
+  exerciseFor,
   fakeAi,
   resetFakeAi,
   reviewWith,
@@ -185,7 +186,7 @@ describe("usePracticeRun", () => {
     expect(ready(result).items[0]?.position).toBe(0);
   });
 
-  it("sends only the slot's target, kind and avoid to the writer, no chat text", async () => {
+  it("sends only the slot's target, kind and seed to the writer, no chat text", async () => {
     withKey();
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
@@ -197,7 +198,7 @@ describe("usePracticeRun", () => {
         focus: "mistakes",
         correction: { original: "I have went", corrected: "I have gone", rule: "Present perfect" },
       },
-      avoid: [],
+      scenario: expect.any(String),
     });
     expect(request.system).not.toContain("Ada");
   });
@@ -209,16 +210,23 @@ describe("usePracticeRun", () => {
     expect(fakeData.listRecentPrompts).toHaveBeenCalledWith(7, 40);
   });
 
-  it("sends the recent prompts as avoid", async () => {
+  it("rejects a written prompt that repeats a recent one and sends no avoid list", async () => {
     withKey();
+    const repeated = exerciseFor("choose", 7);
     fakeData.listRecentPrompts.mockResolvedValue({
       ok: true,
-      value: [{ runId: "old-run", prompt: "I ___ (be) there.", rule: "Present perfect" }],
+      value: [{ runId: "old-run", prompt: repeated.prompt, rule: "Present perfect" }],
+    });
+    fakeAi.practiceExercise.mockResolvedValueOnce({
+      ok: true,
+      value: exerciseDraftWith({ exercise: repeated }),
     });
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
     const [request] = fakeAi.practiceExercise.mock.calls[0];
-    expect(JSON.parse(request.turns[0].text).avoid).toEqual(["I ___ (be) there."]);
+    expect(JSON.parse(request.turns[0].text)).not.toHaveProperty("avoid");
+    const rows = fakeData.addPracticeChecks.mock.calls.flatMap((call) => call[1]);
+    expect(rows[0]).toMatchObject({ stage: "code", passed: false, reason: "repeat" });
   });
 
   it("shows the failure when the recent prompts cannot be read", async () => {
@@ -466,7 +474,14 @@ describe("usePracticeRun", () => {
     await waitFor(() => expect(ready(result).items).toHaveLength(2));
     await waitFor(() => expect(fakeData.addPracticeChecks).toHaveBeenCalled());
     const rows = fakeData.addPracticeChecks.mock.calls.flatMap(([, checks]) => checks);
-    expect(rows.map((row) => row.stage)).toEqual(["code", "solver", "code", "solver"]);
+    expect(rows.map((row) => row.stage)).toEqual([
+      "code",
+      "solver",
+      "reviewer",
+      "code",
+      "solver",
+      "reviewer",
+    ]);
     expect(fakeData.addPracticeChecks.mock.calls[0]?.[0]).toBe("run-1");
   });
 
@@ -477,8 +492,8 @@ describe("usePracticeRun", () => {
     await waitFor(() => expect(ready(result).items).toHaveLength(2));
     await waitFor(() => expect(fakeData.addPracticeChecks).toHaveBeenCalledTimes(2));
     expect(ready(result).failure).toBeNull();
-    expect(fakeData.addPracticeChecks.mock.calls[0]?.[1]).toHaveLength(2);
-    expect(fakeData.addPracticeChecks.mock.calls[1]?.[1]).toHaveLength(4);
+    expect(fakeData.addPracticeChecks.mock.calls[0]?.[1]).toHaveLength(3);
+    expect(fakeData.addPracticeChecks.mock.calls[1]?.[1]).toHaveLength(6);
   });
 
   it("saves the usage of a billed failure and shows the AI failure once every kind is used up", async () => {
@@ -487,20 +502,20 @@ describe("usePracticeRun", () => {
     fakeAi.practiceExercise.mockResolvedValue({ ok: false, failure: "bad_response", usage });
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).failure).not.toBeNull());
-    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(9);
-    await waitFor(() => expect(fakeData.addPracticeUsage).toHaveBeenCalledTimes(9));
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(18);
+    await waitFor(() => expect(fakeData.addPracticeUsage).toHaveBeenCalledTimes(18));
     expect(ready(result).failure).toMatchObject({ source: "ai", failure: "bad_response" });
     expect(ready(result).phase).toBe("asking");
   });
 
   it("shows the AI failure once every kind is used up and writes again on Try again", async () => {
     withKey();
-    for (let i = 0; i < 9; i += 1) {
+    for (let i = 0; i < 18; i += 1) {
       fakeAi.practiceExercise.mockResolvedValueOnce({ ok: false, failure: "bad_response" });
     }
     const { result } = await renderHook(() => usePracticeRun(newRun));
     await waitFor(() => expect(ready(result).failure).not.toBeNull());
-    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(9);
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(18);
     await act(async () => result.current.retry());
     await waitFor(() => expect(ready(result).phase).toBe("answering"));
     expect(ready(result).failure).toBeNull();

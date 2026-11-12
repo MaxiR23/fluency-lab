@@ -100,8 +100,17 @@ describe("tagStyle", () => {
         borderRadius: radius.pill,
         paddingHorizontal: spacing.cluster,
         paddingVertical: spacing.xs,
+        flexShrink: 1,
       },
       label: "tabActive",
+      lines: 1,
     });
+  });
+
+  it("keeps the rule tag on one line that shrinks, and leaves every other variant unlimited", () => {
+    expect(tagStyle("rule").lines).toBe(1);
+    for (const variant of ["tint", "outline", "word", "count", "withdrawn", "type"] as const) {
+      expect(tagStyle(variant).lines).toBeUndefined();
+    }
   });
 });

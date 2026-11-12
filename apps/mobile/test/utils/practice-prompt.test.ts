@@ -3,11 +3,12 @@
 // Tests for the prompts of a practice exercise, its solver and reviewer, and of the grading of an answer.
 //
 // Tested:
-// - focusDataFrom picks the focus data a run sends
-// - exerciseRequest sends only the slot's kind, target and avoid list, with the rules of that kind
+// - focusDataFrom picks the focus data a run sends, and marks a usage contrast topic
+// - exerciseRequest sends a topic slot's point (label and brief) and asks to practice exactly that point; RULE_PRACTICE_CHOOSE asks for plausible wrong options
+// - exerciseRequest sends only the slot's kind, target and seed (the scenario), with the rules of that kind; no avoid list, and no seed for a fix on a learner's own correction
 // - solveRequest sends what the learner sees and reviewRequest adds the accepted answers and the solver's answer
 // - RULE_PRACTICE_GRADE asks for one short sentence to the learner
-// - RULE_PRACTICE_FIX puts the one mistake on the practiced rule with a single correction; RULE_PRACTICE_REVIEW counts variants as one answer and judges only the practiced point
+// - RULE_PRACTICE_FIX asks for one ungrammatical mistake on the practiced rule, never a choice between two grammatical forms; RULE_PRACTICE_REVIEW counts variants as one answer and judges only the practiced point
 // - avoidPrompts builds the avoid list from the run, the queue, the rejected prompts and the recent prompts
 // - focusDataFrom sends the raw id of a topic outside the catalog
 // - rotateMistakes puts the rules not practiced recently first
@@ -24,13 +25,12 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { PRACTICE_KINDS, type PracticeKind } from "@fluency-lab/shared";
+import { PRACTICE_KINDS, type PracticeKind, TOPIC_POINTS } from "@fluency-lab/shared";
 
 import type { PracticeSlot, SlotTarget } from "@/utils/practice-slots";
 import {
   KIND_LABELS,
   RULE_PRACTICE_ANSWERABLE,
-  RULE_PRACTICE_AVOID,
   RULE_PRACTICE_CHOOSE,
   RULE_PRACTICE_FIX,
   RULE_PRACTICE_FIX_SOURCE,
@@ -42,7 +42,9 @@ import {
   RULE_PRACTICE_OPEN_TARGET,
   RULE_PRACTICE_REVIEW,
   RULE_PRACTICE_RULE,
+  RULE_PRACTICE_POINT,
   RULE_PRACTICE_RULE_WORDS,
+  RULE_PRACTICE_SEED,
   RULE_PRACTICE_SOLVE,
   RULE_PRACTICE_TARGET_RULE,
   RULE_STUDY_NOTE,
@@ -100,6 +102,8 @@ describe("focusDataFrom", () => {
       kind: "topic",
       topic: "subjunctive",
       level: null,
+      contrast: false,
+      points: [],
     });
   });
 
@@ -124,6 +128,8 @@ describe("focusDataFrom", () => {
       kind: "topic",
       topic: "Conditionals",
       level: "advanced",
+      contrast: false,
+      points: TOPIC_POINTS.conditionals,
     });
   });
 
@@ -132,7 +138,72 @@ describe("focusDataFrom", () => {
       kind: "topic",
       topic: "Articles",
       level: null,
+      contrast: false,
+      points: TOPIC_POINTS.articles,
     });
+  });
+
+  it("carries the points of the topic, none for an id outside the catalog", () => {
+    const data = focusDataFrom("topic", "going_to_vs_will", mistakes(0), words(0), null, null, []);
+    expect(data.kind === "topic" && data.points).toBe(TOPIC_POINTS.going_to_vs_will);
+  });
+
+  it("marks a usage contrast topic as a contrast", () => {
+    for (const id of [
+      "going_to_vs_will",
+      "past_simple_vs_present_perfect",
+      "present_simple_future",
+    ]) {
+      const data = focusDataFrom("topic", id, mistakes(0), words(0), null, null, []);
+      expect(data.kind === "topic" && data.contrast).toBe(true);
+    }
+    expect(focusDataFrom("topic", null, mistakes(0), words(0), null, null, [])).toMatchObject({
+      contrast: false,
+    });
+  });
+});
+
+describe("exerciseRequest for a topic point", () => {
+  const point = TOPIC_POINTS.going_to_vs_will[2]!;
+  const slot: PracticeSlot = {
+    position: 0,
+    kind: "choose",
+    target: { focus: "topic", topic: "Going to vs will", level: null, point },
+  };
+  const request = exerciseRequest({ slot, missedRules: [], language: null, seed: null });
+
+  it("sends the point's label and brief in the target", () => {
+    expect(userTurn(request).target).toEqual({
+      focus: "topic",
+      topic: "Going to vs will",
+      level: null,
+      point: { label: "Going to: evidence now", brief: "a prediction from something visible now." },
+    });
+  });
+
+  it("asks to practice exactly that point", () => {
+    expect(request.system).toContain(RULE_PRACTICE_POINT);
+    expect(RULE_PRACTICE_POINT).toBe(
+      "Practice exactly the point of the learner's message. The sentence must make that point necessary, with a word or a context that rules out the other forms.",
+    );
+  });
+
+  it("has no point line for a slot with no point", () => {
+    const plain = exerciseRequest({
+      slot: { ...slot, target: { ...slot.target, point: null } as PracticeSlot["target"] },
+      missedRules: [],
+      language: null,
+      seed: null,
+    });
+    expect(plain.system).not.toContain(RULE_PRACTICE_POINT);
+  });
+});
+
+describe("RULE_PRACTICE_CHOOSE", () => {
+  it("asks for plausible wrong options a learner really confuses", () => {
+    expect(RULE_PRACTICE_CHOOSE).toBe(
+      "In a choose, exactly one option is right in the sentence. The other two are wrong in it but plausible: forms a learner really confuses on this point, such as the same verb in another form, never an unrelated tense that is obviously wrong.",
+    );
   });
 });
 
@@ -148,24 +219,43 @@ describe("exerciseRequest", () => {
       focus: "mistakes",
       correction: { original: "I never been", corrected: "I've never been", rule },
     });
+  const seed = { scenario: "a train trip" };
   const base = {
     slot: wordSlot,
     missedRules: [] as string[],
     language: null,
-    avoid: [] as string[],
+    seed,
   };
 
-  it("sends only the slot's kind, target and the avoid list", () => {
-    const request = exerciseRequest({ ...base, avoid: ["I ___ (be) there."] });
+  it("sends the slot's kind, target and scenario, with no subject and no avoid list", () => {
+    const request = exerciseRequest(base);
     expect(userTurn(request)).toEqual({
       kind: "gap",
       target: { focus: "words", word: "definitely" },
-      avoid: ["I ___ (be) there."],
+      scenario: "a train trip",
     });
+    expect(userTurn(request)).not.toHaveProperty("subject");
+    expect(userTurn(request)).not.toHaveProperty("avoid");
   });
 
-  it("sends an empty avoid on the first exercise of a new run", () => {
-    expect(userTurn(exerciseRequest(base)).avoid).toEqual([]);
+  it("asks for the scenario only when it fits the point, and never mentions an avoid list", () => {
+    const { system } = exerciseRequest(base);
+    expect(system).toContain(RULE_PRACTICE_SEED);
+    expect(system).not.toContain("avoid");
+    expect(RULE_PRACTICE_SEED).toBe(
+      "Set the sentence in the scenario of the learner's message when it fits the point naturally. The point comes first: choose the subject and the verb the point needs.",
+    );
+  });
+
+  it("sends no seed and no seed rule for a fix on a learner's own correction", () => {
+    const request = exerciseRequest({ ...base, slot: mistakeSlot("Articles") });
+    expect(userTurn(request)).toEqual({
+      kind: "fix",
+      target: mistakeSlot("Articles").target,
+    });
+    expect(request.system).not.toContain(RULE_PRACTICE_SEED);
+    const unseeded = exerciseRequest({ ...base, slot: mistakeSlot(null), seed: null });
+    expect(unseeded.system).not.toContain(RULE_PRACTICE_SEED);
   });
 
   it("states the rules of the slot's kind and not the other kinds'", () => {
@@ -184,7 +274,7 @@ describe("exerciseRequest", () => {
     for (const kind of PRACTICE_KINDS) {
       const { system } = exerciseRequest({
         ...base,
-        slot: slotOf(kind, { focus: "topic", topic: "Articles", level: null }),
+        slot: slotOf(kind, { focus: "topic", topic: "Articles", level: null, point: null }),
         language: "es",
       });
       expect(system).toContain(RULE_PRACTICE_KIND[kind]);
@@ -197,7 +287,7 @@ describe("exerciseRequest", () => {
       }
       expect(system).toContain(RULE_PRACTICE_ANSWERABLE);
       expect(system).toContain(RULE_PRACTICE_NO_ANSWER);
-      expect(system).toContain(RULE_PRACTICE_AVOID);
+      expect(system).toContain(RULE_PRACTICE_SEED);
       expect(system).toContain(RULE_NO_KEY);
     }
   });
@@ -205,7 +295,7 @@ describe("exerciseRequest", () => {
   it("asks a translate in the device language with no names and no loanwords", () => {
     const { system } = exerciseRequest({
       ...base,
-      slot: slotOf("translate", { focus: "topic", topic: "Articles", level: null }),
+      slot: slotOf("translate", { focus: "topic", topic: "Articles", level: null, point: null }),
       language: "es-AR",
     });
     expect(system).toContain(translateRule("es-AR"));
@@ -254,6 +344,7 @@ describe("exerciseRequest", () => {
       exerciseRequest({ ...base, slot: slotOf("gap", { focus: "words", word: null }) }).system,
     ).toContain(RULE_PRACTICE_OPEN_TARGET);
     expect(exerciseRequest(base).system).not.toContain(RULE_PRACTICE_OPEN_TARGET);
+    expect(RULE_PRACTICE_OPEN_TARGET).not.toContain("avoid");
   });
 
   it("adds the missed rules line only when there are missed rules", () => {
@@ -277,7 +368,7 @@ describe("exerciseRequest", () => {
     const request = exerciseRequest({ ...base, slot: slotOf("gap", { focus: "note", note }) });
     expect(request.system).toContain(RULE_PRACTICE_NOTE);
     expect(request.system).toContain(RULE_PRACTICE_RULE);
-    expect(userTurn(request)).toEqual({ kind: "gap", target: { focus: "note", note }, avoid: [] });
+    expect(userTurn(request)).toEqual({ kind: "gap", target: { focus: "note", note }, ...seed });
     expect(exerciseRequest(base).system).not.toContain(RULE_PRACTICE_NOTE);
   });
 
@@ -290,13 +381,12 @@ describe("exerciseRequest", () => {
     expect(RULE_PRACTICE_ANSWERABLE).toContain("exactly one answer");
   });
 
-  it("asks for no answer in the prompt and no reuse of avoid", () => {
+  it("asks for no answer in the prompt", () => {
     expect(RULE_PRACTICE_NO_ANSWER).toContain("No prompt contains its accepted answer");
-    expect(RULE_PRACTICE_AVOID).toContain("never reuse one of those prompts");
   });
 
   it("asks a fix to hold one real mistake and keep the learner's meaning", () => {
-    expect(RULE_PRACTICE_FIX).toContain("never already correct");
+    expect(RULE_PRACTICE_FIX).toContain("ungrammatical");
     expect(RULE_PRACTICE_FIX).toContain("negation");
   });
 
@@ -306,7 +396,7 @@ describe("exerciseRequest", () => {
     expect(everything).not.toContain("private sentence");
     expect(everything.toLowerCase()).not.toContain("goals");
     expect(everything.toLowerCase()).not.toMatch(/\bname\b/);
-    expect(Object.keys(userTurn(request)).sort()).toEqual(["avoid", "kind", "target"]);
+    expect(Object.keys(userTurn(request)).sort()).toEqual(["kind", "scenario", "target"]);
   });
 });
 
@@ -407,26 +497,34 @@ describe("reviewRequest", () => {
 });
 
 describe("RULE_PRACTICE_FIX", () => {
-  it("puts the mistake on the practiced rule with exactly one correction", () => {
-    expect(RULE_PRACTICE_FIX).toContain("The mistake is on the practiced rule itself");
-    expect(RULE_PRACTICE_FIX).toContain("exactly one correction fixes it");
-  });
-
-  it("never allows another form of the practiced point to be correct too", () => {
-    expect(RULE_PRACTICE_FIX).toContain(
-      "Never write a sentence where another form of the practiced point is also correct",
+  it("asks for one mistake that makes the sentence ungrammatical, never a choice of forms", () => {
+    expect(RULE_PRACTICE_FIX).toBe(
+      "A fix prompt holds exactly one mistake that makes the sentence ungrammatical: a wrong or missing word, ending or verb form on the practiced rule. It is never a choice between two grammatical forms; that belongs to a choose. Exactly one correction fixes it. accepted lists that correction and only its spelling or contraction variants, each differing from the prompt only by fixing that mistake. A fix built from a learner's mistake keeps the learner's original meaning, negation included.",
     );
-    expect(RULE_PRACTICE_FIX).toContain('for "going to vs will"');
+  });
+});
+
+describe("RULE_PRACTICE_REVIEW per kind", () => {
+  it("reads singleAnswer for a choose only and checks every typed accepted answer", () => {
+    expect(RULE_PRACTICE_REVIEW).toContain("singleAnswer: for a choose");
+    expect(RULE_PRACTICE_REVIEW).toContain("every accepted answer is a correct and natural answer");
   });
 
-  it("lists only the one correction and its spelling or contraction variants", () => {
-    expect(RULE_PRACTICE_FIX).toContain(
-      "accepted lists that one correction and only its spelling or contraction variants",
+  it("asks oneRealMistake whether the fix prompt is wrong and the first answer corrects it", () => {
+    expect(RULE_PRACTICE_REVIEW).toContain(
+      "oneRealMistake: for a fix, the prompt is wrong as written and the first accepted answer corrects it; true for every other kind",
     );
   });
 });
 
 describe("RULE_PRACTICE_GRADE", () => {
+  it("calls an exercise flawed for wrong answers, a changed meaning or a correct fix, not for a second fitting answer", () => {
+    expect(RULE_PRACTICE_GRADE).not.toContain("more than one answer fits");
+    expect(RULE_PRACTICE_GRADE).toContain(
+      "The exercise is flawed when its accepted answers are wrong or change the prompt's meaning, or when a fix prompt already is correct English.",
+    );
+  });
+
   it("asks the grader to judge the visible prompt and to flag a flawed exercise", () => {
     expect(RULE_PRACTICE_GRADE).toContain("flawed");
     expect(RULE_PRACTICE_GRADE).toContain("examples");

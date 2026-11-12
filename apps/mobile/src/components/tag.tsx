@@ -7,7 +7,13 @@ export function Tag({ label, variant }: { label: string; variant?: TagVariant })
   const style = tagStyle(variant);
   return (
     <View style={style.box}>
-      <Text variant={style.label}>{label}</Text>
+      <Text
+        variant={style.label}
+        numberOfLines={style.lines}
+        ellipsizeMode={style.lines === undefined ? undefined : "tail"}
+      >
+        {label}
+      </Text>
     </View>
   );
 }

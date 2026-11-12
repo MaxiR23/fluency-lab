@@ -4,6 +4,7 @@
 //
 // Tested:
 // - A row per rule with its count, a check when all right and an X when a miss
+// - A long rule label wraps to two lines at most
 //
 // What is covered:
 // - Normal case, empty case
@@ -32,6 +33,13 @@ describe("ResultList", () => {
     expect(screen.getByText("Present perfect")).toBeTruthy();
     expect(screen.getByText("0/1")).toBeTruthy();
     expect(screen.getAllByTestId("list-row")).toHaveLength(2);
+  });
+
+  it("wraps a long rule label to two lines at most", async () => {
+    const long = "Present simple for future timetabled events and schedules of trains";
+    await render(<ResultList rows={[{ label: long, right: 1, total: 3, allRight: false }]} />);
+    expect(screen.getByText(long).props.numberOfLines).toBe(2);
+    expect(screen.getByText("1/3")).toBeTruthy();
   });
 
   it("draws a check for a row all right and an X for a miss", async () => {

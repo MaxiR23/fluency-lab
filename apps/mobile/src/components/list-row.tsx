@@ -5,6 +5,9 @@ import { Icon } from "@/components/icon";
 import { Text } from "@/components/text";
 import { borderWidth, colors, size, spacing, strokeWidth } from "@/constants/theme";
 
+// INFO: a dense row (the result card) wraps a long title to two lines at most.
+const DENSE_TITLE_LINES = 2;
+
 export function ListRow({
   title,
   value,
@@ -34,6 +37,7 @@ export function ListRow({
       <Text
         variant={tone === "danger" ? "bodyDanger" : dense ? "row" : "body"}
         style={styles.title}
+        numberOfLines={dense ? DENSE_TITLE_LINES : undefined}
       >
         {title}
       </Text>
@@ -88,5 +92,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   divider: { borderBottomWidth: borderWidth.thin, borderBottomColor: colors.border },
-  title: { flexGrow: 1 },
+  // INFO: the title shrinks so the value, the chevron and the trailing node stay inside the row.
+  title: { flexGrow: 1, flexShrink: 1 },
 });
