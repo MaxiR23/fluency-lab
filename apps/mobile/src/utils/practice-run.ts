@@ -18,6 +18,7 @@ import {
   type SessionUsage,
   type StudyNoteCreate,
   type TokenUsage,
+  type TopicPoint,
 } from "@fluency-lab/shared";
 
 import type {
@@ -40,9 +41,11 @@ import {
   codeRow,
   graderRow,
   reviewVerdict,
+  settleFields,
   reviewerRow,
   solverRow,
   solverVerdict,
+  withSolverAnswer,
 } from "@/utils/practice-check";
 import {
   KIND_LABELS,
@@ -55,10 +58,15 @@ import {
   type FocusData,
 } from "@/utils/practice-prompt";
 import { gapSentenceFill, splitGap } from "@/utils/practice-round";
+import { seedFor, takesSeed, type PracticeSeed } from "@/utils/practice-seeds";
 import {
   MAX_SLOT_ATTEMPTS,
+  MAX_SLOT_ROUNDS,
+  fallbackKinds,
   missingPositions,
+  nextPoint,
   planSlots,
+  startKind,
   type PracticeSlot,
 } from "@/utils/practice-slots";
 
@@ -78,10 +86,14 @@ export type WriteLane = "screen" | "background";
 // INFO: the slot being written and checked. attempt counts the failed checks of the slot; stage
 // is the call it waits for. rejected holds the prompts the code check or a later check refused.
 // tried holds the kinds the slot already used up, the planned kind first; slot.kind is the
-// kind being written now.
+// kind being written now. seed is the scenario of this write attempt, null for a fix
+// on a learner's own correction.
 export type SlotWork = {
   slot: PracticeSlot;
   tried: PracticeSlot["kind"][];
+  // INFO: the full round over every kind the slot is on, from 1 to MAX_SLOT_ROUNDS.
+  round: number;
+  seed: PracticeSeed | null;
   attempt: number;
   stage: "write" | "solve" | "review";
   exercise: PracticeExercise | null;
@@ -129,6 +141,12 @@ export type PracticeRunState = {
   // INFO: one slot per position still to fill; the first is the one being worked.
   slots: PracticeSlot[];
   work: SlotWork | null;
+  // INFO: the kinds that used up their attempts on a slot of this run; a later slot planned with
+  // one starts on a fallback kind. Cleared when every kind of a slot is used up.
+  deadKinds: PracticeSlot["kind"][];
+  // INFO: the write attempts of the run; it only grows (a failed attempt, a kind switch, a new
+  // round and Try again never reset it). A resumed run starts at its saved items.
+  writeCount: number;
   // INFO: an AI failure of the background chain, kept until the learner waits for that exercise.
   held: ChatFailure | null;
   // INFO: the checks not saved yet, and whether the next step should send them. A failed save
@@ -248,12 +266,15 @@ export function startPractice(input: {
       opened === null
         ? []
         : planSlots({
+            runId: opened.run.id,
             positions: missingPositions(opened.items, opened.run.target),
             focus: input.focus,
             language: input.language,
             usedRules: opened.items.map((entry) => entry.rule),
           }),
     work: null,
+    deadKinds: [],
+    writeCount: opened === null ? 0 : opened.items.length,
     held: null,
     checks: [],
     checksDue: false,
@@ -303,19 +324,30 @@ function schedule(s: PracticeRunState): PracticeRunState {
   if (s.run === null || s.work !== null || slot === undefined || s.stopped) return s;
   if (s.phase === "result" || s.phase === "finishing" || sendState(s).locked) return s;
   if (ahead(s) > 1) return s;
-  return {
-    ...s,
-    work: {
-      slot,
-      tried: [],
-      attempt: 1,
-      stage: "write",
-      exercise: null,
-      generatorModel: PRACTICE_WRITER_MODEL,
-      solverAnswer: null,
-      rejected: [],
-    },
-  };
+  return writing(s, {
+    slot: { ...slot, kind: startKind(slot.kind, s.focus, s.deadKinds) },
+    tried: [],
+    round: 1,
+    seed: null,
+    attempt: 1,
+    stage: "write",
+    exercise: null,
+    generatorModel: PRACTICE_WRITER_MODEL,
+    solverAnswer: null,
+    rejected: [],
+  });
+}
+
+// INFO: the slot enters the write stage as the run's next write, with the scenario of that write
+// picked by code. Every entry counts: the slot's start, a failed attempt, a kind switch and the
+// restart that Try again resumes after every kind is used up.
+function writing(s: PracticeRunState, work: SlotWork): PracticeRunState {
+  const writeCount = s.writeCount + 1;
+  if (s.run === null || !takesSeed(work.slot)) {
+    return { ...s, writeCount, work: { ...work, seed: null } };
+  }
+  const seed = seedFor({ runId: s.run.id, writeCount: s.writeCount });
+  return { ...s, writeCount, work: { ...work, seed } };
 }
 
 function afterWrites(s: PracticeRunState): PracticeRunState {
@@ -412,6 +444,7 @@ function applyWrite(s: PracticeRunState, event: Extract<PracticeEvent, { type: "
     next = {
       ...next,
       slots: planSlots({
+        runId: event.run.id,
         positions: missingPositions(next.items, event.run.target),
         focus: next.focus,
         language: next.language,
@@ -477,13 +510,15 @@ function passSlot(s: PracticeRunState, work: SlotWork, exercise: PracticeExercis
   };
 }
 
-// INFO: the kinds a slot falls back to, in order, once its kind used up every attempt. A translate
-// is never a fallback: it needs the device language and stays at most one in three.
-const FALLBACK_KINDS: readonly PracticeSlot["kind"][] = ["choose", "gap", "fix"];
+function pointsOf(focus: FocusData): readonly TopicPoint[] {
+  return focus.kind === "topic" ? focus.points : [];
+}
 
-// INFO: the slot is written again; after the last attempt it switches to the next kind not yet
-// tried, from attempt one with its rejected prompts kept. When every kind is used up the AI
-// failure shows, and Try again starts the slot from its planned kind.
+// INFO: the slot is written again; after the last attempt its kind is dead for the run and the
+// slot switches to the next fallback kind not yet tried, from attempt one with its rejected
+// prompts kept. When every kind is used up the round ends: the dead kinds are cleared and the
+// slot starts the next round by itself on its planned kind and the topic's next point. Only after
+// MAX_SLOT_ROUNDS rounds the AI failure shows, and Try again starts that many more.
 function failAttempt(
   s: PracticeRunState,
   work: SlotWork,
@@ -499,21 +534,33 @@ function failAttempt(
   };
   const due = { ...s, checksDue: true };
   if (work.attempt < MAX_SLOT_ATTEMPTS) {
-    return { ...due, work: { ...again, attempt: work.attempt + 1 } };
+    return writing(due, { ...again, attempt: work.attempt + 1 });
   }
   const tried = [...work.tried, work.slot.kind];
-  const next = FALLBACK_KINDS.find((kind) => !tried.includes(kind));
-  if (next !== undefined) {
-    return { ...due, work: { ...again, slot: { ...work.slot, kind: next }, tried, attempt: 1 } };
+  const deadKinds = s.deadKinds.includes(work.slot.kind)
+    ? s.deadKinds
+    : [...s.deadKinds, work.slot.kind];
+  const fallback = fallbackKinds(s.focus).find((kind) => !tried.includes(kind));
+  if (fallback !== undefined) {
+    return writing(
+      { ...due, deadKinds },
+      { ...again, slot: { ...work.slot, kind: fallback }, tried, attempt: 1 },
+    );
   }
-  const planned = tried[0] ?? work.slot.kind;
+  const planned =
+    s.slots.find((slot) => slot.position === work.slot.position)?.kind ??
+    tried[0] ??
+    work.slot.kind;
+  const lastRound = work.round >= MAX_SLOT_ROUNDS;
   const restart: SlotWork = {
     ...again,
-    slot: { ...work.slot, kind: planned },
+    slot: { ...work.slot, kind: planned, target: nextPoint(work.slot.target, pointsOf(s.focus)) },
     tried: [],
+    round: lastRound ? 1 : work.round + 1,
     attempt: 1,
   };
-  return hold({ ...due, work: restart }, EXHAUSTED);
+  const next = writing({ ...due, deadKinds: [] }, restart);
+  return lastRound ? hold(next, EXHAUSTED) : next;
 }
 
 // INFO: a bad_response or a refusal is a failed attempt with no check row (there is no exercise
@@ -537,14 +584,13 @@ function stageFailed(
   return hold(billed, failure);
 }
 
-// INFO: the prompts the writer must not repeat: the ones rejected for this slot (newest first),
-// the ones queued for saving, then the run's and the recent ones.
-function avoidFor(s: PracticeRunState): string[] {
-  const rejected = [...(s.work?.rejected ?? [])].reverse();
+// INFO: the prompts the learner has seen or will see, which the code check compares a written
+// prompt with: the ones queued for saving, then the run's and the recent ones of other days.
+function seenFor(s: PracticeRunState): string[] {
   const queued = s.background.flatMap((write) =>
     write.kind === "items" ? write.items.map((entry) => entry.prompt) : [],
   );
-  return avoidPrompts(s.items, s.recent, s.run?.id ?? null, [...rejected, ...queued]);
+  return avoidPrompts(s.items, s.recent, s.run?.id ?? null, queued);
 }
 
 function reduce(s: PracticeRunState, event: PracticeEvent): PracticeRunState {
@@ -587,14 +633,15 @@ function reduce(s: PracticeRunState, event: PracticeEvent): PracticeRunState {
       if (work === null || work.stage !== "write") return s;
       const { draft } = event;
       const billed = bill(s, draft.model, draft.usage);
-      const checked = codeCheck(draft.exercise, work.slot.kind, avoidFor(s));
+      const written = settleFields(draft.exercise, work.slot);
+      const checked = codeCheck(written, work.slot.kind, seenFor(s), work.rejected);
       const row = codeRow({
         generatorModel: draft.model,
-        exercise: draft.exercise,
+        exercise: written,
         reason: checked.ok ? null : checked.reason,
       });
       const recorded = withRows(billed, row);
-      if (!checked.ok) return failAttempt(recorded, work, draft.exercise.prompt.trim());
+      if (!checked.ok) return failAttempt(recorded, work, written.prompt.trim());
       return {
         ...recorded,
         work: { ...work, stage: "solve", exercise: checked.exercise, generatorModel: draft.model },
@@ -618,7 +665,6 @@ function reduce(s: PracticeRunState, event: PracticeEvent): PracticeRunState {
           reason: verdict.kind === "reject" ? verdict.reason : null,
         }),
       );
-      if (verdict.kind === "pass") return passSlot(recorded, work, work.exercise);
       if (verdict.kind === "reject") return failAttempt(recorded, work, work.exercise.prompt);
       return {
         ...recorded,
@@ -643,7 +689,10 @@ function reduce(s: PracticeRunState, event: PracticeEvent): PracticeRunState {
           verdict,
         }),
       );
-      if (verdict.passed) return passSlot(recorded, work, work.exercise);
+      if (verdict.passed) {
+        const accepted = withSolverAnswer(work.exercise, work.solverAnswer ?? "", review);
+        return passSlot(recorded, work, accepted);
+      }
       return failAttempt(recorded, work, work.exercise.prompt);
     }
     case "review_failed":
@@ -746,6 +795,7 @@ function reduce(s: PracticeRunState, event: PracticeEvent): PracticeRunState {
         slots: [
           ...s.slots,
           ...planSlots({
+            runId: s.run.id,
             positions: Array.from({ length: target - first }, (_, index) => first + index),
             focus: s.focus,
             language: s.language,
@@ -828,7 +878,7 @@ export function practiceStep(s: PracticeRunState): PracticeStep {
         slot: work.slot,
         missedRules: missedRules(s.items),
         language: s.language,
-        avoid: avoidFor(s),
+        seed: work.seed,
       }),
     };
   }

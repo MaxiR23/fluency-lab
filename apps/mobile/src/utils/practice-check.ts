@@ -9,7 +9,8 @@ import {
 
 import type { ExerciseReview, PracticeExercise } from "@/ai/ai-port";
 import { matchesAccepted, normalizeAnswer } from "@/utils/practice-grade";
-import { toExercise, type ExerciseCheck } from "@/utils/practice-round";
+import { MAX_ACCEPTED, toExercise, type ExerciseCheck } from "@/utils/practice-round";
+import type { PracticeSlot } from "@/utils/practice-slots";
 
 const MIN_WORD = 3;
 const MAX_REASON = 300;
@@ -28,12 +29,142 @@ export function sharesSourceWord(prompt: string, accepted: readonly string[]): b
   return accepted.some((answer) => wordsOf(answer).some((word) => source.has(word)));
 }
 
+// INFO: the English words that say nothing about a prompt's situation, left out of the
+// similarity check.
+const STOP_WORDS: ReadonlySet<string> = new Set([
+  "the",
+  "and",
+  "that",
+  "those",
+  "this",
+  "these",
+  "with",
+  "for",
+  "are",
+  "was",
+  "were",
+  "has",
+  "have",
+  "had",
+  "will",
+  "going",
+  "from",
+  "into",
+  "your",
+  "you",
+  "she",
+  "her",
+  "his",
+  "him",
+  "they",
+  "them",
+  "our",
+  "its",
+  "not",
+  "but",
+  "can",
+]);
+// INFO: the time words, weekdays and number words that every timetable sentence shares; they
+// say when, not what the situation is.
+const TIME_WORDS: ReadonlySet<string> = new Set([
+  "tomorrow",
+  "today",
+  "tonight",
+  "yesterday",
+  "morning",
+  "afternoon",
+  "evening",
+  "night",
+  "week",
+  "weekend",
+  "month",
+  "year",
+  "next",
+  "last",
+  "every",
+  "clock",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+]);
+const MIN_SIMILAR_WORDS = 3;
+const MIN_OVERLAP = 0.5;
+
+// INFO: the words that name a prompt's situation: letter runs of 3+ letters outside the
+// parentheses of a gap cue, minus the stop words and the time words. The gap marker holds no
+// letters.
+function contentWords(prompt: string): Set<string> {
+  const outside = prompt.replace(/\([^)]*\)/g, " ");
+  return new Set(wordsOf(outside).filter((word) => !STOP_WORDS.has(word) && !TIME_WORDS.has(word)));
+}
+
+// INFO: two prompts are similar when both have at least 3 content words and the shared ones are
+// at least half of the union: the same situation reused shows the answer of one exercise in
+// another.
+export function similarTo(prompt: string, earlier: string): boolean {
+  const mine = contentWords(prompt);
+  const theirs = contentWords(earlier);
+  if (mine.size < MIN_SIMILAR_WORDS || theirs.size < MIN_SIMILAR_WORDS) return false;
+  const shared = [...mine].filter((word) => theirs.has(word)).length;
+  const union = mine.size + theirs.size - shared;
+  return shared / union >= MIN_OVERLAP;
+}
+
+// INFO: a typed exercise takes the solver's answer as one more accepted answer when the reviewer
+// accepts it and it is not accepted yet, within the accepted limit. A choose keeps its one answer.
+export function withSolverAnswer(
+  exercise: PracticeExercise,
+  solverAnswer: string,
+  review: { solverAnswerAccepted: boolean },
+): PracticeExercise {
+  const answer = solverAnswer.trim();
+  if (exercise.kind === "choose" || !review.solverAnswerAccepted || answer === "") return exercise;
+  if (matchesAccepted(answer, exercise.accepted)) return exercise;
+  if (exercise.accepted.length >= MAX_ACCEPTED) return exercise;
+  return { ...exercise, accepted: [...exercise.accepted, answer] };
+}
+
+// INFO: the fields the code sets, never the writer: the rule label is the topic point's label for
+// a topic slot and the learner's rule for a slot on a learner's correction with one (other
+// targets keep the writer's rule); source is kept only for a fix on a learner's correction.
+export function settleFields(
+  raw: PracticeExercisePayload,
+  slot: PracticeSlot,
+): PracticeExercisePayload {
+  const { target } = slot;
+  const learnerFix =
+    slot.kind === "fix" && target.focus === "mistakes" && target.correction !== null;
+  let rule = raw.rule;
+  if (target.focus === "topic" && target.point !== null) rule = target.point.label;
+  if (target.focus === "mistakes" && target.correction?.rule != null) rule = target.correction.rule;
+  return { ...raw, rule, source: learnerFix ? raw.source : "" };
+}
+
 // INFO: check 1, no AI. The slot's kind, the limits and rules of the kind, the source word of a
-// translate and a prompt already asked, in this order.
+// translate, a prompt already asked and a prompt too close to one the learner sees, in this
+// order. seen are the prompts the learner has seen or will see; rejected are the slot's rejected
+// prompts, which the learner never sees, so they count for an exact repeat only.
 export function codeCheck(
   raw: PracticeExercisePayload,
   kind: PracticeKind,
-  avoid: readonly string[],
+  seen: readonly string[],
+  rejected: readonly string[] = [],
 ): ExerciseCheck {
   if (raw.kind !== kind) return { ok: false, reason: "wrong_kind" };
   const checked = toExercise(raw);
@@ -42,25 +173,28 @@ export function codeCheck(
   if (exercise.kind === "translate" && sharesSourceWord(exercise.prompt, exercise.accepted)) {
     return { ok: false, reason: "translate_source_word" };
   }
-  const asked = new Set(avoid.map(normalizeAnswer));
+  const asked = new Set([...seen, ...rejected].map(normalizeAnswer));
   if (asked.has(normalizeAnswer(exercise.prompt))) return { ok: false, reason: "repeat" };
+  if (seen.some((earlier) => similarTo(exercise.prompt, earlier))) {
+    return { ok: false, reason: "similar_prompt" };
+  }
   return checked;
 }
 
 export type SolverVerdict =
-  | { kind: "pass" }
-  | { kind: "reject"; reason: PracticeCheckReason }
-  | { kind: "review"; solverAnswer: string };
+  { kind: "reject"; reason: PracticeCheckReason } | { kind: "review"; solverAnswer: string };
 
-// INFO: check 2. choose and gap pass only on a match; a fix the solver finds already correct is
-// rejected; a fix and a translate go on to the reviewer with the solver's answer.
+// INFO: check 2. Only a choose is held to a single answer here: a choose the solver does not
+// match is rejected at once. A fix the solver finds already correct is rejected. Everything else
+// goes on to the reviewer with the solver's answer: the grader accepts any right answer to a
+// typed kind, so a second fitting answer cannot mark the learner wrong.
 export function solverVerdict(
   exercise: PracticeExercise,
   solution: { answer: string; alreadyCorrect: boolean },
 ): SolverVerdict {
-  if (exercise.kind === "choose" || exercise.kind === "gap") {
+  if (exercise.kind === "choose") {
     return matchesAccepted(solution.answer, exercise.accepted)
-      ? { kind: "pass" }
+      ? { kind: "review", solverAnswer: solution.answer }
       : { kind: "reject", reason: "solver_mismatch" };
   }
   if (exercise.kind === "fix" && solution.alreadyCorrect) {
@@ -104,14 +238,18 @@ const REVIEW_ORDER = [
   ["solverAnswerAccepted", "solver_answer_accepted"],
 ] as const;
 
-// INFO: check 3. The reason is the code of the first false boolean, then the model's reason
-// when it gave one, cut to 300. oneRealMistake is read for a fix only; it is true otherwise.
+// INFO: check 3. The booleans each kind is held to: singleAnswer for a choose only,
+// oneRealMistake for a fix only, solverAnswerAccepted never (a typed kind takes the solver's
+// answer as one more accepted answer instead). The reason is the code of the first false boolean
+// read, then the model's reason when it gave one, cut to 300.
 export function reviewVerdict(
   review: Omit<ReviewFields, "passed"> & { passed?: boolean },
   kind: PracticeKind,
 ): ReviewVerdict {
   for (const [field, code] of REVIEW_ORDER) {
+    if (field === "singleAnswer" && kind !== "choose") continue;
     if (field === "oneRealMistake" && kind !== "fix") continue;
+    if (field === "solverAnswerAccepted") continue;
     if (!review[field]) {
       const text = review.reason === null ? code : `${code}: ${review.reason}`;
       return { passed: false, code, reason: text.slice(0, MAX_REASON) };

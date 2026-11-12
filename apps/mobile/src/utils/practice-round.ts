@@ -13,7 +13,7 @@ export const GAP = "___";
 const MAX_RULE = 80;
 const MAX_TEXT = 300;
 const MAX_OPTION = 120;
-const MAX_ACCEPTED = 5;
+export const MAX_ACCEPTED = 5;
 const OPTION_COUNT = 3;
 
 function gapCount(prompt: string): number {
@@ -122,6 +122,26 @@ export type ExerciseCheck =
 
 const reject = (reason: PracticeCheckReason): ExerciseCheck => ({ ok: false, reason });
 
+function lettersOf(text: string): string[] {
+  return text.toLowerCase().match(/\p{L}+/gu) ?? [];
+}
+
+// INFO: an answer that repeats the word right before or right after the gap reads doubled once
+// it fills the gap ("has gone to to"). The cue in parentheses right after the gap is skipped; a
+// gap at the start or the end of the prompt has no neighbour on that side.
+export function doublesGapWord(prompt: string, answers: readonly string[]): boolean {
+  const split = splitGap(prompt);
+  if (split === null) return false;
+  const before = lettersOf(split.before).at(-1);
+  const after = lettersOf(split.after.replace(/^\s*\([^)]*\)/, "")).at(0);
+  return answers.some((answer) => {
+    const words = lettersOf(answer);
+    const first = words.at(0);
+    const last = words.at(-1);
+    return (after !== undefined && last === after) || (before !== undefined && first === before);
+  });
+}
+
 // INFO: an exercise that breaks a rule of its kind or a limit is rejected with its reason code.
 export function toExercise(raw: PracticeExercisePayload): ExerciseCheck {
   const kind = PRACTICE_KINDS.find((entry) => entry === raw.kind);
@@ -138,6 +158,8 @@ export function toExercise(raw: PracticeExercisePayload): ExerciseCheck {
   const gaps = gapCount(prompt);
   const needsGap = kind === "choose" || kind === "gap";
   if (needsGap ? gaps !== 1 : gaps !== 0) return reject("gap_count");
+  if (kind === "choose" && doublesGapWord(prompt, raw.options)) return reject("gap_word_doubled");
+  if (kind === "gap" && doublesGapWord(prompt, accepted)) return reject("gap_word_doubled");
   if (kind !== "choose") {
     if (kind === "fix" && fixIsAnswer(prompt, accepted)) return reject("fix_already_answer");
     if (kind === "fix" && !fixKeepsPolarity(prompt, accepted)) return reject("fix_polarity");

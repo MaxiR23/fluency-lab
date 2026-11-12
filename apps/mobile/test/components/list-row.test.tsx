@@ -6,6 +6,7 @@
 // - A pressable row is a button with its label, a plain row is not
 // - The value, the chevron and the trailing node
 // - The danger title, the last row (no bottom border) and the busy state
+// - The title shrinks beside the value and trailing node; a dense title wraps to two lines at most
 //
 // What is covered:
 // - Normal case, empty case, edges
@@ -23,6 +24,21 @@ import { textStyle } from "@/components/text-style";
 import { borderWidth, colors, size, spacing } from "@/constants/theme";
 
 describe("ListRow", () => {
+  it("lets the title shrink so the value and the trailing node stay inside the row", async () => {
+    await render(<ListRow title="A very long title" value="On" />);
+    expect(StyleSheet.flatten(screen.getByText("A very long title").props.style)).toMatchObject({
+      flexGrow: 1,
+      flexShrink: 1,
+    });
+  });
+
+  it("wraps a dense row's title to two lines at most, and leaves a plain row unlimited", async () => {
+    await render(<ListRow title="Dense title" dense />);
+    expect(screen.getByText("Dense title").props.numberOfLines).toBe(2);
+    await render(<ListRow title="Plain title" />);
+    expect(screen.getByText("Plain title").props.numberOfLines).toBeUndefined();
+  });
+
   it("is a button with its label when pressable", async () => {
     const onPress = jest.fn();
     await render(<ListRow title="Provider" onPress={onPress} />);

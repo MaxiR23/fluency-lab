@@ -25,6 +25,8 @@ export const PRACTICE_CHECK_REASONS = [
   "choose_answer_not_option",
   "translate_source_word",
   "repeat",
+  "similar_prompt",
+  "gap_word_doubled",
   "solver_mismatch",
   "solver_already_correct",
   "single_answer",

@@ -14,6 +14,7 @@
 //
 // SEE: apps/mobile/src/utils/practice-run-state.ts
 
+import { TOPIC_POINTS } from "@fluency-lab/shared";
 import { describe, expect, it } from "@jest/globals";
 import type { MistakePage, MonthSpend, Profile, StudyNote, WordPage } from "@fluency-lab/shared";
 
@@ -147,6 +148,8 @@ describe("practiceRunView", () => {
       kind: "topic",
       topic: "Conditionals",
       level: "intermediate",
+      contrast: false,
+      points: TOPIC_POINTS.conditionals,
     });
   });
 
@@ -194,7 +197,7 @@ describe("practiceRunView", () => {
         slot: view.run.slots[0]!,
         missedRules: [],
         language: null,
-        avoid: [],
+        seed: view.run.work?.seed ?? null,
       }),
     });
   });

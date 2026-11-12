@@ -3,9 +3,13 @@
 // Tests for the state machine of a practice run.
 //
 // Tested:
-// - practiceStep sends this run's prompts, the queued ones, the rejected ones and the recent ones as avoid
+// - The code check uses this run's prompts, the rejected ones and the recent ones as avoid; the writer gets no avoid list
+// - Every write attempt of a run is counted and gets the scenario of its count, so no scenario comes back within 24 writes, Try again included; no seed for a fix on a learner's own correction
 // - startPractice: a new run starts by creating the run; a resumed run settles on its items and plans only its missing positions
-// - practiceReducer and practiceStep: the order of the outside calls of a slot (write, code check, solver, reviewer), of an answer and of the grader
+// - practiceReducer and practiceStep: the order of the outside calls of a slot (write, code check, solver, reviewer for every kind), of an answer and of the grader
+// - A topic slot keeps its point on a rewrite and takes the next one after a full round fails; the rule label and the source are set by code, not by the writer
+// - Only choose is held to a single answer: a typed kind goes to review whatever the solver says, the solver's answer joins accepted when the reviewer accepts it; the failure shows after two full rounds
+// - Kinds that fit the point: a contrast topic falls back on choose and fix only; a kind that uses up its attempts is dead and later slots start past it; Try again clears the dead kinds
 // - A slot is written again after a failed check, up to three attempts per kind, then switches kind (choose, gap, fix, never translate); the AI failure with Try again only when every kind is exhausted, and Try again restarts from the planned kind
 // - One exercise ahead: a passed exercise is saved at its position, the next slot is written while the learner answers, and generating shows only when the next one is not ready
 // - A background write never takes a write the screen waits on, and a background AI failure waits until the learner is waiting
@@ -34,6 +38,7 @@ import {
   TUTOR_MODEL,
   usageCostUsd,
   type PracticeRunWithItems,
+  TOPIC_POINTS,
 } from "@fluency-lab/shared";
 
 import { sendState } from "@/utils/chat-conversation";
@@ -66,6 +71,7 @@ import {
   type FocusData,
 } from "@/utils/practice-prompt";
 import { codeRow } from "@/utils/practice-check";
+import { seedFor } from "@/utils/practice-seeds";
 import { planSlots } from "@/utils/practice-slots";
 import {
   completedProfile,
@@ -185,7 +191,7 @@ function drain(state: PracticeRunState): PracticeRunState {
   throw new Error("drain did not stop");
 }
 
-// INFO: one slot written, solved and (for fix and translate) reviewed, all passing.
+// INFO: one slot written, solved and reviewed, all passing.
 function passSlot(state: PracticeRunState, n: number): PracticeRunState {
   const kind = state.work?.slot.kind ?? "choose";
   const exercise = exerciseFor(kind, n);
@@ -211,13 +217,13 @@ const created = apply(fresh(), { type: "write_done", run: practiceRunWith() });
 const aiFailure = (failure: "bad_response" | "refused" | "network" | "invalid_key") =>
   ({ source: "ai", failure }) as const;
 
-// INFO: a run with positions 0 and 1 answered, so the slot being worked is the fix at position 2.
 // INFO: n writer failures that each use up an attempt of the slot being written.
 const failTimes = (state: PracticeRunState, n: number) =>
   Array.from({ length: n }).reduce<PracticeRunState>(
     (current) => apply(current, { type: "exercise_failed", failure: aiFailure("bad_response") }),
     state,
   );
+// INFO: a run with positions 0 and 1 answered, so the slot being worked is the fix at position 2.
 const fixSlot = () => resumed(practiceTodayWith([item(0, true), item(1, true)], { target: 5 }));
 
 describe("startPractice", () => {
@@ -241,20 +247,19 @@ describe("startPractice", () => {
         slot: created.slots[0]!,
         missedRules: [],
         language: null,
-        avoid: [],
+        seed: created.work?.seed ?? null,
       }),
     });
   });
 
-  it("sends this run's earlier prompts and the recent ones of other runs as avoid", () => {
-    const recent = [
-      { runId: "old-run", prompt: "Old ___ prompt.", rule: "Verbs" },
-      { runId: "run-1", prompt: "Own saved ___.", rule: "Verbs" },
-    ];
+  it("checks a written prompt against this run's earlier prompts and the recent ones of other runs", () => {
+    const own = exerciseFor("fix", 5);
+    const old = exerciseFor("fix", 4);
+    const recent = [{ runId: "old-run", prompt: old.prompt, rule: "Verbs" }];
     const state = startPractice({
       origin: { kind: "resume", runId: "run-1" },
       opened: practiceTodayWith(
-        [item(0, true, { prompt: "First ___." }), item(1, true, { prompt: "Second ___." })],
+        [item(0, true, { prompt: "First ___." }), item(1, true, { prompt: own.prompt })],
         { target: 5 },
       ),
       profile,
@@ -263,16 +268,51 @@ describe("startPractice", () => {
       language: null,
       recent,
     });
-    const step = practiceStep(state);
-    const expected = ["Second ___.", "First ___.", "Old ___ prompt."];
-    const turn = step.kind === "exercise" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
-    expect(turn.avoid).toEqual(expected);
+    for (const exercise of [own, old]) {
+      const written = apply(state, {
+        type: "exercise_written",
+        draft: exerciseDraftWith({ exercise }),
+      });
+      expect(written.checks[0]).toMatchObject({ stage: "code", passed: false, reason: "repeat" });
+    }
   });
 
-  it("sends an empty avoid for a new run with no recent practice", () => {
+  it("checks a written prompt against the slot's rejected prompts", () => {
+    const exercise = exerciseFor("choose", 1);
+    const mismatch = apply(
+      created,
+      { type: "exercise_written", draft: exerciseDraftWith({ exercise }) },
+      { type: "exercise_solved", solution: solutionWith({ answer: "was" }) },
+    );
+    const again = apply(mismatch, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise }),
+    });
+    expect(again.checks[2]).toMatchObject({ stage: "code", passed: false, reason: "repeat" });
+  });
+
+  it("lets a rewrite look like a rejected prompt the learner never saw", () => {
+    const first = { ...exerciseFor("choose", 1), prompt: "Anna ___ to Japan with her parents." };
+    const second = {
+      ...exerciseFor("choose", 1),
+      prompt: "Anna ___ to Japan with her parents last summer.",
+    };
+    const mismatch = apply(
+      created,
+      { type: "exercise_written", draft: exerciseDraftWith({ exercise: first }) },
+      { type: "exercise_solved", solution: solutionWith({ answer: "was" }) },
+    );
+    const again = apply(mismatch, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise: second }),
+    });
+    expect(again.checks[2]).toMatchObject({ stage: "code", passed: true });
+  });
+
+  it("sends no avoid list to the writer", () => {
     const step = practiceStep(created);
     const turn = step.kind === "exercise" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
-    expect(turn.avoid).toEqual([]);
+    expect(turn).not.toHaveProperty("avoid");
   });
 
   it("settles a resumed run on its first unanswered item", () => {
@@ -364,6 +404,7 @@ describe("planning", () => {
     const state = apply(offer, { type: "keep_going" });
     expect(state.slots).toEqual(
       planSlots({
+        runId: "run-1",
         positions: [5, 6, 7, 8, 9],
         focus,
         language: null,
@@ -376,6 +417,331 @@ describe("planning", () => {
         ],
       }),
     );
+  });
+});
+
+describe("the seed of a write attempt", () => {
+  const scenarioOf = (state: PracticeRunState) => state.work?.seed?.scenario;
+  // INFO: the scenarios of every write of a run, in order, as the state saw them.
+  const scenariosOver = (state: PracticeRunState, failures: number) => {
+    const seen: (string | undefined)[] = [scenarioOf(state)];
+    let current = state;
+    for (let i = 0; i < failures; i += 1) {
+      current = failTimes(current, 1);
+      seen.push(scenarioOf(current));
+    }
+    return { seen, current };
+  };
+
+  it("gives a slot the seed of the run's first write when it starts", () => {
+    expect(created.work?.seed).toEqual(seedFor({ runId: "run-1", writeCount: 0 }));
+    expect(created.writeCount).toBe(1);
+  });
+
+  it("counts every write attempt: a failed attempt and a kind switch", () => {
+    expect(failTimes(created, 1).writeCount).toBe(2);
+    const switched = failTimes(created, 3);
+    expect(switched.work).toMatchObject({ attempt: 1, slot: { kind: "gap" } });
+    expect(switched.writeCount).toBe(4);
+    expect(switched.work?.seed).toEqual(seedFor({ runId: "run-1", writeCount: 3 }));
+  });
+
+  it("gives a new scenario to each write while the slot keeps failing", () => {
+    const { seen } = scenariosOver(created, 5);
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  it("brings a scenario not used before in the run on Try again after every kind is used up", () => {
+    const exhausted = failTimes(created, 18);
+    const earlier = scenariosOver(created, 17).seen;
+    const retried = apply(exhausted, { type: "retry" });
+    expect(retried.failure).toBeNull();
+    expect(earlier.filter((scenario) => scenario !== undefined)).not.toContain(scenarioOf(retried));
+    expect(retried.writeCount).toBeGreaterThan(exhausted.writeCount - 1);
+  });
+
+  it("never resets the write count on Try again", () => {
+    const exhausted = failTimes(created, 18);
+    const retried = apply(exhausted, { type: "retry" });
+    expect(failTimes(retried, 1).writeCount).toBe(retried.writeCount + 1);
+    expect(retried.writeCount).toBeGreaterThanOrEqual(10);
+  });
+
+  it("starts a resumed run's write count at its saved items", () => {
+    const state = resumed(practiceTodayWith([item(0, true), item(1, true)], { target: 5 }));
+    expect(state.writeCount).toBe(3);
+  });
+
+  it("does not change the seed on a network failure", () => {
+    const failed = apply(created, { type: "exercise_failed", failure: aiFailure("network") });
+    expect(failed.work?.seed).toEqual(created.work?.seed);
+    expect(failed.writeCount).toBe(created.writeCount);
+  });
+
+  it("gives no seed to a fix on a learner's own correction", () => {
+    const corrections: FocusData = {
+      kind: "mistakes",
+      corrections: [
+        { original: "I has", corrected: "I have", rule: "Verbs" },
+        { original: "a apple", corrected: "an apple", rule: "Articles" },
+      ],
+    };
+    const state = startPractice({
+      origin: { kind: "resume", runId: "run-1" },
+      opened: practiceTodayWith([item(0, true), item(1, true)], { target: 5 }),
+      profile,
+      spentUsd: 0,
+      focus: corrections,
+      language: null,
+      recent: [],
+    });
+    expect(state.work?.slot.kind).toBe("fix");
+    expect(state.work?.slot.target).toMatchObject({
+      focus: "mistakes",
+      correction: { original: expect.any(String) },
+    });
+    expect(state.work?.seed).toBeNull();
+    const step = practiceStep(state);
+    const turn = step.kind === "exercise" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
+    expect(turn).not.toHaveProperty("scenario");
+  });
+});
+
+describe("the points of a topic and the fields set by code", () => {
+  const topicRun = () =>
+    startPractice({
+      origin: { kind: "resume", runId: "run-1" },
+      opened: practiceTodayWith([], { target: 5 }),
+      profile,
+      spentUsd: 0,
+      focus: {
+        kind: "topic",
+        topic: "Going to vs will",
+        level: null,
+        contrast: true,
+        points: TOPIC_POINTS.going_to_vs_will,
+      },
+      language: null,
+      recent: [],
+    });
+  const pointOf = (state: PracticeRunState) =>
+    state.work?.slot.target.focus === "topic" ? state.work.slot.target.point : undefined;
+  const savedItem = (state: PracticeRunState) => {
+    const write = state.background.find((entry) => entry.kind === "items");
+    return write?.kind === "items" ? write.items[0] : undefined;
+  };
+
+  it("keeps the slot's point on a rewrite", () => {
+    const state = topicRun();
+    expect(pointOf(state)).not.toBeNull();
+    expect(pointOf(failTimes(state, 1))).toEqual(pointOf(state));
+    expect(pointOf(failTimes(state, 3))).toEqual(pointOf(state));
+  });
+
+  it("moves the slot to the topic's next point after a full round over every kind fails", () => {
+    const state = topicRun();
+    const labels = TOPIC_POINTS.going_to_vs_will.map((point) => point.label);
+    const before = labels.indexOf(pointOf(state)?.label ?? "");
+    const after = labels.indexOf(pointOf(failTimes(state, 6))?.label ?? "");
+    expect(after).toBe((before + 1) % labels.length);
+  });
+
+  it("saves the point's label as the rule of a topic exercise, whatever the writer wrote", () => {
+    const state = topicRun();
+    const exercise = { ...exerciseFor("choose", 1), rule: "Present simple for timetabled events" };
+    const passed = passSlot({ ...state }, 1);
+    const written = apply(state, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise }),
+    });
+    expect(written.work?.exercise?.rule).toBe(pointOf(state)?.label);
+    expect(written.checks[0]?.exercise).toMatchObject({ rule: pointOf(state)?.label });
+    expect(savedItem(passed)?.rule).toBe(pointOf(state)?.label);
+  });
+
+  it("saves a learner's correction rule as the rule of its exercise", () => {
+    const exercise = { ...exerciseFor("choose", 1), rule: "Writer's own label" };
+    const written = apply(created, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise }),
+    });
+    expect(written.work?.exercise?.rule).toBe("Verbs");
+  });
+
+  it("keeps the writer's rule for an open target", () => {
+    const open: PracticeRunState = {
+      ...created,
+      work:
+        created.work === null
+          ? null
+          : {
+              ...created.work,
+              slot: { ...created.work.slot, target: { focus: "mistakes", correction: null } },
+            },
+    };
+    const written = apply(open, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise: { ...exerciseFor("choose", 1), rule: "Articles" } }),
+    });
+    expect(written.work?.exercise?.rule).toBe("Articles");
+  });
+
+  it("saves no source on an exercise that is not a fix on a learner's correction", () => {
+    const state = topicRun();
+    const exercise = { ...exerciseFor("choose", 1), source: "Some sentence from nowhere." };
+    const written = apply(state, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise }),
+    });
+    expect(written.work?.exercise?.source).toBeNull();
+  });
+
+  it("keeps the source of a fix on a learner's correction", () => {
+    const corrections: FocusData = {
+      kind: "mistakes",
+      corrections: [
+        { original: "I has", corrected: "I have", rule: "Verbs" },
+        { original: "a apple", corrected: "an apple", rule: "Articles" },
+      ],
+    };
+    const state = startPractice({
+      origin: { kind: "resume", runId: "run-1" },
+      opened: practiceTodayWith([item(0, true), item(1, true)], { target: 5 }),
+      profile,
+      spentUsd: 0,
+      focus: corrections,
+      language: null,
+      recent: [],
+    });
+    const written = apply(state, {
+      type: "exercise_written",
+      draft: exerciseDraftWith({ exercise: exerciseFor("fix", 9) }),
+    });
+    expect(written.work?.exercise?.source).toBe("She go to work 9 days a week.");
+  });
+});
+
+describe("kinds that fit the point", () => {
+  const contrastRun = () =>
+    startPractice({
+      origin: { kind: "resume", runId: "run-1" },
+      opened: practiceTodayWith([], { target: 5 }),
+      profile,
+      spentUsd: 0,
+      focus: {
+        kind: "topic",
+        topic: "Going to vs will",
+        level: null,
+        contrast: true,
+        points: TOPIC_POINTS.going_to_vs_will,
+      },
+      language: null,
+      recent: [],
+    });
+  // INFO: the run's next slot, planned with the given kind, scheduled over the given dead kinds.
+  const nextSlot = (kind: "choose" | "gap" | "fix", deadKinds: ("choose" | "gap" | "fix")[]) => {
+    const target = { focus: "mistakes" as const, correction: null };
+    const idle: PracticeRunState = {
+      ...created,
+      work: null,
+      slots: [{ position: 3, kind, target }],
+      deadKinds,
+    };
+    return practiceReducer(idle, { type: "draft_changed", text: "" });
+  };
+
+  it("falls back from choose to fix, never to gap, on a contrast topic", () => {
+    const state = contrastRun();
+    expect(state.work?.slot.kind).toBe("choose");
+    expect(failTimes(state, 3).work).toMatchObject({ attempt: 1, slot: { kind: "fix" } });
+  });
+
+  it("shows the AI failure once choose and fix are used up on a contrast topic", () => {
+    expect(failTimes(contrastRun(), 11).failure).toBeNull();
+    expect(failTimes(contrastRun(), 12).failure).toMatchObject({
+      source: "ai",
+      cause: { name: "PracticeChecks" },
+    });
+  });
+
+  it("marks a kind dead once it uses up its attempts on a slot", () => {
+    expect(failTimes(fixSlot(), 2).deadKinds).toEqual([]);
+    expect(failTimes(fixSlot(), 3).deadKinds).toEqual(["fix"]);
+    expect(failTimes(fixSlot(), 6).deadKinds).toEqual(["fix", "choose"]);
+  });
+
+  it("starts a later slot planned as fix on choose once fix is dead", () => {
+    expect(nextSlot("fix", ["fix"]).work).toMatchObject({ attempt: 1, slot: { kind: "choose" } });
+    expect(nextSlot("fix", []).work).toMatchObject({ slot: { kind: "fix" } });
+  });
+
+  it("starts a later slot on its planned kind when every kind is dead", () => {
+    expect(nextSlot("fix", ["choose", "gap", "fix"]).work).toMatchObject({ slot: { kind: "fix" } });
+  });
+
+  it("clears the dead kinds on Try again after every kind is used up", () => {
+    const exhausted = failTimes(created, 18);
+    const retried = apply(exhausted, { type: "retry" });
+    expect(retried.deadKinds).toEqual([]);
+    expect(retried.work).toMatchObject({ attempt: 1, slot: { kind: "choose" } });
+  });
+
+  it("restarts from the planned kind even when the slot started on a fallback", () => {
+    const started = nextSlot("fix", ["fix"]);
+    expect(failTimes(started, 17).failure).toBeNull();
+    const exhausted = failTimes(started, 18);
+    expect(exhausted.failure).toMatchObject({ cause: { name: "PracticeChecks" } });
+    const retried = apply(exhausted, { type: "retry" });
+    expect(retried.work).toMatchObject({ attempt: 1, slot: { kind: "fix" } });
+  });
+});
+
+describe("only choose is held to a single answer", () => {
+  const gapSlot = () => drain(passSlot(created, 1));
+  const savedItem = (state: PracticeRunState) => {
+    const write = state.background.find((entry) => entry.kind === "items");
+    return write?.kind === "items" ? write.items[0] : undefined;
+  };
+
+  it("sends a gap whose solver answer differs to review and saves it when the review passes", () => {
+    const state = gapSlot();
+    expect(state.work?.slot.kind).toBe("gap");
+    const solved = apply(
+      state,
+      { type: "exercise_written", draft: exerciseDraftWith({ exercise: exerciseFor("gap", 2) }) },
+      { type: "exercise_solved", solution: solutionWith({ answer: "have gone" }) },
+    );
+    expect(solved.work).toMatchObject({ stage: "review", solverAnswer: "have gone" });
+    const reviewed = apply(solved, {
+      type: "exercise_reviewed",
+      review: reviewWith({ singleAnswer: false, solverAnswerAccepted: false, passed: false }),
+    });
+    expect(savedItem(reviewed)).toMatchObject({ position: 1, kind: "gap", accepted: ["went"] });
+  });
+
+  it("adds the solver's answer to accepted when the reviewer accepts it", () => {
+    const reviewed = apply(
+      gapSlot(),
+      { type: "exercise_written", draft: exerciseDraftWith({ exercise: exerciseFor("gap", 2) }) },
+      { type: "exercise_solved", solution: solutionWith({ answer: "travelled" }) },
+      { type: "exercise_reviewed", review: reviewWith({ solverAnswerAccepted: true }) },
+    );
+    expect(savedItem(reviewed)?.accepted).toEqual(["went", "travelled"]);
+  });
+
+  it("shows no failure after one full round and shows it after two", () => {
+    const oneRound = failTimes(created, 9);
+    expect(oneRound.failure).toBeNull();
+    expect(oneRound.work).toMatchObject({ attempt: 1, round: 2, slot: { kind: "choose" } });
+    expect(failTimes(created, 17).failure).toBeNull();
+    expect(failTimes(created, 18).failure).toMatchObject({ cause: { name: "PracticeChecks" } });
+  });
+
+  it("starts two more rounds on Try again", () => {
+    const retried = apply(failTimes(created, 18), { type: "retry" });
+    expect(retried.work).toMatchObject({ attempt: 1, round: 1 });
+    expect(failTimes(retried, 17).failure).toBeNull();
+    expect(failTimes(retried, 18).failure).toMatchObject({ cause: { name: "PracticeChecks" } });
   });
 });
 
@@ -407,10 +773,52 @@ describe("a slot", () => {
     expect(written.spentUsd).toBeCloseTo(usageCostUsd(draft.model, draft.usage), 8);
   });
 
-  it("solves a choose and saves it at its position when the solver matches", () => {
+  it("sends a choose the solver matches to the reviewer, not straight to the save", () => {
+    const exercise = exerciseFor("choose", 1);
+    const solved = apply(
+      created,
+      { type: "exercise_written", draft: exerciseDraftWith({ exercise }) },
+      { type: "exercise_solved", solution: solutionWith({ answer: "have been" }) },
+    );
+    expect(workOf(solved).work).toMatchObject({ stage: "review", solverAnswer: "have been" });
+    expect(solved.background.some((write) => write.kind === "items")).toBe(false);
+    expect(practiceStep(drain(solved))).toEqual({
+      kind: "review",
+      request: reviewRequest(solved.work!.exercise!, "have been"),
+    });
+  });
+
+  it("rejects a choose whose review says singleAnswer false and never saves it", () => {
+    const reviewed = apply(
+      created,
+      {
+        type: "exercise_written",
+        draft: exerciseDraftWith({ exercise: exerciseFor("choose", 2) }),
+      },
+      { type: "exercise_solved", solution: solutionWith({ answer: "have been" }) },
+      {
+        type: "exercise_reviewed",
+        review: reviewWith({ singleAnswer: false, passed: false, reason: "two forms fit" }),
+      },
+    );
+    expect(reviewed.background.some((write) => write.kind === "items")).toBe(false);
+    expect(reviewed.checks.at(-1)).toMatchObject({
+      stage: "reviewer",
+      passed: false,
+      reason: expect.stringContaining("single_answer"),
+    });
+    expect(reviewed.work).toMatchObject({ attempt: 2, stage: "write" });
+  });
+
+  it("solves and reviews a choose and saves it at its position when both pass", () => {
     const passed = passSlot(created, 1);
-    expect(passed.background.map((write) => write.kind)).toEqual(["usage", "usage", "items"]);
-    const saved = passed.background[2];
+    expect(passed.background.map((write) => write.kind)).toEqual([
+      "usage",
+      "usage",
+      "usage",
+      "items",
+    ]);
+    const saved = passed.background[3];
     expect(saved?.kind === "items" && saved.items).toHaveLength(1);
     expect(saved?.kind === "items" && saved.items[0]).toMatchObject({
       position: 0,
@@ -420,6 +828,7 @@ describe("a slot", () => {
     expect(passed.checks.map((check) => [check.stage, check.passed])).toEqual([
       ["code", true],
       ["solver", true],
+      ["reviewer", true],
     ]);
     expect(passed.checksDue).toBe(true);
     expect(passed.slots[0]?.position).toBe(1);
@@ -493,7 +902,7 @@ describe("a slot", () => {
     expect(rejected.work).toMatchObject({ attempt: 2, stage: "write", rejected: [wrong.prompt] });
     const step = practiceStep(drain(rejected));
     const turn = step.kind === "exercise" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
-    expect(turn.avoid).toContain(wrong.prompt);
+    expect(turn).not.toHaveProperty("avoid");
   });
 
   it("writes the slot again after a solver mismatch and an already-correct fix", () => {
@@ -584,7 +993,7 @@ describe("a slot", () => {
   });
 
   it("after every kind of the slot is exhausted shows the AI failure with Try again", () => {
-    const failed = failTimes(created, 9);
+    const failed = failTimes(created, 18);
     expect(failed.failure).toEqual({
       source: "ai",
       failure: "bad_response",
@@ -595,14 +1004,14 @@ describe("a slot", () => {
   });
 
   it("shows the AI failure after a fix slot exhausts fix, choose and gap", () => {
-    expect(failTimes(fixSlot(), 8).failure).toBeNull();
-    const failed = failTimes(fixSlot(), 9);
+    expect(failTimes(fixSlot(), 17).failure).toBeNull();
+    const failed = failTimes(fixSlot(), 18);
     expect(failed.failure).toMatchObject({ source: "ai", cause: { name: "PracticeChecks" } });
     expect(practiceStep(failed)).toEqual({ kind: "none" });
   });
 
   it("Try again after every kind is exhausted writes the slot from its planned kind", () => {
-    const failed = failTimes(fixSlot(), 9);
+    const failed = failTimes(fixSlot(), 18);
     const retried = apply(failed, { type: "retry" });
     expect(retried.failure).toBeNull();
     expect(retried.work).toMatchObject({
@@ -695,7 +1104,7 @@ describe("one exercise ahead", () => {
     expect(state.work?.slot.position).toBe(1);
     const turn = step.kind === "exercise" ? JSON.parse(step.request.turns[0]?.text ?? "{}") : {};
     expect(turn.kind).toBe("gap");
-    expect(turn.avoid).toEqual([exerciseFor("choose", 1).prompt]);
+    expect(turn).not.toHaveProperty("avoid");
   });
 
   it("stops writing once one exercise is ready ahead", () => {
@@ -828,7 +1237,7 @@ describe("one exercise ahead", () => {
   });
 
   it("holds the exhausted slot's failure until the learner waits", () => {
-    const failed = failTimes(onScreen(), 9);
+    const failed = failTimes(onScreen(), 18);
     expect(failed.failure).toBeNull();
     expect(failed.held).toMatchObject({ source: "ai", cause: { name: "PracticeChecks" } });
   });
@@ -887,6 +1296,7 @@ describe("the checks save", () => {
     expect(step.kind === "checks" && step.checks.map((check) => check.stage)).toEqual([
       "code",
       "solver",
+      "reviewer",
     ]);
   });
 
@@ -1353,7 +1763,7 @@ describe("the end of a round", () => {
         slot: saved.slots[0]!,
         missedRules: ["Present perfect"],
         language: null,
-        avoid: ["I ___ to Japan twice."],
+        seed: saved.work?.seed ?? null,
       }),
     });
     expect(saved.slots[0]?.position).toBe(5);

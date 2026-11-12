@@ -306,15 +306,23 @@ describe("Practice run", () => {
 
   it("draws today's AI failure with Try again once every kind of the slot is used up", async () => {
     withKey();
-    for (let i = 0; i < 9; i += 1) {
+    for (let i = 0; i < 18; i += 1) {
       fakeAi.practiceExercise.mockResolvedValueOnce({ ok: false, failure: "bad_response" });
     }
     await renderAppAt(start, fakeSession());
     expect(screen.getByText("The tutor could not answer. Try again.")).toBeTruthy();
-    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(9);
+    expect(fakeAi.practiceExercise).toHaveBeenCalledTimes(18);
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
     expect(screen.queryByText("The tutor could not answer. Try again.")).toBeNull();
     expect(screen.getByText("Choose the answer")).toBeTruthy();
+  });
+
+  it("keeps a long rule tag on one line that ends in an ellipsis beside the kind title", async () => {
+    withKey();
+    await renderAppAt(start, fakeSession());
+    const tag = screen.getByText("Present perfect");
+    expect(tag.props.numberOfLines).toBe(1);
+    expect(tag.props.ellipsizeMode).toBe("tail");
   });
 
   it("draws a choose exercise with its kind, rule, prompt, options and progress", async () => {

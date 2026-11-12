@@ -5,7 +5,13 @@ import { borderWidth, colors, radius, size, spacing } from "@/constants/theme";
 
 export type TagVariant = "tint" | "outline" | "word" | "count" | "withdrawn" | "rule" | "type";
 
-export function tagStyle(variant: TagVariant = "tint"): { box: ViewStyle; label: TextVariant } {
+// INFO: lines limits the label to that many lines with an ellipsis; only the rule tag sets it,
+// so a long rule shrinks beside the kind title instead of leaving the screen.
+export function tagStyle(variant: TagVariant = "tint"): {
+  box: ViewStyle;
+  label: TextVariant;
+  lines?: number;
+} {
   if (variant === "word") {
     return {
       box: {
@@ -55,8 +61,10 @@ export function tagStyle(variant: TagVariant = "tint"): { box: ViewStyle; label:
         borderRadius: radius.pill,
         paddingHorizontal: spacing.cluster,
         paddingVertical: spacing.xs,
+        flexShrink: 1,
       },
       label: "tabActive",
+      lines: 1,
     };
   }
   // INFO: the type tag of chats-open-titles.html: 2 points of vertical padding, where the tint tag has 3.
